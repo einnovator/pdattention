@@ -873,7 +873,10 @@ def transform_autonomous_payload(
             model=str(payload.get("model") or config.expected_model or "model"),
             messages=tuple(typed_selector_messages),
             session_id=config.session_id or config.task_id,
-            metadata={"agent_memory_plan": wire_plan.to_dict()},
+            metadata={
+                "agent_memory_plan": wire_plan.to_dict(),
+                "tool_semantics_by_name": config.tool_semantics_by_name,
+            },
         )
         mediated = RequestMediator({
             "location": "embedded",

@@ -1123,6 +1123,13 @@ digest mismatches, and unsafe archive paths.
 The portable interface is instead a tool-semantics provider. A developer or
 agent SDK can declare generic reads, writes, deletes, verification targets,
 resource versions, causal dependencies, output completeness, and confidence.
+The contract separates transport status, semantic outcome, result completeness,
+and effect-trace completeness.  Therefore an HTTP-complete or provider-stopped
+exchange cannot masquerade as a successful tool operation or completed agent
+task.  Failed action, error observation, and the dependent recovery are linked
+as an atomic selection closure.  Thread, subagent, and parent-thread identities
+support hierarchical agents without flattening private child histories into the
+parent context.
 It may also attach record directives such as protected, certified-excludable,
 or preferred-for-selection, with a certificate and witness IDs. Future tool
 categories implement the same effect vocabulary without teaching the engine
@@ -4366,7 +4373,15 @@ text records, so the generic declaration assigns them the stable
 operation and path through argument-based semantics.  Arbitrary terminal
 commands remain unknown-effect barriers unless middleware supplies complete
 resource/effect receipts.  Evidence is in
-\path{cross_agent_transfer/openhands_task01_full_controlled_v1}.  One resolved
+\path{cross_agent_transfer/openhands_task01_full_controlled_v1}.  A frozen
+event-to-receipt smoke pairs all 33 actions with observations and represents
+the four nonzero/error outcomes as semantic failures despite successful
+transport.  It marks 32 results complete, but certifies complete effects for
+only the two non-workspace control operations.  The other 31 terminal/editor
+records remain fail-closed barriers because this historical execution did not
+capture before/after filesystem versions.  Thus event normalization is
+qualified, while resource tracing is still required before DAG retirement.
+One resolved
 control admits OpenHands to the staged ladder but does not qualify a retention
 policy.
 

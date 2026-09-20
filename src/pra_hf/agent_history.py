@@ -30,6 +30,27 @@ class AgentRecordRole(str, Enum):
     FINALIZATION = "finalization"
 
 
+class TransportStatus(str, Enum):
+    """Whether an action/result exchange completed at the transport layer."""
+
+    UNKNOWN = "unknown"
+    COMPLETED = "completed"
+    INCOMPLETE = "incomplete"
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
+    FAILED = "failed"
+
+
+class SemanticStatus(str, Enum):
+    """Portable operation outcome, independent of provider termination."""
+
+    UNKNOWN = "unknown"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    PARTIAL = "partial"
+    NOT_APPLICABLE = "not_applicable"
+
+
 @dataclass(frozen=True)
 class AgentRecord:
     record_id: str
@@ -44,6 +65,17 @@ class AgentRecord:
     return_code: int | None = None
     resource_ids: tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    session_id: str | None = None
+    thread_id: str | None = None
+    subagent_id: str | None = None
+    parent_thread_id: str | None = None
+    transport_status: TransportStatus = TransportStatus.UNKNOWN
+    semantic_status: SemanticStatus = SemanticStatus.UNKNOWN
+    complete: bool | None = None
+    error_kind: str | None = None
+    workspace_generation: str | None = None
+    depends_on: tuple[str, ...] = ()
+    supersedes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "primary_role", AgentRecordRole(self.primary_role))
@@ -54,6 +86,18 @@ class AgentRecord:
         )
         object.__setattr__(self, "resource_ids", tuple(dict.fromkeys(self.resource_ids)))
         object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(self, "transport_status", TransportStatus(self.transport_status))
+        object.__setattr__(self, "semantic_status", SemanticStatus(self.semantic_status))
+        object.__setattr__(self, "depends_on", tuple(dict.fromkeys(self.depends_on)))
+        object.__setattr__(self, "supersedes", tuple(dict.fromkeys(self.supersedes)))
+        if (
+            self.semantic_status == SemanticStatus.SUCCEEDED
+            and self.transport_status not in {
+                TransportStatus.UNKNOWN,
+                TransportStatus.COMPLETED,
+            }
+        ):
+            raise ValueError("semantic success requires a completed or unknown transport")
 
     def has_role(self, role: AgentRecordRole) -> bool:
         return role == self.primary_role or role in self.semantic_roles
@@ -88,8 +132,24 @@ class CanonicalAgentHistory:
         payload = [
             {
                 "record_id": row.record_id,
+                "turn_id": row.turn_id,
+                "causal_group_id": row.causal_group_id,
                 "role": row.role,
                 "content": row.content,
+                "primary_role": row.primary_role.value,
+                "semantic_roles": tuple(role.value for role in row.semantic_roles),
+                "resource_ids": row.resource_ids,
+                "session_id": row.session_id,
+                "thread_id": row.thread_id,
+                "subagent_id": row.subagent_id,
+                "parent_thread_id": row.parent_thread_id,
+                "transport_status": row.transport_status.value,
+                "semantic_status": row.semantic_status.value,
+                "complete": row.complete,
+                "error_kind": row.error_kind,
+                "workspace_generation": row.workspace_generation,
+                "depends_on": row.depends_on,
+                "supersedes": row.supersedes,
             }
             for row in self.records
         ]
@@ -224,6 +284,69 @@ def _record_declaration(message: Mapping[str, Any]) -> Mapping[str, Any] | None:
     return None
 
 
+def _execution_receipt(message: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    direct = message.get("pra_execution_receipt")
+    if isinstance(direct, Mapping):
+        return direct
+    metadata = message.get("metadata")
+    if isinstance(metadata, Mapping):
+        direct = metadata.get("pra_execution_receipt")
+        if isinstance(direct, Mapping):
+            return direct
+        pra = metadata.get("pra")
+        if isinstance(pra, Mapping) and isinstance(pra.get("execution_receipt"), Mapping):
+            return pra["execution_receipt"]
+    return None
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,) if value else ()
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(dict.fromkeys(str(item) for item in value if str(item)))
+
+
+def _receipt_resources(receipt: Mapping[str, Any] | None) -> tuple[str, ...]:
+    if receipt is None:
+        return ()
+    resources: list[str] = []
+    for row in receipt.get("resources", ()):
+        if isinstance(row, Mapping) and row.get("resource_id"):
+            resources.append(str(row["resource_id"]))
+    return tuple(dict.fromkeys(resources))
+
+
+def _outcome_fields(
+    declaration: Mapping[str, Any] | None,
+    receipt: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    source: dict[str, Any] = {}
+    if declaration is not None:
+        source.update(declaration)
+    if receipt is not None:
+        source.update(receipt)
+    return {
+        "transport_status": TransportStatus(str(source.get("transport_status", "unknown"))),
+        "semantic_status": SemanticStatus(str(source.get("semantic_status", "unknown"))),
+        "complete": (
+            bool(source["result_complete"])
+            if source.get("result_complete") is not None
+            else bool(source["complete"])
+            if source.get("complete") is not None else None
+        ),
+        "error_kind": (
+            str(source["error_kind"]) if source.get("error_kind") is not None else None
+        ),
+        "workspace_generation": (
+            str(source["workspace_generation"])
+            if source.get("workspace_generation") is not None else None
+        ),
+        "depends_on": _string_tuple(source.get("depends_on")),
+        "supersedes": _string_tuple(source.get("supersedes")),
+    }
+
+
 def _roles(value: Any, primary: AgentRecordRole) -> tuple[AgentRecordRole, ...]:
     if value is None:
         return (primary,)
@@ -298,6 +421,27 @@ def _resolve_tool_semantics(
     return resolved, tuple(dict.fromkeys(resources))
 
 
+def _semantic_roles_for_operation(
+    primary: AgentRecordRole,
+    operation_kind: str | None,
+    semantic_status: SemanticStatus,
+) -> tuple[AgentRecordRole, ...]:
+    roles = [primary]
+    if operation_kind == "read":
+        roles.append(AgentRecordRole.SOURCE_VIEW)
+    elif operation_kind == "write":
+        roles.append(AgentRecordRole.MUTATION)
+    elif operation_kind == "verify":
+        roles.append(AgentRecordRole.VERIFICATION)
+    elif operation_kind == "progress":
+        roles.append(AgentRecordRole.PROGRESS)
+    elif operation_kind == "finalization":
+        roles.append(AgentRecordRole.FINALIZATION)
+    if semantic_status in {SemanticStatus.FAILED, SemanticStatus.PARTIAL}:
+        roles.append(AgentRecordRole.ERROR_OR_REJECTION)
+    return tuple(dict.fromkeys(roles))
+
+
 class OpenAIRecordizer:
     """Recordize explicit PRA metadata or standard OpenAI tool-call traffic.
 
@@ -323,12 +467,15 @@ class OpenAIRecordizer:
         explicit_count = inferred_count = 0
         task_seen = False
         pending_groups: dict[str, str] = {}
+        pending_calls: dict[str, Mapping[str, Any]] = {}
+        open_failure_group: str | None = None
 
         for index, raw in enumerate(messages):
             message = dict(raw)
             role = str(message.get("role", ""))
             content = _content(message)
             declaration = _record_declaration(message)
+            receipt = _execution_receipt(message)
             if declaration is not None:
                 explicit_count += 1
                 primary = AgentRecordRole(str(declaration["primary_role"]))
@@ -339,6 +486,12 @@ class OpenAIRecordizer:
                 group_id = str(declaration.get("causal_group_id") or turn_id)
                 record_metadata = dict(message.get("metadata") or {})
                 record_metadata.update(dict(declaration.get("metadata") or {}))
+                if receipt is not None:
+                    record_metadata["execution_receipt"] = dict(receipt)
+                outcome = _outcome_fields(declaration, receipt)
+                declared_resources = tuple(
+                    str(value) for value in declaration.get("resource_ids", ())
+                )
                 records.append(AgentRecord(
                     record_id=record_id,
                     turn_id=turn_id,
@@ -349,14 +502,40 @@ class OpenAIRecordizer:
                     primary_role=primary,
                     semantic_roles=_roles(declaration.get("semantic_roles"), primary),
                     command=(str(declaration["command"]) if declaration.get("command") is not None else None),
-                    return_code=(int(declaration["return_code"]) if declaration.get("return_code") is not None else None),
-                    resource_ids=tuple(str(value) for value in declaration.get("resource_ids", ())),
+                    return_code=(
+                        int(receipt["return_code"])
+                        if receipt is not None and receipt.get("return_code") is not None
+                        else int(declaration["return_code"])
+                        if declaration.get("return_code") is not None else None
+                    ),
+                    resource_ids=tuple(dict.fromkeys(
+                        (*declared_resources, *_receipt_resources(receipt))
+                    )),
                     metadata=record_metadata,
+                    session_id=str(declaration.get("session_id") or session_id),
+                    thread_id=(
+                        str(declaration["thread_id"])
+                        if declaration.get("thread_id") is not None
+                        else str(metadata["thread_id"])
+                        if metadata.get("thread_id") is not None else None
+                    ),
+                    subagent_id=(
+                        str(declaration["subagent_id"])
+                        if declaration.get("subagent_id") is not None else None
+                    ),
+                    parent_thread_id=(
+                        str(declaration["parent_thread_id"])
+                        if declaration.get("parent_thread_id") is not None else None
+                    ),
+                    **outcome,
                 ))
                 continue
 
             inferred_count += 1
             inferred_resource_ids: tuple[str, ...] = ()
+            outcome = _outcome_fields(None, receipt)
+            operation_kind: str | None = None
+            tool_metadata: dict[str, Any] = {}
             record_id = _stable_id(
                 session_id=session_id, index=index, role=role, content=content,
             )
@@ -409,22 +588,106 @@ class OpenAIRecordizer:
                 turn_id = group_id.removeprefix("turn:")
                 for call_id in call_ids:
                     pending_groups[call_id] = group_id
+                for call_declaration in call_declarations:
+                    call_id = str(call_declaration.get("id") or "")
+                    if call_id:
+                        pending_calls[call_id] = call_declaration
                 primary = AgentRecordRole.ASSISTANT_ACTION
-                semantic = (
-                    (primary, AgentRecordRole.PROGRESS)
-                    if content.strip() else (primary,)
+                if (
+                    len(call_declarations) == 1
+                    and isinstance(call_declarations[0].get("declared_semantics"), Mapping)
+                ):
+                    operation_kind = str(
+                        call_declarations[0]["declared_semantics"].get(
+                            "operation_kind", "unknown"
+                        )
+                    )
+                semantic = _semantic_roles_for_operation(
+                    primary, operation_kind, outcome["semantic_status"]
                 )
+                if open_failure_group and not outcome["depends_on"]:
+                    outcome["depends_on"] = (open_failure_group,)
+                if content.strip() and AgentRecordRole.PROGRESS not in semantic:
+                    semantic = (*semantic, AgentRecordRole.PROGRESS)
                 if not calls:
                     ambiguity.append(f"assistant_without_typed_tool_call:{index}")
             elif role == "tool":
                 call_id = str(message.get("tool_call_id") or "")
                 group_id = pending_groups.get(call_id, "")
+                call_declaration = pending_calls.get(call_id, {})
                 if not call_id or not group_id:
                     ambiguity.append(f"unpaired_tool_observation:{index}")
                     group_id = f"unpaired:{record_id}"
                 turn_id = group_id.removeprefix("turn:")
                 primary = AgentRecordRole.TOOL_OBSERVATION
-                semantic = (primary,)
+                declared_semantics = call_declaration.get("declared_semantics")
+                if isinstance(declared_semantics, Mapping):
+                    operation_kind = str(declared_semantics.get("operation_kind", "unknown"))
+                    tool_metadata.update({
+                        "operation_kind": operation_kind,
+                        "tool_category": str(declared_semantics.get("category", "generic")),
+                    })
+                if receipt is not None and receipt.get("operation_kind") is not None:
+                    operation_kind = str(receipt["operation_kind"])
+                    tool_metadata["operation_kind"] = operation_kind
+                if receipt is not None:
+                    receipt_resources = tuple(
+                        row for row in receipt.get("resources", ())
+                        if isinstance(row, Mapping) and row.get("resource_id")
+                    )
+                    resource_accesses = []
+                    for resource in receipt_resources:
+                        span = resource.get("span")
+                        span = span if isinstance(span, Mapping) else {}
+                        resource_accesses.append({
+                            "resource_id": str(resource["resource_id"]),
+                            "version": str(
+                                resource.get("version_after")
+                                or resource.get("resource_version_fingerprint")
+                                or resource.get("version_before")
+                                or "unknown"
+                            ),
+                            "span_kind": str(span.get("kind") or "whole"),
+                            **(
+                                {"span_start": int(span["start"])}
+                                if span.get("start") is not None else {}
+                            ),
+                            **(
+                                {"span_end": int(span["end"])}
+                                if span.get("end") is not None else {}
+                            ),
+                            **(
+                                {"signature": str(span["signature"])}
+                                if span.get("signature") is not None else {}
+                            ),
+                        })
+                    tool_metadata.update({
+                        "resource_accesses": resource_accesses,
+                        "output_complete": bool(receipt.get(
+                            "result_complete", receipt.get("complete", False)
+                        )),
+                        "timed_out": (
+                            str(receipt.get("transport_status") or "") == "timed_out"
+                        ),
+                        "effect_trace_complete": bool(receipt.get(
+                            "effect_trace_complete", receipt.get("complete", False)
+                        )),
+                    })
+                    if operation_kind == "write":
+                        tool_metadata["changed_resource_ids"] = [
+                            str(row["resource_id"]) for row in receipt_resources
+                        ]
+                    elif operation_kind == "search_discovery":
+                        tool_metadata["discovered_resource_ids"] = [
+                            str(row["resource_id"]) for row in receipt_resources
+                        ]
+                inferred_resource_ids = tuple(dict.fromkeys((
+                    *(str(value) for value in call_declaration.get("resource_ids", ())),
+                    *_receipt_resources(receipt),
+                )))
+                semantic = _semantic_roles_for_operation(
+                    primary, operation_kind, outcome["semantic_status"]
+                )
             else:
                 primary = AgentRecordRole.USER_INPUT
                 turn_id = group_id = f"input:{record_id}"
@@ -444,6 +707,11 @@ class OpenAIRecordizer:
                 resource_ids=inferred_resource_ids,
                 metadata={
                     **dict(message.get("metadata") or {}),
+                    **tool_metadata,
+                    **(
+                        {"execution_receipt": dict(receipt)}
+                        if receipt is not None else {}
+                    ),
                     **(
                         {
                             "tool_calls": call_declarations,
@@ -464,7 +732,34 @@ class OpenAIRecordizer:
                         if role == "assistant" else {}
                     ),
                 },
+                return_code=(
+                    int(receipt["return_code"])
+                    if receipt is not None and receipt.get("return_code") is not None
+                    else None
+                ),
+                session_id=session_id,
+                thread_id=(
+                    str(metadata["thread_id"])
+                    if metadata.get("thread_id") is not None else None
+                ),
+                subagent_id=(
+                    str(metadata["subagent_id"])
+                    if metadata.get("subagent_id") is not None else None
+                ),
+                parent_thread_id=(
+                    str(metadata["parent_thread_id"])
+                    if metadata.get("parent_thread_id") is not None else None
+                ),
+                **outcome,
             ))
+            if role == "tool":
+                if outcome["semantic_status"] in {
+                    SemanticStatus.FAILED,
+                    SemanticStatus.PARTIAL,
+                }:
+                    open_failure_group = group_id
+                elif open_failure_group is not None:
+                    open_failure_group = None
 
         grouped: dict[str, list[AgentRecord]] = {}
         for record in records:
@@ -482,6 +777,7 @@ class OpenAIRecordizer:
                 complete=(
                     any(row.has_role(AgentRecordRole.ASSISTANT_ACTION) for row in rows)
                     and any(row.has_role(AgentRecordRole.TOOL_OBSERVATION) for row in rows)
+                    and all(row.complete is not False for row in rows)
                 ),
             )
             for group_id, rows in grouped.items()
@@ -513,4 +809,6 @@ __all__ = [
     "CanonicalAgentHistory",
     "OpenAIRecordizer",
     "RecordizationResult",
+    "SemanticStatus",
+    "TransportStatus",
 ]

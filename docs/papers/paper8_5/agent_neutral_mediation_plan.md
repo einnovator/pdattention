@@ -33,6 +33,21 @@ directly. A standard OpenAI function may also put its static category and
 operation class in `function.x-pra-semantics`; execution middleware adds the
 realized resources, versions, spans, and completeness to its result record.
 
+The portable execution receipt separates four facts that must not be inferred
+from one another:
+
+- `transport_status`: completed, incomplete, cancelled, timed out, or failed;
+- `semantic_status`: succeeded, failed, partial, or unknown;
+- `result_complete`: whether the result payload itself is complete;
+- `effect_trace_complete`: whether every in-scope resource effect was observed.
+
+It also carries `return_code`, `error_kind`, `cwd`, `workspace_generation`, and
+resource-level before/after versions. Failed actions, their error observations,
+and dependent recovery actions form an atomic selection closure. Session,
+thread, subagent, and parent-thread identities support hierarchical agents.
+An outcome-only receipt is still useful for failure/recovery control, but it
+does not authorize DAG retirement when `effect_trace_complete` is false.
+
 ## Avoiding wholesale retests
 
 Selection experiments produce a `WireAgentMemoryPlan` containing the source
@@ -58,6 +73,10 @@ change.
 
 1. Complete the generic state-authority planner over declared metadata; unknown
    and incomplete effects retain full text.
+   The portable outcome/resource contract and OpenHands edge adapter are now
+   implemented. The first frozen OpenHands trace pairs 33/33 actions and
+   observations, identifies four semantic failures, and leaves 31/33 effects
+   fail closed because the historical run lacks filesystem versions.
 2. Run mini-swe-agent policy discovery in ordinary-text mode: FULL controls,
    isolated H1/H2/H3/H4 curves, useful combinations, head/middle/tail controls,
    and oracle add-back.

@@ -30,3 +30,11 @@ repeatability is auxiliary rather than the cross-agent quality endpoint.
 `official_report.json` and `official_instance_report.json` contain official
 grading evidence. `proxy_trace.jsonl` is the request/usage/retention audit,
 while `openhands_events.jsonl` and `event_summary.json` preserve native events.
+`portable_execution_receipts_v1.json` is the agent-edge translation into the
+generic PRA outcome/resource contract. It pairs all 33 actions with results,
+separates four semantic failures from successful transport, and marks one
+clipped observation incomplete. Only two non-workspace control operations have
+complete effect traces; 31 terminal/editor operations correctly remain
+unknown-effect barriers because this historical run did not capture filesystem
+versions at execution time. This is a contract smoke, not a retention-policy
+result.

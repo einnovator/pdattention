@@ -12,7 +12,13 @@ from dataclasses import dataclass
 import math
 from typing import Any, Callable, Iterable, Mapping
 
-from .agent_history import AgentRecord, AgentRecordRole, AgentTurn, CanonicalAgentHistory
+from .agent_history import (
+    AgentRecord,
+    AgentRecordRole,
+    AgentTurn,
+    CanonicalAgentHistory,
+    SemanticStatus,
+)
 from .mediation import HistorySelectionConfig, WireAgentMemoryPlan
 from .tool_semantics import OperationKind, ResourceAccess
 
@@ -101,10 +107,15 @@ def _states(history: CanonicalAgentHistory) -> list[_TurnState]:
             discovered=_values(declarations, "discovered_resource_ids"),
             changed=_values(declarations, "changed_resource_ids"),
             successful=bool(observations) and all(
-                row.return_code in (None, 0) for row in observations
+                row.return_code in (None, 0)
+                and row.semantic_status not in {
+                    SemanticStatus.FAILED,
+                    SemanticStatus.PARTIAL,
+                }
+                for row in observations
             ),
             complete_output=bool(observations) and all(
-                row.metadata.get("output_complete") is True
+                (row.complete is True or row.metadata.get("output_complete") is True)
                 and row.metadata.get("timed_out") is not True
                 and row.metadata.get("output_truncated") is not True
                 for row in observations
@@ -190,6 +201,15 @@ class PortableStateAuthorityPlanner:
             protected.update(
                 state.turn.causal_group_id for state in states[-config.tail_turns :]
             )
+        dependency_groups = {
+            dependency
+            for record in history.records
+            for dependency in record.depends_on
+        }
+        protected.update(dependency_groups)
+        protected.update(
+            record.causal_group_id for record in history.records if record.depends_on
+        )
         replacements: dict[str, str] = {}
         decisions: list[dict[str, Any]] = []
         presentation = str(config.options.get("receipt_presentation", "metadata_only"))

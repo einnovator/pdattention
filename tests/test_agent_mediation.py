@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import pytest
 
-from pra_hf.agent_history import AgentRecordRole, OpenAIRecordizer
+from pra_hf.agent_history import (
+    AgentRecordRole,
+    OpenAIRecordizer,
+    SemanticStatus,
+    TransportStatus,
+)
 from pra_hf.agent_memory_planner import PortableStateAuthorityPlanner
 from pra_hf.deployment import PRAEngineCapabilities, PRAEngineResult, PRAWireRequest
 from pra_hf.mediated_gateway import MediatedPRAGateway
 from pra_hf.mediation import (
+    HistorySelectionConfig,
     MediationConflictError,
     PRAMediationConfig,
     RecordInferenceError,
     RequestMediator,
     WireAgentMemoryPlan,
 )
+from pra_hf.tool_semantics import DeclaredToolSemanticsProvider, EffectKind
 
 
 def _logical_capabilities() -> PRAEngineCapabilities:
@@ -135,6 +142,131 @@ def test_mixed_tool_semantics_are_resolved_from_arguments_and_extract_resources(
     assert action.metadata["tool_calls"][0]["resource_ids"] == [
         "agent://editor-session", "src/a.py",
     ]
+
+
+def test_execution_receipt_separates_transport_semantics_and_resource_versions():
+    messages = [
+        {"role": "system", "content": "help"},
+        {"role": "user", "content": "fix it"},
+        {"role": "assistant", "content": "", "tool_calls": [{
+            "id": "call-1", "type": "function",
+            "function": {
+                "name": "file_editor",
+                "arguments": '{"command":"str_replace","path":"src/a.py"}',
+            },
+        }]},
+        {
+            "role": "tool",
+            "tool_call_id": "call-1",
+            "content": "old_str did not match",
+            "metadata": {"pra_execution_receipt": {
+                "tool_category": "filesystem",
+                "operation_kind": "write",
+                "transport_status": "completed",
+                "semantic_status": "failed",
+                "return_code": 2,
+                "error_kind": "edit_rejected",
+                "result_complete": True,
+                "effect_trace_complete": True,
+                "provenance": "runtime_traced",
+                "cwd": "/workspace",
+                "workspace_generation": "generation-7",
+                "resources": [{
+                    "resource_id": "file:///workspace/src/a.py",
+                    "kind": "write",
+                    "version_before": "sha256:old",
+                    "version_after": "sha256:old",
+                }],
+            }},
+        },
+    ]
+    result = OpenAIRecordizer().recordize(messages, request_metadata={
+        "session_id": "session-1",
+        "thread_id": "thread-1",
+        "tool_semantics_by_name": {
+            "file_editor": {
+                "category": "filesystem",
+                "operation_argument": "command",
+                "operation_map": {"str_replace": "write"},
+                "resource_arguments": ["path"],
+            },
+        },
+    })
+
+    action, observation = result.history.records[2:]
+    assert observation.transport_status == TransportStatus.COMPLETED
+    assert observation.semantic_status == SemanticStatus.FAILED
+    assert observation.return_code == 2
+    assert observation.error_kind == "edit_rejected"
+    assert observation.complete is True
+    assert observation.thread_id == "thread-1"
+    assert observation.workspace_generation == "generation-7"
+    assert observation.has_role(AgentRecordRole.ERROR_OR_REJECTION)
+    assert observation.has_role(AgentRecordRole.MUTATION)
+    assert observation.resource_ids == (
+        "src/a.py", "file:///workspace/src/a.py",
+    )
+
+    analysis = DeclaredToolSemanticsProvider().analyze(action, (observation,))
+    assert analysis.complete is True
+    assert analysis.unknown_barrier is False
+    assert analysis.effects[0].kind == EffectKind.WRITE
+    assert analysis.effects[0].resource_version_before == "sha256:old"
+    assert analysis.effects[0].resource_version_after == "sha256:old"
+
+
+def test_failed_action_and_recovery_are_linked_and_budgeted_atomically():
+    failed = {
+        "tool_category": "generic",
+        "operation_kind": "other",
+        "transport_status": "completed",
+        "semantic_status": "failed",
+        "result_complete": True,
+        "effect_trace_complete": False,
+        "provenance": "runtime_traced",
+        "error_kind": "rejected",
+    }
+    succeeded = {
+        **failed,
+        "semantic_status": "succeeded",
+        "error_kind": None,
+    }
+    messages = [
+        {"role": "system", "content": "help"},
+        {"role": "user", "content": "fix it"},
+        {"role": "assistant", "content": "first", "tool_calls": [{
+            "id": "failed", "type": "function",
+            "function": {"name": "opaque", "arguments": "{}"},
+        }]},
+        {"role": "tool", "tool_call_id": "failed", "content": "rejected " * 50,
+         "metadata": {"pra_execution_receipt": failed}},
+        {"role": "assistant", "content": "recover", "tool_calls": [{
+            "id": "recovery", "type": "function",
+            "function": {"name": "opaque", "arguments": "{}"},
+        }]},
+        {"role": "tool", "tool_call_id": "recovery", "content": "ok " * 50,
+         "metadata": {"pra_execution_receipt": succeeded}},
+    ]
+    history = OpenAIRecordizer().recordize(messages).history
+    failed_group = history.records[2].causal_group_id
+    recovery = history.records[4]
+
+    assert recovery.depends_on == (failed_group,)
+    plan = PortableStateAuthorityPlanner(lambda text: len(text.split())).build(
+        history,
+        HistorySelectionConfig.from_value({
+            "mode": "active",
+            "policy": "task-aware-progress-spine-v4",
+            "head_turns": 0,
+            "tail_turns": 0,
+            "options": {
+                "retention_fraction": 0.1,
+                "apply_middle_budget": True,
+            },
+        }),
+    )
+    assert set(history.turns[0].record_ids).issubset(plan.selected_record_ids)
+    assert set(history.turns[1].record_ids).issubset(plan.selected_record_ids)
 
 
 def test_openai_recordizer_does_not_guess_nonstandard_user_observation():

@@ -359,7 +359,15 @@ def _has_typed_input(request: PRAWireRequest) -> bool:
 
 
 def _tool_semantics_by_name(request: PRAWireRequest) -> dict[str, Mapping[str, Any]]:
-    declarations: dict[str, Mapping[str, Any]] = {}
+    configured = request.metadata.get("tool_semantics_by_name")
+    declarations: dict[str, Mapping[str, Any]] = (
+        {
+            str(name): dict(value)
+            for name, value in configured.items()
+            if isinstance(value, Mapping)
+        }
+        if isinstance(configured, Mapping) else {}
+    )
     for tool in request.tools:
         function = tool.get("function")
         function = function if isinstance(function, Mapping) else {}
