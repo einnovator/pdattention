@@ -54,7 +54,10 @@ patch without re-encoding selected history or copying selected K/V.  Their
 task-aware 90\% treatments also preserve the solve and six-call count, but
 realize only 2.19\% cumulative physical-input saving on the short trajectory;
 SGLang additionally exposes a 17.5~MB suffix-graft copy and 1.61~GB peak
-consumer temporary.  A separate frozen plan omits about 40\% of resident
+consumer temporary.  A stricter frozen matched-tail policy instead loses the
+solve identically on MLX and SGLang-MLX after omitting one early discovery
+bundle, despite zero history re-encoding and selected-K/V copy.  A separate
+frozen plan omits about 40\% of resident
 history, but its receipt-bearing transfers remain hybrid transformed-context
 evidence rather than strict resident-subset reuse.
 
@@ -435,8 +438,14 @@ Fresh autonomous MLX and SGLang-MLX controls then hold the model revision,
 temperature-zero decoding, task, container, and grader fixed.  On both engines,
 plain and PRA-100 resolve in the same six actions and submit the byte-identical
 patch; all six assistant actions match exactly, with zero selected-history
-re-encoding and zero selected-K/V copy.  A matched whole-turn token tail on MLX
-fails after nine calls, while the structural progress/mutation/verification-
+re-encoding and zero selected-K/V copy.  The frozen Paper~8.5 matched whole-turn
+token tail fails identically on both engines after nine calls: the assistant
+action trajectory and erroneous 94,017-byte submission are byte-identical.
+At request three it omits only the initial \texttt{grep} discovery bundle while
+retaining the task plus the failed \texttt{nano} action and error observation;
+the next edit diverges.  This cross-engine replication localizes the failure to
+the policy/model pair rather than the K/V consumer.  By contrast, the
+structural progress/mutation/verification-
 floor policy resolves on both engines in six calls with the reference patch.
 It first diverges only in final-response wording and realizes 8,725 physical
 tokens from 8,920 logical tokens, a 2.19\% saving.
@@ -452,15 +461,18 @@ native-K/V saving unless record-internal original-position spans are consumed
 without re-encoding; the paired 46.86\% also includes trajectory contraction
 and is not an engine-local K/V or latency number.
 
-The engines nevertheless have different physical realization costs.  Direct
-MLX reports 8.40~GB on its cumulative total-K/V-copy counter, despite zero
-selected-K/V copy, and a 1.25~GB peak consumer temporary for the reduced run.
-Fused SGLang-MLX reduces its total-K/V-copy counter to a 17.5~MB canonical-
-suffix graft, but its reduced-path consumer temporary peaks at 1.61~GB.  These
+The engines nevertheless have different physical realization costs.  On the
+matched-tail negative, direct MLX reports 15.43~GB on its cumulative total-K/V-
+copy counter and 197.2~MB of suffix grafts, despite zero selected-K/V copy;
+SGLang-MLX reports 161.8~MB, all suffix graft.  Both expose large consumer
+temporaries, peaking at 2.29 and 1.61~GB respectively.  On the less selective
+successful task-aware treatment, SGLang's suffix graft is only 17.5~MB.  These
 are one-task correctness and policy-
 sensitivity results, not useful workload-economics claims.  The fresh SGLang
 evidence is archived under
 \path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b_postfix_6e97f0c6/}.
+The frozen matched-tail transfer and first-divergence receipt are archived under
+\path{shared/results/paper4_5_runtime_productization/coding_agents/agent_policy_transfer/sglang_task01_matched_tail_ad1152b9/}.
 
 \subsection{Frozen agent-plan transfer separates omission from economics}
 
@@ -2170,8 +2182,10 @@ controls reproduce the plain engine's six actions and exact patch at PRA-100.
 Task-aware PRA-90 preserves both official solves and call counts, with zero
 selected-history re-encoding or selected-K/V copy.  A separate hybrid
 llama.cpp/Qwen3-Coder-30B transfer preserves its eight-call solve while omitting
-40.23\% weighted steady-state original K/V. & The strict MLX/SGLang result is
-one short task and realizes only 2.19\% physical-input saving; other K/V
+40.23\% weighted steady-state original K/V. & The stricter frozen matched-tail
+policy loses the Task-1 solve identically on MLX and SGLang-MLX at 89.57\%
+retention, demonstrating policy/model dependence.  The successful task-aware
+MLX/SGLang result is one short task and realizes only 2.19\% physical-input saving; other K/V
 movement and consumer scratch remain engine dependent.  The llama.cpp plan
 contains post-cache receipts and is not a strict resident-subset result.
 Earlier agent rows remain superseded diagnostics.  Fresh HF/vLLM rows, broader

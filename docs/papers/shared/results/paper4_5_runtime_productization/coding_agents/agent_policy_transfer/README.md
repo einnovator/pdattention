@@ -31,8 +31,15 @@ paired saving relative to FULL.
   reports zero selected-history re-encoding/copy. The trajectory diverges at
   action 3, loops, and reaches bounded 8,192-token context exhaustion after 28
   calls at 88.05% aggregate logical retention; the official grader records 0/1.
+- `sglang_task01_matched_tail_ad1152b9/`: Qwen2.5-Coder-14B SGLang-MLX,
+  Task 01. At 89.57% aggregate logical retention the official grader records
+  0/1 after nine calls, with zero selected-history re-encoding, zero selected-
+  K/V physical copy, and zero host-to-device transfer. The assistant action
+  trajectory and erroneous 94,017-byte submission are byte-identical to the
+  direct-MLX causal-tail negative. The first divergence occurs when the only
+  omitted causal bundle is the initial `grep` discovery turn.
 
-Both engines had already passed their matching plain/PRA-100 behavioral gates.
+All three engines had already passed their matching plain/PRA-100 behavioral gates.
 The transfer therefore isolates a policy-quality failure from the native K/V
 correctness gate. Paper 8.5 owns subsequent matched-budget policy and oracle
 work. No native engine experiment may treat P1, E2, or E3 as a generic default.

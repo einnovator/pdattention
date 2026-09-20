@@ -1,0 +1,71 @@
+{
+  "schema_version": "paper4.5.agent-policy-transfer.v1",
+  "recorded_at": "2026-09-20",
+  "engine": "sglang-mlx",
+  "instance_id": "django__django-15277",
+  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+  "temperature": 0,
+  "plain_pra100_reference": {
+    "artifact": "../../engine_agent_gates/sglang_task01_qwen25coder14b_postfix_6e97f0c6/summary.json",
+    "plain_resolved": true,
+    "pra100_resolved": true,
+    "pra100_exact_action_trajectory": true,
+    "calls": 6,
+    "patch_bytes": 1165
+  },
+  "paper8_5_matched_tail_pra90": {
+    "selection_policy": "paper8.5-matched-causal-token-tail-v1",
+    "selection_contract": "frozen-agent-memory-plan-v1",
+    "paper8_5_source_revision": "ad1152b9ffdc197ef6f552a5c418c8fa55bb67d7",
+    "paper4_5_source_revision": "65207e83",
+    "official_resolved": false,
+    "calls": 9,
+    "first_action_divergence": 3,
+    "termination_reason": "Submitted",
+    "aggregate_logical_retention_fraction": 0.8957109608777568,
+    "estimated_token_saving_fraction": 0.10428903912224316,
+    "engine_history_kv_retention_fraction_min": 0.8371802869619464,
+    "engine_history_kv_retention_fraction_max": 1.0,
+    "sparse_requests": 7,
+    "selected_history_reencoded_tokens": 0,
+    "physical_selected_history_kv_copy_bytes": 0,
+    "host_to_device_bytes": 0,
+    "total_kv_copy_bytes": 161808384,
+    "canonical_suffix_graft_device_copy_bytes": 161808384,
+    "consumer_temporary_bytes": 7347831020,
+    "consumer_temporary_peak_bytes": 1610612740,
+    "patch_bytes": 94017,
+    "patch_lines": 2544,
+    "action_trajectory_sha256": "bfdc8bd0ba7a94c9f92c6ad2913a4aca7f40b3a76e7dff21c6258254bb003e32",
+    "submission_sha256": "c37a4cbd3ae3a47e030ae083e657e06bd4d5a574212435bcca0aff232fd7c966"
+  },
+  "cross_engine_replication": {
+    "reference": "../mlx_task01_causal_tail/comparison.json",
+    "same_model": true,
+    "same_task": true,
+    "same_frozen_policy": true,
+    "same_first_action_divergence": 3,
+    "exact_action_trajectory_match": true,
+    "exact_submission_match": true
+  },
+  "first_divergence_localization": {
+    "request_index": 3,
+    "retained": [
+      "system prompt",
+      "original task statement",
+      "failed nano action",
+      "nano error observation"
+    ],
+    "omitted_causal_bundle": [
+      "grep -r class CharField discovery action",
+      "grep discovery result"
+    ],
+    "source_history_tokens": 2396,
+    "selected_history_tokens": 2173,
+    "omitted_history_tokens": 223,
+    "realized_history_retention_fraction": 0.9069282136894825,
+    "oracle_add_back_reference": "qualified plain and PRA-100 controls retain the only omitted causal bundle and choose the same successful simple sed action"
+  },
+  "classification": "policy_quality_negative_after_exact_pra100_engine_gate",
+  "claim_boundary": "The identical nine-action failure and identical erroneous submission on MLX and SGLang-MLX isolate a frozen-policy/model interaction rather than an engine-specific K/V correctness failure. This one task does not estimate policy accuracy or justify engine timing comparisons."
+}
