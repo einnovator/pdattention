@@ -19,6 +19,7 @@ from experiments.paper8_5_agent_memory.autonomous_proxy import (
     AutonomousSelectionConfig,
     AutonomousSelectionProxy,
     join_instrumentation_sidecars,
+    summarize_openai_tool_receipts,
     transform_autonomous_payload,
 )
 from experiments.paper8_5_agent_memory.run_autonomous_swebench import (
@@ -350,8 +351,75 @@ def test_openai_tool_full_is_exact_and_accepts_buffered_streaming():
     assert result.trace["recordization"]["source"] == "openai_standard"
     assert result.trace["recordization"]["ambiguity_reasons"] == []
     assert result.trace["instrumentation_sidecar_join"]["status"] == (
-        "not_applicable_openai_tools"
+        "missing_or_invalid_execution_receipts"
     )
+    assert result.trace["selection_abstained_for_sidecar"] is False
+
+
+def test_openai_tool_dag_policy_requires_complete_execution_receipts():
+    source = _openai_tool_payload()
+    missing = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="frontier_dag_retirement",
+            input_protocol="openai_tools",
+            expected_model="locked-model",
+            task_id="task-1",
+            boundary_mode="boundary_free",
+        ),
+    )
+    assert missing.trace["selection_abstained_for_sidecar"] is True
+
+    for message in source["messages"]:
+        if message["role"] != "tool":
+            continue
+        call_id = message["tool_call_id"]
+        message["metadata"] = {"pra_execution_receipt": {
+            "schema_version": 1,
+            "session_id": "task-1",
+            "tool_call_id": call_id,
+            "action_record_id": "action-" + call_id,
+            "observation_record_ids": ["observation-" + call_id],
+            "tool_category": "filesystem",
+            "operation_kind": "read",
+            "transport_status": "completed",
+            "semantic_status": "succeeded",
+            "result_complete": True,
+            "effect_trace_complete": True,
+            "provenance": "runtime_traced",
+            "resources": [],
+            "receipt_digest": "receipt-" + call_id,
+        }}
+    complete = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="frontier_dag_retirement",
+            input_protocol="openai_tools",
+            expected_model="locked-model",
+            task_id="task-1",
+            boundary_mode="boundary_free",
+        ),
+    )
+    assert complete.trace["instrumentation_sidecar_join"]["status"] == "exact"
+    assert complete.trace["selection_abstained_for_sidecar"] is False
+
+
+def test_openai_tool_receipt_summary_rejects_mismatched_call_identity():
+    assert summarize_openai_tool_receipts([{
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": "result",
+        "metadata": {"pra_execution_receipt": {
+            "tool_call_id": "call-other",
+        }},
+    }]) == {
+        "status": "missing_or_invalid_execution_receipts",
+        "tool_results": 1,
+        "receipts": 0,
+        "joined": 0,
+        "missing_tool_call_ids": [],
+        "invalid_tool_call_ids": ["call-1"],
+    }
 
 
 def test_openai_tool_selection_preserves_native_pairing_fields():

@@ -321,6 +321,62 @@ def join_instrumentation_sidecars(
     }
 
 
+def summarize_openai_tool_receipts(
+    messages: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Validate native tool-result coverage by execution receipts.
+
+    OpenAI-tool agents receive receipts through message metadata rather than
+    the mini-swe filesystem sidecar. DAG-dependent policies may proceed only
+    when every visible tool result has one valid, matching receipt.
+    """
+    tool_results = 0
+    valid_receipts = 0
+    missing_call_ids: list[str] = []
+    invalid_call_ids: list[str] = []
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        tool_results += 1
+        call_id = str(message.get("tool_call_id") or "")
+        metadata = message.get("metadata")
+        metadata = metadata if isinstance(metadata, Mapping) else {}
+        receipt = metadata.get("pra_execution_receipt")
+        if not isinstance(receipt, Mapping):
+            missing_call_ids.append(call_id)
+            continue
+        if str(receipt.get("tool_call_id") or "") != call_id:
+            invalid_call_ids.append(call_id)
+            continue
+        try:
+            ToolExecutionReceipt.from_mapping(
+                receipt,
+                action_record_id=str(receipt.get("action_record_id") or call_id),
+                observation_record_ids=tuple(
+                    str(value)
+                    for value in receipt.get("observation_record_ids", ())
+                ),
+            )
+        except (TypeError, ValueError):
+            invalid_call_ids.append(call_id)
+            continue
+        valid_receipts += 1
+    if tool_results == 0:
+        status = "empty_exact"
+    elif valid_receipts == tool_results:
+        status = "exact"
+    else:
+        status = "missing_or_invalid_execution_receipts"
+    return {
+        "status": status,
+        "tool_results": tool_results,
+        "receipts": valid_receipts,
+        "joined": valid_receipts,
+        "missing_tool_call_ids": missing_call_ids,
+        "invalid_tool_call_ids": invalid_call_ids,
+    }
+
+
 @dataclass(frozen=True)
 class AutonomousSelectionConfig:
     """Frozen policy and generation contract for one autonomous task arm."""
@@ -629,12 +685,7 @@ def transform_autonomous_payload(
         )
     else:
         current_selector_messages = incoming_messages
-        sidecar_join = {
-            "status": "not_applicable_openai_tools",
-            "commands": 0,
-            "receipts": 0,
-            "joined": 0,
-        }
+        sidecar_join = summarize_openai_tool_receipts(current_selector_messages)
     current_episode_start = 0
     if prior_episodes:
         if config.input_protocol != "mini_swe_bash":
