@@ -740,13 +740,13 @@ diagnostics, not deployable policies or accuracy estimates.
 The autonomous evidence uses mini-swe-agent, a Bash tool surface, a small number
 of SWE-bench Verified identities, and primarily Qwen3-Coder-30B.  Bash is useful
 because file reads, writes, searches, tests, and return codes can be typed from
-commands and observations.  Controlled Pi and Kilo admissions now establish
-that the generic recordizer preserves two native typed-tool protocols and that
-both agents solve one locked task under exact \textsc{Full} controls.  These
-are compatibility results, not policy-accuracy estimates: future work must
-still reproduce the savings findings across the locked cohort and PRA Agent,
-then cover a current richer open-agent runtime, another model family, longer
-dependent sessions, and task-clustered confidence intervals.
+commands and observations.  Controlled Pi, Kilo, and PRA-Agent admissions now
+establish that two native typed-tool protocols and one record-native agent all
+solve the same locked task under exact \textsc{Full} controls.  These are
+compatibility results, not policy-accuracy estimates: future work must still
+reproduce the savings findings across the locked cohort, then cover a current
+richer open-agent runtime, another model family, longer dependent sessions,
+and task-clustered confidence intervals.
 
 \paragraph{Runtime boundary.}
 Logical omission says which existing records a model should see.  It does not
@@ -4293,8 +4293,21 @@ also found a transport defect: an ordinary OpenAI endpoint returning native
 terminating the agent before its first action.  The transport now losslessly
 projects native calls into the agent executor's provider-neutral envelope and
 records cumulative provider usage.  This is an implementation qualification,
-not yet a task result; the first frozen \textsc{Full} run must still resolve a
-locked task before any policy transfer.
+not by itself a policy result.
+
+The corrected \textsc{Full} admission resolves
+\texttt{django\_\_django-15368} with the same minimal 671-byte patch as Pi and
+Kilo: the official grader passes 1/1 FAIL\_TO\_PASS and 29/29 PASS\_TO\_PASS
+tests.  PRA Agent requires nine model requests and eight typed tool executions,
+with 86,626 cumulative prompt tokens, 16,353 cached prompt tokens, and 1,356
+completion tokens.  The run exposed three further portability invariants.
+Transient provider control tokens must not be replayed as ordinary assistant
+text; intermediate assistant actions and arguments must be durable causal
+records; and a tool-handler exception must become a typed failure observation
+rather than terminate the agent.  The complete session and grading evidence
+are in \path{cross_agent_transfer/pra_agent_task02_full_controlled_v1}.  As for
+the other admissions, this single task opens the staged three-task ladder but
+does not estimate policy accuracy.
 
 \section{Detailed Handoff to Native Runtime Evaluation}
 

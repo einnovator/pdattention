@@ -24,8 +24,9 @@ capability evidence, not evidence against the memory policy.
    contains a semantic failure; portable records must therefore carry exit or
    failure evidence independently of transport state.
 3. **PRA Agent** is the required typed-record transfer. The SDK is record-native,
-   but its existing campaign runner only executes local fixtures. A SWE-bench
-   container adapter and official patch export are required before admission.
+   and its new SWE-bench container adapter now resolves the same controlled
+   Task-2 admission as Pi and Kilo. The remaining gate is the frozen
+   three-task FULL ladder followed by within-agent policy pairing.
 4. **OpenHands** is supplementary rather than the next primary transfer. The
    standalone CLI is no longer actively maintained, so its runtime state,
    summarization and workspace services must be inventoried against the current
