@@ -11,6 +11,10 @@ def test_docker_workspace_rejects_absolute_and_parent_paths() -> None:
     assert DockerWorkspaceTools._relative_path("django/db/models.py") == (
         "django/db/models.py"
     )
+    assert DockerWorkspaceTools._relative_path("/testbed") == "."
+    assert DockerWorkspaceTools._relative_path(
+        "/testbed/django/db/models.py"
+    ) == "django/db/models.py"
     with pytest.raises(PermissionError):
         DockerWorkspaceTools._relative_path("/etc/passwd")
     with pytest.raises(PermissionError):

@@ -63,6 +63,11 @@ class DockerWorkspaceTools:
     @staticmethod
     def _relative_path(value: str) -> str:
         path = PurePosixPath(value or ".")
+        if path.is_absolute() and path.parts[:2] == ("/", "testbed"):
+            path = (
+                PurePosixPath(*path.parts[2:])
+                if len(path.parts) > 2 else PurePosixPath(".")
+            )
         if path.is_absolute() or ".." in path.parts:
             raise PermissionError(f"Path escapes /testbed: {value}")
         return str(path)
