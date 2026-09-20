@@ -35,6 +35,17 @@ _QWEN_FUNCTION_PARAMETER = re.compile(
     r"(?P<value>.*?)\s*</parameter>",
     re.DOTALL,
 )
+_TERMINAL_SERIALIZED_TOOL_INTENT = re.compile(
+    r"I executed the tool decision named\s+\"[^\"\r\n]*\"\s+"
+    r"with these arguments:\s*\{.*\}\}?\.\s*$",
+    re.DOTALL,
+)
+_TERMINAL_QWEN_TOOL_INTENT = re.compile(
+    r"(?:<tool_call>\s*)?<function=[^>]+>.*?</function>\s*"
+    r"(?:</tool_call>)?\s*$",
+    re.DOTALL,
+)
+_TERMINAL_XML_TOOL_INTENT = re.compile(r"<tool_call>.*</tool_call>\s*$", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -133,6 +144,26 @@ def parse_tool_call(text: str) -> ToolCall | None:
     if not isinstance(name, str) or not isinstance(arguments, dict):
         return None
     return ToolCall(name=name, arguments=arguments, raw_text=raw_text)
+
+
+def has_terminal_tool_intent(text: str) -> bool:
+    """Return whether a terminal response is an attempted tool decision.
+
+    This deliberately does not repair or execute malformed output.  It lets an
+    agent distinguish a malformed explicit action from an ordinary final
+    answer so the former can become a visible rejection observation and be
+    retried.  Requiring a known terminal marker avoids treating explanatory
+    prose or quoted mid-response examples as executable intent.
+    """
+
+    return any(
+        pattern.search(text) is not None
+        for pattern in (
+            _TERMINAL_XML_TOOL_INTENT,
+            _TERMINAL_SERIALIZED_TOOL_INTENT,
+            _TERMINAL_QWEN_TOOL_INTENT,
+        )
+    )
 
 
 def resource_tool_schema(resource: AgentResource) -> dict[str, object]:

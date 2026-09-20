@@ -17,6 +17,7 @@ from typing import Any, Callable, Mapping, Sequence
 from .agent_execution import (
     ExecutionAuthorization,
     ToolCall,
+    has_terminal_tool_intent,
     parse_tool_call,
     resource_tool_schema,
 )
@@ -615,6 +616,28 @@ class PRAAgent:
         for _ in range(self.config.max_tool_rounds):
             call = parse_tool_call(text)
             if call is None:
+                if has_terminal_tool_intent(text):
+                    # A malformed explicit action is not semantic task
+                    # completion.  Do not guess at or execute repaired
+                    # arguments.  Preserve the rejected attempt and expose a
+                    # role-valid observation so the model can issue a fresh,
+                    # independently validated decision.
+                    self._append_message("assistant", text)
+                    rejection = (
+                        "[Tool decision rejected: malformed_call. Re-emit the "
+                        "intended action as one valid native tool call or "
+                        "provider-neutral tool envelope.]"
+                    )
+                    self._append_message("user", rejection)
+                    text = self._generate_turn(
+                        self._turn_context(
+                            query,
+                            self._context(query),
+                            tool_uris,
+                            skill_uris,
+                        )
+                    )
+                    continue
                 break
             # Intermediate actions are part of the causal trajectory.  Before
             # this append, only the initial user message, detached tool result,

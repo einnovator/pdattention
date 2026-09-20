@@ -36,7 +36,21 @@ class _Backend:
         return {"backend": self.name}
 
 
-def _agent(tmp_path) -> PRAAgent:
+class _MalformedRecoveryBackend(_Backend):
+    def generate(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        self.calls += 1
+        if self.calls == 1:
+            return (
+                'I executed the tool decision named "lookup" with these arguments: '
+                '{"value":"alpha"}}.'
+            )
+        if self.calls == 2:
+            return '<tool_call>{"name":"lookup","arguments":{"value":"alpha"}}</tool_call>'
+        return "The result is ALPHA."
+
+
+def _agent(tmp_path, *, backend=None, max_tool_rounds: int = 1) -> PRAAgent:
     def lookup(value: str) -> dict[str, str]:
         """Uppercase one value."""
 
@@ -56,7 +70,7 @@ def _agent(tmp_path) -> PRAAgent:
     ))
     runtime = PRARuntime(
         config=PRARuntimeConfig(),
-        backend=_Backend(),
+        backend=backend or _Backend(),
         capability_sdk=sdk,
         executor=toolset.executor(),
         session_service=InMemorySessionService(),
@@ -64,7 +78,11 @@ def _agent(tmp_path) -> PRAAgent:
     )
     return PRAAgent(
         runtime,
-        config=PRAAgentConfig(user_id="user-a", tenant_id="tenant-a"),
+        config=PRAAgentConfig(
+            user_id="user-a",
+            tenant_id="tenant-a",
+            max_tool_rounds=max_tool_rounds,
+        ),
         toolset=toolset,
     )
 
@@ -107,3 +125,24 @@ def test_agent_releases_physical_state_and_resumes_logical_session(tmp_path) -> 
     resumed = agent.start_session("session-a", resume=True)
     assert resumed.active_task_id == "task-2"
     assert len(resumed.tasks.tasks) == 2
+
+
+def test_agent_rejects_malformed_tool_intent_then_recovers(tmp_path) -> None:
+    backend = _MalformedRecoveryBackend()
+    agent = _agent(tmp_path, backend=backend, max_tool_rounds=3)
+    agent.start_session("session-a", task_description="Inspect alpha")
+
+    turn = agent.run_turn("Look up alpha")
+
+    assert turn.text == "The result is ALPHA."
+    assert len(turn.tool_executions) == 1
+    assert turn.tool_executions[0].execution.executed
+    assert backend.calls == 3
+    assert "Tool decision rejected: malformed_call" in backend.prompts[1]
+    roles = [
+        row.payload.get("role")
+        for row in turn.session.records
+        if isinstance(row.payload, dict)
+    ]
+    assert roles.count("assistant") == 3
+    assert "user" in roles

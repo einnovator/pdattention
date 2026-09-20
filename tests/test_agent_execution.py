@@ -7,6 +7,7 @@ from pra_hf.agent_execution import (
     ExecutionAuthorization,
     SafeToolExecutor,
     ToolCall,
+    has_terminal_tool_intent,
     parse_tool_call,
     resource_tool_schema,
 )
@@ -86,6 +87,26 @@ def test_tool_call_parser_accepts_terminal_qwen_function_block():
         "<function=run_command>unexpected"
         "<parameter=command>pwd</parameter></function>"
     ) is None
+
+
+def test_terminal_tool_intent_detects_malformed_action_without_repairing_it():
+    malformed = (
+        'I executed the tool decision named "run_command" with these arguments: '
+        '{"command":"git diff HEAD"}}.'
+    )
+    assert parse_tool_call(malformed) is None
+    assert has_terminal_tool_intent(malformed)
+
+    malformed_qwen = (
+        "I will inspect next.\n<function=read_file>"
+        "<parameter=path>src/a.py</parameter>trailing</function></tool_call>"
+    )
+    assert parse_tool_call(malformed_qwen) is None
+    assert has_terminal_tool_intent(malformed_qwen)
+
+    quoted = malformed + " This was only an example."
+    assert not has_terminal_tool_intent(quoted)
+    assert not has_terminal_tool_intent("The final answer mentions tool calls in prose.")
 
 
 def test_executor_requires_disclosure_and_independent_write_authorization():
