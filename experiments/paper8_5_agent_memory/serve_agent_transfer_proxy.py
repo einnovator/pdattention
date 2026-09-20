@@ -38,6 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=18185)
     parser.add_argument("--max-calls", type=int, default=60)
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
+    parser.add_argument("--upstream-qualification-path")
+    parser.add_argument("--upstream-connect-attempts", type=int, default=1)
+    parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
+    parser.add_argument("--upstream-curl-executable")
     parser.add_argument("--tool-semantics-json", type=Path)
     parser.add_argument("--boundary-mode", default="boundary_free")
     parser.add_argument("--protected-head-turns", type=int, default=1)
@@ -126,6 +130,10 @@ def main() -> None:
         config=config,
         trace_path=Path(args.trace),
         timeout_seconds=3600,
+        upstream_qualification_path=args.upstream_qualification_path,
+        upstream_connect_attempts=args.upstream_connect_attempts,
+        upstream_connect_retry_seconds=args.upstream_connect_retry_seconds,
+        upstream_curl_executable=args.upstream_curl_executable,
     )
     endpoint = proxy.start(args.host, args.port)
     print(json.dumps({

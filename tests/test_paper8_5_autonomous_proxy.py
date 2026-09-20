@@ -108,6 +108,10 @@ def test_agent_transfer_proxy_exposes_frozen_policy_parameters(tmp_path: Path):
         "--frontier-protocol-exemplars", "1",
         "--frontier-allow-heuristic",
         "--max-completion-tokens", "2048",
+        "--upstream-qualification-path", "/v1/models",
+        "--upstream-connect-attempts", "3",
+        "--upstream-connect-retry-seconds", "0.25",
+        "--upstream-curl-executable", "/usr/bin/curl",
     ])
     config = build_agent_transfer_config(args)
 
@@ -119,6 +123,10 @@ def test_agent_transfer_proxy_exposes_frozen_policy_parameters(tmp_path: Path):
     assert config.tool_semantics_by_name["glob"]["operation_kind"] == (
         "search_discovery"
     )
+    assert args.upstream_qualification_path == "/v1/models"
+    assert args.upstream_connect_attempts == 3
+    assert args.upstream_connect_retry_seconds == 0.25
+    assert args.upstream_curl_executable == "/usr/bin/curl"
 
 
 def test_agent_transfer_proxy_loads_agent_declared_tool_semantics(tmp_path: Path):
