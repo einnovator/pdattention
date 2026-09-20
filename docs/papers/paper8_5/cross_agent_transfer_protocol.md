@@ -17,7 +17,10 @@ capability evidence, not evidence against the memory policy.
 1. **Pi** is the first transfer because its native `read`, `bash`, `edit`,
    `write`, `grep`, `find`, and `ls` calls expose standard call/result identity
    with little hidden orchestration. Its controlled Task-2 `FULL` admission is
-   complete and officially resolves the issue.
+   complete and officially resolves the issue. The second staged FULL control
+   also resolves. Task 4 reaches the completion-token ceiling before writing
+   and exports an empty patch, so Pi completes plain-three at 2/3 and policy
+   pairing is restricted to Tasks 1 and 2.
 2. **Kilo** is the second open-source transfer. Its controlled Task-2 `FULL`
    admission is also complete and officially resolves the issue. Kilo reports
    every native tool event as transport-completed even when command output
@@ -96,3 +99,9 @@ unfinished, while retiring only the recovery can resurrect a known-bad action.
 Second, token totals are paired within agent. Different system prompts and tool
 schemas make raw cross-agent token totals incomparable even when the model,
 task and tokenizer are identical.
+
+A third invariant is that provider stop reason is not semantic completion.
+Pi terminates a reasoning-only turn whose provider stop reason is `length`;
+portable evaluation records this as an incomplete agent outcome, not a valid
+final answer. Completion-horizon diagnostics are declared separately from the
+frozen primary control.

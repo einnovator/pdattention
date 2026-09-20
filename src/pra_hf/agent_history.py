@@ -232,6 +232,66 @@ def _roles(value: Any, primary: AgentRecordRole) -> tuple[AgentRecordRole, ...]:
     return tuple(dict.fromkeys((primary, *(AgentRecordRole(item) for item in value))))
 
 
+def _tool_arguments(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            return {}
+        return parsed if isinstance(parsed, Mapping) else {}
+    return {}
+
+
+def _argument_value(arguments: Mapping[str, Any], path: str) -> Any:
+    value: Any = arguments
+    for part in path.split("."):
+        if not isinstance(value, Mapping) or part not in value:
+            return None
+        value = value[part]
+    return value
+
+
+def _resolve_tool_semantics(
+    declaration: Mapping[str, Any], arguments: Any,
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Resolve portable semantics from a tool declaration and its arguments.
+
+    A single mixed tool (for example a file editor with ``view`` and
+    ``str_replace`` commands) may declare ``operation_argument`` plus an
+    ``operation_map``. ``resource_arguments`` extracts stable resource names
+    without teaching the runtime an agent-specific schema.
+    """
+
+    resolved = dict(declaration)
+    parsed = _tool_arguments(arguments)
+    operation_argument = resolved.get("operation_argument")
+    operation_map = resolved.get("operation_map")
+    if isinstance(operation_argument, str) and isinstance(operation_map, Mapping):
+        operation_value = _argument_value(parsed, operation_argument)
+        mapped = operation_map.get(str(operation_value))
+        if mapped is None:
+            mapped = resolved.get("default_operation_kind")
+        if mapped is not None:
+            resolved["operation_kind"] = str(mapped)
+
+    resource_arguments = resolved.get("resource_arguments", ())
+    if isinstance(resource_arguments, str):
+        resource_arguments = (resource_arguments,)
+    resources: list[str] = []
+    if isinstance(resource_arguments, (list, tuple)):
+        for path in resource_arguments:
+            if not isinstance(path, str):
+                continue
+            value = _argument_value(parsed, path)
+            if isinstance(value, str) and value:
+                resources.append(value)
+            elif isinstance(value, (list, tuple)):
+                resources.extend(str(item) for item in value if str(item))
+    return resolved, tuple(dict.fromkeys(resources))
+
+
 class OpenAIRecordizer:
     """Recordize explicit PRA metadata or standard OpenAI tool-call traffic.
 
@@ -290,6 +350,7 @@ class OpenAIRecordizer:
                 continue
 
             inferred_count += 1
+            inferred_resource_ids: tuple[str, ...] = ()
             record_id = _stable_id(
                 session_id=session_id, index=index, role=role, content=content,
             )
@@ -310,6 +371,7 @@ class OpenAIRecordizer:
                     if isinstance(call, Mapping) and call.get("id")
                 )
                 call_declarations = []
+                call_resource_ids: list[str] = []
                 for call in calls:
                     if not isinstance(call, Mapping):
                         continue
@@ -317,15 +379,25 @@ class OpenAIRecordizer:
                     function = function if isinstance(function, Mapping) else {}
                     name = str(function.get("name") or call.get("name") or "")
                     declaration = semantics_by_name.get(name)
+                    arguments = function.get("arguments", call.get("arguments"))
+                    resolved_declaration: Mapping[str, Any] | None = None
+                    resources: tuple[str, ...] = ()
+                    if isinstance(declaration, Mapping):
+                        resolved_declaration, resources = _resolve_tool_semantics(
+                            declaration, arguments,
+                        )
+                        call_resource_ids.extend(resources)
                     call_declarations.append({
                         "id": str(call.get("id") or ""),
                         "name": name,
-                        "arguments": function.get("arguments", call.get("arguments")),
+                        "arguments": arguments,
                         **(
-                            {"declared_semantics": dict(declaration)}
-                            if isinstance(declaration, Mapping) else {}
+                            {"declared_semantics": dict(resolved_declaration)}
+                            if resolved_declaration is not None else {}
                         ),
+                        **({"resource_ids": list(resources)} if resources else {}),
                     })
+                inferred_resource_ids = tuple(dict.fromkeys(call_resource_ids))
                 group_seed = ",".join(call_ids) or record_id
                 group_id = "turn:" + hashlib.sha256(group_seed.encode()).hexdigest()[:16]
                 turn_id = group_id.removeprefix("turn:")
@@ -363,6 +435,7 @@ class OpenAIRecordizer:
                 content=content,
                 primary_role=primary,
                 semantic_roles=semantic,
+                resource_ids=inferred_resource_ids,
                 metadata={
                     **dict(message.get("metadata") or {}),
                     **(

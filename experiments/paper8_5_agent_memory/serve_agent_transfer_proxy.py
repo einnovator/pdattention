@@ -11,20 +11,22 @@ import threading
 from .autonomous_proxy import AutonomousSelectionConfig, AutonomousSelectionProxy
 
 
-PI_TOOL_SEMANTICS = {
+DEFAULT_TOOL_SEMANTICS = {
     "read": {"category": "filesystem", "operation_kind": "read"},
     "grep": {"category": "filesystem", "operation_kind": "read"},
     "find": {"category": "filesystem", "operation_kind": "search_discovery"},
+    "glob": {"category": "filesystem", "operation_kind": "search_discovery"},
     "ls": {"category": "filesystem", "operation_kind": "search_discovery"},
     "edit": {"category": "filesystem", "operation_kind": "write"},
     "write": {"category": "filesystem", "operation_kind": "write"},
+    "apply_patch": {"category": "filesystem", "operation_kind": "write"},
     # Arbitrary shell is deliberately an unknown barrier unless execution
     # middleware supplies complete resource/effect evidence.
     "bash": {"category": "shell", "operation_kind": "unknown"},
 }
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--upstream", required=True)
     parser.add_argument("--trace", required=True)
@@ -35,22 +37,90 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=18185)
     parser.add_argument("--max-calls", type=int, default=60)
-    args = parser.parse_args()
+    parser.add_argument("--max-completion-tokens", type=int, default=1024)
+    parser.add_argument("--tool-semantics-json", type=Path)
+    parser.add_argument("--boundary-mode", default="boundary_free")
+    parser.add_argument("--protected-head-turns", type=int, default=1)
+    parser.add_argument("--protected-tail-turns", type=int, default=1)
+    parser.add_argument("--completed-recent-turns", type=int, default=1)
+    parser.add_argument("--completed-mutation-turns", type=int, default=1)
+    parser.add_argument("--completed-verification-turns", type=int, default=1)
+    parser.add_argument("--completed-protocol-turns", type=int, default=0)
+    parser.add_argument("--completed-finalization-turns", type=int, default=0)
+    parser.add_argument("--completed-instruction-epochs", type=int, default=0)
+    parser.add_argument(
+        "--compact-completed-finalizations", action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--retire-closed-instructions", action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--frontier-recent-user-prompts", type=int, default=2)
+    parser.add_argument("--frontier-protocol-exemplars", type=int, default=0)
+    parser.add_argument("--frontier-workflow-exemplars", type=int, default=0)
+    parser.add_argument(
+        "--frontier-allow-heuristic", action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--keep-completed-task-statements", action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    return parser
 
-    config = AutonomousSelectionConfig(
+
+def _tool_semantics(path: Path | None) -> dict[str, dict[str, object]]:
+    if path is None:
+        return {name: dict(value) for name, value in DEFAULT_TOOL_SEMANTICS.items()}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and "tool_semantics_by_name" in payload:
+        payload = payload["tool_semantics_by_name"]
+    if not isinstance(payload, dict):
+        raise ValueError("tool semantics JSON must be an object keyed by tool name")
+    if not all(isinstance(name, str) and isinstance(value, dict)
+               for name, value in payload.items()):
+        raise ValueError("every tool semantics entry must be an object")
+    return {name: dict(value) for name, value in payload.items()}
+
+
+def build_config(args: argparse.Namespace) -> AutonomousSelectionConfig:
+    return AutonomousSelectionConfig(
         policy=args.policy,
         budget_fraction=args.budget_fraction,
+        protected_head_turns=args.protected_head_turns,
+        protected_tail_turns=args.protected_tail_turns,
         input_protocol="openai_tools",
-        tool_semantics_by_name=PI_TOOL_SEMANTICS,
+        tool_semantics_by_name=_tool_semantics(args.tool_semantics_json),
         fill_missing_generation_parameters=True,
         expected_model=args.model,
         temperature=0.0,
         top_p=1.0,
         seed=0,
-        max_completion_tokens=1024,
+        max_completion_tokens=args.max_completion_tokens,
         max_calls=args.max_calls,
         task_id=args.task_id,
+        completed_recent_turns=args.completed_recent_turns,
+        completed_mutation_turns=args.completed_mutation_turns,
+        completed_verification_turns=args.completed_verification_turns,
+        completed_protocol_turns=args.completed_protocol_turns,
+        completed_finalization_turns=args.completed_finalization_turns,
+        compact_completed_finalizations=args.compact_completed_finalizations,
+        retire_closed_instructions=args.retire_closed_instructions,
+        completed_instruction_epochs=args.completed_instruction_epochs,
+        frontier_recent_user_prompts=args.frontier_recent_user_prompts,
+        frontier_protocol_exemplars=args.frontier_protocol_exemplars,
+        frontier_workflow_exemplars=args.frontier_workflow_exemplars,
+        frontier_allow_heuristic=args.frontier_allow_heuristic,
+        keep_completed_task_statements=args.keep_completed_task_statements,
+        boundary_mode=args.boundary_mode,
     )
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+
+    config = build_config(args)
     proxy = AutonomousSelectionProxy(
         args.upstream,
         config=config,
@@ -62,11 +132,24 @@ def main() -> None:
         "endpoint": endpoint,
         "policy": args.policy,
         "input_protocol": "openai_tools",
+        "policy_parameters": {
+            "boundary_mode": config.boundary_mode.value,
+            "completed_recent_turns": config.completed_recent_turns,
+            "completed_mutation_turns": config.completed_mutation_turns,
+            "completed_verification_turns": config.completed_verification_turns,
+            "completed_protocol_turns": config.completed_protocol_turns,
+            "completed_instruction_epochs": config.completed_instruction_epochs,
+            "compact_completed_finalizations": config.compact_completed_finalizations,
+            "frontier_recent_user_prompts": config.frontier_recent_user_prompts,
+            "frontier_protocol_exemplars": config.frontier_protocol_exemplars,
+            "frontier_workflow_exemplars": config.frontier_workflow_exemplars,
+            "frontier_allow_heuristic": config.frontier_allow_heuristic,
+        },
         "generation": {
             "temperature": 0.0,
             "top_p": 1.0,
             "seed": 0,
-            "max_completion_tokens": 1024,
+            "max_completion_tokens": config.max_completion_tokens,
         },
     }), flush=True)
 

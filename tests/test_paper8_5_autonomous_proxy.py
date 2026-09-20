@@ -33,8 +33,63 @@ from experiments.paper8_5_agent_memory.auxiliary_workspace_state import (
     AUXILIARY_WORKSPACE_STATE_LABEL,
     create_auxiliary_workspace_state_prediction,
 )
+from experiments.paper8_5_agent_memory.serve_agent_transfer_proxy import (
+    build_config as build_agent_transfer_config,
+    build_parser as build_agent_transfer_parser,
+)
 from experiments.paper8_5_agent_memory.negative_receipts import NegativeRealizationMode
 from experiments.paper8_5_agent_memory.materialization import MaterializationMode
+
+
+def test_agent_transfer_proxy_exposes_frozen_policy_parameters(tmp_path: Path):
+    args = build_agent_transfer_parser().parse_args([
+        "--upstream", "http://model/v1",
+        "--trace", str(tmp_path / "trace.jsonl"),
+        "--task-id", "task-1",
+        "--policy", "frontier_dag_retirement",
+        "--boundary-mode", "boundary_free",
+        "--frontier-recent-user-prompts", "2",
+        "--frontier-protocol-exemplars", "1",
+        "--frontier-allow-heuristic",
+        "--max-completion-tokens", "2048",
+    ])
+    config = build_agent_transfer_config(args)
+
+    assert config.frontier_recent_user_prompts == 2
+    assert config.frontier_protocol_exemplars == 1
+    assert config.frontier_allow_heuristic is True
+    assert config.max_completion_tokens == 2048
+    assert config.boundary_mode.value == "boundary_free"
+    assert config.tool_semantics_by_name["glob"]["operation_kind"] == (
+        "search_discovery"
+    )
+
+
+def test_agent_transfer_proxy_loads_agent_declared_tool_semantics(tmp_path: Path):
+    declaration = tmp_path / "tools.json"
+    declaration.write_text(json.dumps({
+        "tool_semantics_by_name": {
+            "file_editor": {
+                "category": "filesystem",
+                "operation_argument": "command",
+                "operation_map": {"view": "read", "str_replace": "write"},
+                "resource_arguments": ["path"],
+            },
+        },
+    }))
+    args = build_agent_transfer_parser().parse_args([
+        "--upstream", "http://model/v1",
+        "--trace", str(tmp_path / "trace.jsonl"),
+        "--task-id", "task-1",
+        "--tool-semantics-json", str(declaration),
+    ])
+
+    config = build_agent_transfer_config(args)
+
+    assert set(config.tool_semantics_by_name) == {"file_editor"}
+    assert config.tool_semantics_by_name["file_editor"]["operation_argument"] == (
+        "command"
+    )
 
 
 def _messages() -> list[dict]:

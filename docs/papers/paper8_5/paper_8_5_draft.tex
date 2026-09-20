@@ -4260,6 +4260,29 @@ decision record and complete request audit are in
 admits Pi to the three-task ladder; it does not estimate transfer accuracy or
 qualify a policy.
 
+The second staged \textsc{Full} control, Django-15277, also resolves
+officially: both FAIL\_TO\_PASS and all 161 PASS\_TO\_PASS tests pass.
+Pi uses 23 model calls and 22 native tool calls, with 403,543 cumulative logical
+input tokens and 2,560 output tokens.  The final source change is the minimal
+guard around \texttt{MaxLengthValidator}; an untracked temporary file is not
+included in the submitted patch.  Three native \texttt{edit} attempts fail
+before a Bash recovery succeeds, reinforcing that action, semantic failure,
+and recovery are one atomic unit.  Evidence is in
+\path{cross_agent_transfer/pi_task01_full_controlled_v1}.
+
+The third plain control, \texttt{django\_\_django-15741}, fails \textsc{Full}
+for an agent-loop reason rather than selection.  After seven model calls and
+six tools, the final response reaches the 1,024-token completion ceiling while
+stating the correct \texttt{str(format\_type)} direction but before issuing a
+write.  Pi treats the length-stopped reasoning-only response as terminal and
+exports an empty patch.  Thus Pi completes the plain-three ladder with two
+official successes; only Tasks 1 and 2 enter its policy-pairing denominator.
+The result adds a portability invariant: provider transport termination,
+including \texttt{finish\_reason=length}, is not semantic agent completion.
+A separately declared 2,048-token diagnostic tests this explanation but cannot
+replace the frozen control.  Evidence is in
+\path{cross_agent_transfer/pi_task04_full_controlled_v1}.
+
 \subsection{First Kilo admission outcome}
 
 Kilo 7.7.5 independently solves the same locked task with the identical

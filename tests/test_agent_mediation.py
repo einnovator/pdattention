@@ -97,6 +97,43 @@ def test_standard_tool_schema_can_declare_portable_semantics_without_agent_adapt
     assert action.metadata["tool_calls"][0]["name"] == "read_file"
 
 
+def test_mixed_tool_semantics_are_resolved_from_arguments_and_extract_resources():
+    messages = [
+        {"role": "system", "content": "help"},
+        {"role": "user", "content": "inspect then fix the project"},
+        {"role": "assistant", "content": "", "tool_calls": [{
+            "id": "call-1", "type": "function",
+            "function": {
+                "name": "file_editor",
+                "arguments": '{"command":"view","path":"src/a.py"}',
+            },
+        }]},
+        {"role": "tool", "tool_call_id": "call-1", "content": "source"},
+    ]
+    result = OpenAIRecordizer().recordize(messages, request_metadata={
+        "tool_semantics_by_name": {
+            "file_editor": {
+                "category": "filesystem",
+                "operation_argument": "command",
+                "operation_map": {
+                    "view": "read",
+                    "str_replace": "write",
+                    "create": "write",
+                },
+                "default_operation_kind": "unknown",
+                "resource_arguments": ["path"],
+            },
+        },
+    })
+
+    action = result.history.records[2]
+    declaration = action.metadata["tool_calls"][0]["declared_semantics"]
+    assert declaration["operation_kind"] == "read"
+    assert action.metadata["operation_kind"] == "read"
+    assert action.resource_ids == ("src/a.py",)
+    assert action.metadata["tool_calls"][0]["resource_ids"] == ["src/a.py"]
+
+
 def test_openai_recordizer_does_not_guess_nonstandard_user_observation():
     result = OpenAIRecordizer().recordize([
         {"role": "system", "content": "help"},

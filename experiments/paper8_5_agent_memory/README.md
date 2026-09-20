@@ -66,6 +66,19 @@ entry point and two endpoint examples are
 from command success; reducers must inspect structured exit evidence or output
 failure signals rather than equating `completed` with a successful tool result.
 
+The transfer proxy exposes the frozen policy parameters instead of hiding
+agent-specific defaults. For Recent Frontier M2/P1, use
+`--policy frontier_dag_retirement --boundary-mode boundary_free
+--frontier-recent-user-prompts 2 --frontier-protocol-exemplars 1
+--frontier-allow-heuristic`. Prompt Pinned E2+F1C uses
+`--policy persistent_instruction_epoch_retirement
+--completed-instruction-epochs 2 --compact-completed-finalizations`.
+`--tool-semantics-json` accepts a generic mapping keyed by native tool name.
+Mixed tools may declare `operation_argument`, `operation_map`, and
+`resource_arguments`; this lets an OpenHands-style `file_editor` classify
+`view` as a read and `str_replace` as a write without embedding its schema in
+the PRA runtime.
+
 The PRA Agent admission keeps its typed records and safe execution boundary,
 but backs every workspace tool with the official SWE-bench task container:
 
