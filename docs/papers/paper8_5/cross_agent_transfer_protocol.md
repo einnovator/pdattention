@@ -30,14 +30,20 @@ capability evidence, not evidence against the memory policy.
    exit or failure evidence independently of transport state. External
    telemetry, plugins, project configuration, and persistent session storage
    are disabled for hermetic controls.
-3. **PRA Agent** is the required typed-record transfer. The SDK is record-native,
+3. **OpenCode 1.18.31** is the third typed-tool transfer. Its pinned headless
+   runner, native JSON event capture, constant primary/small-model check, and
+   shared canonical-event reducer are implemented. Native auto-compaction and
+   external plugins are disabled. Same-model `FULL` admission remains pending;
+   a nested `task` call fails trace qualification until child-session events
+   are joined.
+4. **PRA Agent** is the required typed-record transfer. The SDK is record-native,
    and its new SWE-bench container adapter now resolves controlled Tasks 1 and
    2. Task 1 exposed and fixed a second transport boundary: an unambiguous
    terminal serialized tool decision was previously mistaken for a final
    answer. After two further fail-closed serialization repairs, Task 4 still
    terminates without a patch. PRA Agent therefore completes plain-three at
    2/3, and policy pairing is restricted to Tasks 1 and 2.
-4. **OpenHands** is the supplementary richer-tool transfer. The admission uses
+5. **OpenHands** is the supplementary richer-tool transfer. The admission uses
    the current SDK directly inside the task-derived container, not the
    unmaintained standalone CLI. Its native terminal, file-editor, and
    task-tracker tools remain enabled, while the SDK condenser is explicitly
@@ -48,7 +54,7 @@ capability evidence, not evidence against the memory policy.
 Codex or Claude can provide external validity only when model, prompt, context
 management, and event traces are sufficiently auditable. They are never pooled
 with the fixed-model primary estimate and cannot replace the open, same-model
-Pi/Kilo/PRA-Agent transfer.
+Pi/Kilo/OpenCode/PRA-Agent transfer.
 
 The executable declaration is
 `configs/agent_transfer_easy14_v1.json`. It admits one smoke task, then three

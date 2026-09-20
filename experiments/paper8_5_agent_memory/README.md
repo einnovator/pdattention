@@ -37,7 +37,7 @@ cohort but qualifies every agent against its own `FULL` control before applying
 a memory policy. Report the unconditional 14-task solve rate separately from
 conditional preservation on that agent's plain-success identities.
 
-Pi and Kilo are the first typed-tool admission targets, followed by a richer
+Pi, Kilo, and OpenCode are the typed-tool admission targets, followed by a richer
 OpenHands-style harness and the record-native PRA Agent. Standard OpenAI `tool_calls` use the common recordizer directly;
 only native event normalization and declared tool semantics may differ between
 agents. The frozen selection floors and retirement parameters may not be
@@ -66,6 +66,15 @@ runner, container entry point, and two endpoint examples are
 `kilo_config.proxy.example.json`. Kilo reports transport completion separately
 from command success; reducers must inspect structured exit evidence or output
 failure signals rather than equating `completed` with a successful tool result.
+
+OpenCode uses `run_opencode_swebench.py` with pinned `opencode-ai@1.18.31`.
+The runner fixes both `model` and `small_model` to the controlled endpoint,
+disables native auto-compaction, captures the native `--format json` stream,
+and exports `model.patch`. `reduce_native_tool_events.py` is shared with Kilo;
+OpenCode contributes only declarative native-tool semantics from
+`configs/opencode_tool_semantics_v1.json`. A `task`/subagent call marks the
+root event trace incomplete until child-session events are joined, so such a
+run cannot qualify a policy claim from root stdout alone.
 
 OpenHands uses `run_openhands_swebench.py` and a task-derived container with
 the pinned SDK's native terminal, file-editor, and task-tracker tools. Its

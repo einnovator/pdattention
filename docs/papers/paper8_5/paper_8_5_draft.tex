@@ -412,8 +412,8 @@ fail closed unless its observed model digest equals the declared revision; a
 model alias in the request is not identity evidence.
 Keeping the model fixed within each axis does not by itself support a joint
 agent-by-engine claim.  The predeclared bridge therefore pins
-Qwen2.5-Coder-7B-Instruct revision \texttt{c03e6d35} at BF16 for both
-mini-swe-agent and OpenHands across HF, vLLM, and MLX.  The Qwen3-Coder-30B
+Qwen2.5-Coder-7B-Instruct revision \texttt{c03e6d35} at BF16 for
+mini-swe-agent, OpenHands, and OpenCode across HF, vLLM, and MLX.  The Qwen3-Coder-30B
 cross-agent cohort is a separate replication and is not pooled with that
 bridge.
 
@@ -4248,7 +4248,8 @@ After policy qualification on mini-swe-agent, we transfer only the top policies
 to other agents on the same ordered Easy-14 cohort.  Pi is the first admission
 target because its native file, search, edit, write, and Bash operations expose
 standard tool-call/result identity with little hidden orchestration.  Kilo is
-the second same-model open-source admission and PRA Agent is the required
+the second same-model open-source admission; OpenCode is the third typed-tool
+transfer; and PRA Agent is the required
 record-native transfer.  OpenHands is the supplementary richer-tool transfer;
 we use the current SDK directly, disable its condenser, and inventory its
 runtime state rather than relying on the unmaintained standalone CLI.  The goal is not a
@@ -4273,6 +4274,18 @@ retirement parameters, and token accounting remain frozen.  Standard OpenAI
 tool traffic is recordized directly; the compatibility layer preserves
 \texttt{tool\_calls}, \texttt{tool\_call\_id}, and multi-call causal groups rather
 than projecting them into mini-swe-agent's assistant/user Bash convention.
+
+OpenCode 1.18.31 uses the same transverse path rather than a distinct memory
+policy.  Its thin runner invokes the official headless
+\texttt{run --format json} interface, pins both the primary and small model to
+the controlled checkpoint, disables native auto-compaction and external
+plugins, and feeds typed tool events through the same canonical reducer used by
+Kilo.  Native Bash remains an unknown-effect barrier; read, glob, grep, edit,
+write, progress, and delegation tools receive declarative semantics in
+\path{configs/opencode_tool_semantics_v1.json}.  A nested \texttt{task} call
+fails root-trace qualification until child-session events are joined.  The
+implementation is complete, but no OpenCode quality or saving number is
+reported before its same-model \textsc{Full} admission succeeds.
 
 \subsection{First Pi admission outcome}
 
