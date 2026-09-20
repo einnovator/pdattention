@@ -18,6 +18,12 @@ from pra_hf.agent_resources import AgentResource, SideEffectClass, resource_uri
 
 
 _TOOL_CALL = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
+_SERIALIZED_TOOL_DECISION = re.compile(
+    r"I executed the tool decision named\s+"
+    r"(?P<name>\"(?:\\.|[^\"\\])*\")\s+"
+    r"with these arguments:\s*(?P<arguments>\{.*\})\.\s*$",
+    re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
@@ -57,20 +63,39 @@ class ToolExecutionResult:
 
 
 def parse_tool_call(text: str) -> ToolCall | None:
-    """Parse the first Qwen/OpenAI-style ``<tool_call>`` JSON payload."""
+    """Parse one explicit provider-neutral tool decision.
+
+    Native calls are projected into the canonical ``<tool_call>`` envelope.
+    Some OpenAI-compatible model servers occasionally serialize the durable
+    assistant-action projection as ordinary text instead of returning a
+    ``message.tool_calls`` object.  Accept that representation only when the
+    exact PRA-owned sentence terminates the response.  Anchoring the marker at
+    end-of-response prevents quoted examples or later prose from silently
+    crossing the host's execution boundary.
+    """
 
     match = _TOOL_CALL.search(text)
-    if match is None:
-        return None
-    try:
-        payload = json.loads(match.group(1))
-    except json.JSONDecodeError:
-        return None
-    name = payload.get("name")
-    arguments = payload.get("arguments")
+    if match is not None:
+        try:
+            payload = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            return None
+        name = payload.get("name")
+        arguments = payload.get("arguments")
+        raw_text = match.group(0)
+    else:
+        serialized = _SERIALIZED_TOOL_DECISION.search(text)
+        if serialized is None:
+            return None
+        try:
+            name = json.loads(serialized.group("name"))
+            arguments = json.loads(serialized.group("arguments"))
+        except json.JSONDecodeError:
+            return None
+        raw_text = serialized.group(0)
     if not isinstance(name, str) or not isinstance(arguments, dict):
         return None
-    return ToolCall(name=name, arguments=arguments, raw_text=match.group(0))
+    return ToolCall(name=name, arguments=arguments, raw_text=raw_text)
 
 
 def resource_tool_schema(resource: AgentResource) -> dict[str, object]:

@@ -29,6 +29,27 @@ def test_openai_schema_and_qwen_tool_call_parser_preserve_arguments():
     assert call.arguments == {"user_id": "u17", "status": "reviewed"}
 
 
+def test_tool_call_parser_accepts_only_terminal_durable_action_projection():
+    text = (
+        "I will inspect the exact definition next.\n"
+        'I executed the tool decision named "read_file" with these arguments: '
+        '{"path":"src/a.py","start_line":10,"end_line":20}.'
+    )
+    call = parse_tool_call(text)
+    assert call is not None
+    assert call.name == "read_file"
+    assert call.arguments == {
+        "path": "src/a.py",
+        "start_line": 10,
+        "end_line": 20,
+    }
+
+    assert parse_tool_call(text + " This is only a quoted example.") is None
+    assert parse_tool_call(
+        'I executed the tool decision named "read_file" with these arguments: [].'
+    ) is None
+
+
 def test_executor_requires_disclosure_and_independent_write_authorization():
     resources = realistic_tool_catalog()
     task = next(task for task in workflow_tasks() if task.task_id == "m4-user-3")
