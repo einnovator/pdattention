@@ -592,6 +592,12 @@ class PRAAgent:
             call = parse_tool_call(text)
             if call is None:
                 break
+            # Intermediate actions are part of the causal trajectory.  Before
+            # this append, only the initial user message, detached tool result,
+            # and final answer survived in durable state; later selection could
+            # not recover the tool name, arguments, or the model decision that
+            # produced an observation.
+            self._append_message("assistant", text)
             resource = None
             if self.runtime.executor is not None:
                 resource = self.runtime.executor.by_name.get(call.name)
@@ -632,9 +638,8 @@ class PRAAgent:
             tool_message = {
                 "role": "user",
                 "content": (
-                    "[Tool observation; call and result are also retained as "
-                    "a typed PRA record.]\n"
-                    + json.dumps(execution.record.compact_view(), default=str)
+                    "[Tool observation attached as typed PRA record "
+                    f"{execution.record.record_id}.]"
                 ),
             }
             follow_up = self._turn_context(
@@ -642,10 +647,7 @@ class PRAAgent:
                 self._context(query),
                 tool_uris,
                 skill_uris,
-                extra_messages=(
-                    {"role": "assistant", "content": text},
-                    tool_message,
-                ),
+                extra_messages=(tool_message,),
             )
             text = self._generate_turn(follow_up)
         self._append_message("assistant", text)

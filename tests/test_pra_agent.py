@@ -80,13 +80,19 @@ def test_agent_persists_task_messages_and_compact_tool_result(tmp_path) -> None:
     assert turn.tool_executions[0].execution.executed
     assert turn.disclosed_skill_uris
     assert "Verify the uppercase result" in agent.runtime.backend.prompts[0]
-    assert "[Tool observation; call and result are also retained" in (
+    assert "[Tool observation attached as typed PRA record" in (
         agent.runtime.backend.prompts[1]
     )
     assert "\nTool:" not in agent.runtime.backend.prompts[1]
-    assert len(turn.session.records) == 3
+    assert len(turn.session.records) == 4
+    assistant_messages = [
+        row for row in turn.session.records
+        if isinstance(row.payload, dict) and row.payload.get("role") == "assistant"
+    ]
+    assert len(assistant_messages) == 2
+    assert "<tool_call>" in assistant_messages[0].payload["text"]
     assert {row.payload.get("role") for row in turn.session.records if isinstance(row.payload, dict)} >= {"user", "assistant"}
-    assert agent.runtime.inspect()["logical_sessions"]["session-a"]["records"] == 3
+    assert agent.runtime.inspect()["logical_sessions"]["session-a"]["records"] == 4
 
 
 def test_agent_releases_physical_state_and_resumes_logical_session(tmp_path) -> None:
