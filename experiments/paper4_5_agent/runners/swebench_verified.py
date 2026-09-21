@@ -35,7 +35,11 @@ from ..context_treatment import (
 
 
 EXPECTED_PACKAGES = {
-    "mini-swe-agent": "2.4.0",
+    # The frozen coding-agent campaigns, their published manifests, and the
+    # noninteractive scaffold all use mini-swe-agent 2.4.6.  Keeping the old
+    # 2.4.0 validator constant falsely marked otherwise exact 2.4.6 runs as
+    # partial reproductions after they had already completed successfully.
+    "mini-swe-agent": "2.4.6",
     "swebench": "4.1.0",
     "vllm": "0.22.1",
 }

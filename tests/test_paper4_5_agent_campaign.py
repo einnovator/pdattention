@@ -110,6 +110,7 @@ from experiments.paper4_5_agent.schema import (
     ReproductionStatus,
 )
 from experiments.paper4_5_agent.runners.swebench_verified import (
+    EXPECTED_PACKAGES,
     _agent_history_token_counter,
     _aggregate_traces,
     _chunk_receipt_reusable,
@@ -3497,6 +3498,10 @@ def test_swebench_package_probe_uses_null_for_missing_distributions() -> None:
     versions = package_versions()
     assert set(versions) == {"mini-swe-agent", "swebench", "vllm"}
     assert all(value is None or isinstance(value, str) for value in versions.values())
+
+
+def test_frozen_agent_runner_requires_campaign_minisweagent_version() -> None:
+    assert EXPECTED_PACKAGES["mini-swe-agent"] == "2.4.6"
 
 
 def test_official_result_rejects_inconsistent_score_and_ids() -> None:
