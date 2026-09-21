@@ -341,6 +341,59 @@ def test_plain_request_does_not_enter_resident_pra(fake_mlx) -> None:
     assert not executor._sessions
 
 
+def test_mlx_agent_rejects_nonpositive_context_window() -> None:
+    with pytest.raises(ValueError, match="max_model_len must be positive"):
+        MLXAgentHistoryExecutor(
+            _Model(),
+            _Tokenizer(),
+            model_id="fake",
+            model_revision="pinned",
+            max_model_len=0,
+        )
+
+
+def test_mlx_plain_path_checks_context_before_allocating_cache(fake_mlx) -> None:
+    executor = MLXAgentHistoryExecutor(
+        _Model(),
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        max_model_len=1,
+    )
+    executor._new_cache = lambda: pytest.fail("over-limit request allocated a cache")
+
+    with pytest.raises(ValueError, match="configured context window"):
+        executor.generate(PRAWireRequest(
+            model="fake",
+            messages=({"role": "user", "content": "too long"},),
+            max_new_tokens=2,
+        ))
+
+
+def test_mlx_native_path_checks_context_before_owner_extension(fake_mlx) -> None:
+    executor = MLXAgentHistoryExecutor(
+        _Model(),
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        max_model_len=1,
+    )
+    executor._ensure_source = lambda state, source: pytest.fail(
+        "over-limit request extended canonical K/V"
+    )
+    messages = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "too long"},
+    )
+
+    with pytest.raises(ValueError, match="configured context window"):
+        executor.generate(_request(messages))
+    assert executor._sessions["session"].canonical_memory is None
+    assert executor._sessions["session"].canonical_tokens == []
+
+
 def test_frozen_agent_memory_plan_may_underfill_nominal_fraction() -> None:
     plan = LiveKVSelectionPlan.create(
         100,

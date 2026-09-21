@@ -93,6 +93,7 @@ def _direct_handler(
                     "endpoint_type": "engine",
                     "gateway_mode": None,
                     "prefix_cache_enabled": False,
+                    "max_model_len": executor.max_model_len,
                     "chat_template_profile": executor.chat_template_profile,
                     "chat_template_digest": executor.chat_template_digest,
                     "runtime_identity": dict(runtime_identity or {}),
@@ -175,6 +176,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18124)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
+    parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
     parser.add_argument(
         "--require-full-retention-reference",
@@ -252,6 +254,7 @@ def main() -> None:
         require_full_retention_reference=args.require_full_retention_reference,
         agent_history_qualified=args.agent_history_qualified,
         fused_disjoint_attention=args.fused_disjoint_attention,
+        max_model_len=args.max_model_len,
     )
     try:
         ThreadingHTTPServer(

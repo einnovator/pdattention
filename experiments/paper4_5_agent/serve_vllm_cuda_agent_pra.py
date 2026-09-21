@@ -47,6 +47,7 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
 def _handler(
     executor: object,
     model_id: str,
+    max_model_len: int,
     runtime_identity: Mapping[str, Any] | None = None,
 ):
     class Handler(BaseHTTPRequestHandler):
@@ -67,6 +68,7 @@ def _handler(
                     "endpoint_type": "engine",
                     "gateway_mode": None,
                     "prefix_cache_enabled": True,
+                    "max_model_len": max_model_len,
                     "chat_template_profile": executor.chat_template_profile,
                     "chat_template_digest": executor.chat_template_digest,
                     "runtime_identity": dict(runtime_identity or {}),
@@ -233,6 +235,7 @@ def main() -> None:
         _handler(
             executor,
             served_model,
+            args.max_model_len,
             {
                 "engine": "vllm-cuda",
                 "observed_source_checkpoint_revision": observed_revision,

@@ -238,19 +238,22 @@ def gateway_preflight(
         "max_model_len",
         engine.get("max_model_len", effective.get("max_model_len")),
     )
-    direct_hf_admission = (
-        str(getattr(args, "engine", "")) == "huggingface"
-        and expected_mode is None
+    strict_direct_admission = (
+        expected_mode is None
         and bool(getattr(args, "require_endpoint_preflight", False))
+        and (
+            str(getattr(args, "engine", "")) == "huggingface"
+            or bool(getattr(args, "require_observed_model_revision", False))
+        )
     )
-    if direct_hf_admission:
+    if strict_direct_admission:
         if max_model_len is None:
             raise RuntimeError(
-                "direct HF admission requires an advertised max_model_len"
+                "strict direct-engine admission requires an advertised max_model_len"
             )
         if int(max_model_len) != int(args.context_limit):
             raise RuntimeError(
-                "direct HF admission context mismatch: "
+                "strict direct-engine admission context mismatch: "
                 f"expected {args.context_limit}, observed {max_model_len}"
             )
     if native_required and not bool(effective.get("native_kv") or engine.get("native_kv")):

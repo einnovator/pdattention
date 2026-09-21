@@ -200,6 +200,7 @@ class MLXAgentHistoryExecutor:
         agent_history_qualified: bool = False,
         prefill_step_size: int = 2048,
         fused_disjoint_attention: bool = True,
+        max_model_len: int = 8192,
     ) -> None:
         if wire_tail_tokens <= 0:
             raise ValueError("wire_tail_tokens must be positive.")
@@ -207,6 +208,8 @@ class MLXAgentHistoryExecutor:
             raise ValueError("max_abs_logit_delta cannot be negative.")
         if prefill_step_size <= 0:
             raise ValueError("prefill_step_size must be positive.")
+        if max_model_len <= 0:
+            raise ValueError("max_model_len must be positive.")
         self.model = model
         self.tokenizer = tokenizer
         self.model_id = str(model_id)
@@ -226,6 +229,7 @@ class MLXAgentHistoryExecutor:
         self.agent_history_qualified = bool(agent_history_qualified)
         self.prefill_step_size = int(prefill_step_size)
         self.fused_disjoint_attention = bool(fused_disjoint_attention)
+        self.max_model_len = int(max_model_len)
         self.runtime = MLXLiveKVRuntime()
         self._sessions: dict[str, _Session] = {}
         self._lock = threading.RLock()
@@ -278,6 +282,7 @@ class MLXAgentHistoryExecutor:
             "segmented_attention_dispatch": "sparse_only",
             "segmented_attention_active": self._segmented_attention_active,
             "fused_disjoint_attention": self.fused_disjoint_attention,
+            "max_model_len": self.max_model_len,
             "chat_template_profile": self.chat_template_profile,
             "chat_template_digest": self.chat_template_digest,
         }
@@ -324,6 +329,19 @@ class MLXAgentHistoryExecutor:
         if expected is not None and str(expected) != self.chat_template_digest:
             raise ValueError("Request chat template digest does not match the session.")
         return options
+
+    def _enforce_context_window(
+        self, prompt_tokens: int, max_new_tokens: int
+    ) -> None:
+        """Reject an over-limit logical request before allocating or mutating K/V."""
+
+        requested = int(prompt_tokens) + int(max_new_tokens)
+        if requested > self.max_model_len:
+            raise ValueError(
+                "MLX request exceeds the configured context window: "
+                f"prompt_tokens={prompt_tokens}, max_new_tokens={max_new_tokens}, "
+                f"requested_total={requested}, max_model_len={self.max_model_len}."
+            )
 
     def _eos_ids(self) -> set[int]:
         value = getattr(self.tokenizer, "eos_token_id", None)
@@ -688,6 +706,7 @@ class MLXAgentHistoryExecutor:
     def _ordinary_generate(
         self, prompt: list[int], max_tokens: int
     ) -> tuple[str, list[int], float, int]:
+        self._enforce_context_window(len(prompt), max_tokens)
         started = time.perf_counter()
         cache = self._new_cache()
         calls = self._prefill(prompt[:-1], cache)
@@ -727,6 +746,7 @@ class MLXAgentHistoryExecutor:
             canonical_tokens=(),
             chat_template_kwargs=chat_template_kwargs,
         )
+        self._enforce_context_window(len(source) + len(wire), max_tokens)
         spans = self._fresh_message_spans(
             messages, source, chat_template_kwargs=chat_template_kwargs
         )
@@ -765,6 +785,9 @@ class MLXAgentHistoryExecutor:
             canonical_text=state.canonical_text,
             canonical_tokens=state.canonical_tokens,
             chat_template_kwargs=template_kwargs,
+        )
+        self._enforce_context_window(
+            len(source) + len(wire), request.resolved_max_new_tokens
         )
         self._update_message_spans(
             state,
