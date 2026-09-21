@@ -2191,6 +2191,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
         instrument_observations=True,
         instrumentation_output_root=tmp_path / "instrumentation",
         max_calls=12,
+        require_unified_diff_submission=True,
     )
     command = build_agent_command(
         args,
@@ -2206,6 +2207,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     assert "agent.step_limit=12" in joined
     assert "environment.pull_timeout=900" in joined
     assert "InstrumentedDockerEnvironment" in joined
+    assert "environment.require_unified_diff_submission=true" in joined
     assert (
         "environment.image=docker.io/swebench/"
         "sweb.eval.x86_64.org_1776_repo-2:latest" in joined

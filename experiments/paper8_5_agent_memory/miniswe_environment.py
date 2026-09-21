@@ -21,12 +21,17 @@ from .observation_instrumentation import (
     stable_environment_fingerprint,
 )
 from .miniswe_semantics import extract_resource_ids
+from .submission_protocol import (
+    submission_recovery_observation,
+    validate_unified_git_diff,
+)
 
 
 class InstrumentedDockerEnvironmentConfig(DockerEnvironmentConfig):
     instrumentation_output_root: str | None = None
     capture_workspace_checkpoints: bool = True
     visible_output_limit: int = 10_000
+    require_unified_diff_submission: bool = False
 
 
 class InstrumentedDockerEnvironment(DockerEnvironment):
@@ -71,6 +76,37 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
             },
         }
         return serialized
+
+    def _check_finished(self, output: dict) -> None:
+        """Reject malformed terminal payloads as recoverable observations."""
+
+        if not self.config.require_unified_diff_submission:
+            return super()._check_finished(output)
+        lines = str(output.get("output", "")).lstrip().splitlines(keepends=True)
+        is_submission = (
+            bool(lines)
+            and lines[0].strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+            and output.get("returncode") == 0
+        )
+        if not is_submission:
+            return super()._check_finished(output)
+        payload = "".join(lines[1:])
+        validation = validate_unified_git_diff(payload)
+        if validation.valid:
+            return super()._check_finished(output)
+        output["output"] = submission_recovery_observation(validation.reason)
+        output["returncode"] = 2
+        output["extra"] = {
+            **dict(output.get("extra") or {}),
+            "paper8_5_submission_protocol": {
+                "schema_version": 1,
+                "status": "rejected_recoverable",
+                "reason": validation.reason,
+                "original_payload_sha256": hashlib.sha256(
+                    payload.encode()
+                ).hexdigest(),
+            },
+        }
 
     def execute(self, action: dict, cwd: str = "", *, timeout: int | None = None) -> dict[str, Any]:
         command = str(action.get("command", ""))

@@ -428,6 +428,8 @@ def _command(
     ollama_tags_url = getattr(args, "ollama_tags_url", None)
     if ollama_tags_url:
         command.extend(("--ollama-tags-url", ollama_tags_url))
+    if bool((spec.get("harness") or {}).get("require_unified_diff_submission")):
+        command.append("--require-unified-diff-submission")
     materialization = {
         "materialization_mode": "--materialization-mode",
         "materialization_threshold_tokens": "--materialization-threshold-tokens",

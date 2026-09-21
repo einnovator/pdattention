@@ -259,6 +259,9 @@ def build_agent_command(
             f"environment.instrumentation_output_root={args.instrumentation_output_root}",
             "-c",
             "environment.capture_workspace_checkpoints=true",
+            "-c",
+            "environment.require_unified_diff_submission="
+            f"{str(bool(getattr(args, 'require_unified_diff_submission', False))).lower()}",
         ))
     command.extend((
         "-c",
@@ -1123,6 +1126,16 @@ def run(args: argparse.Namespace) -> Path:
         },
         "preflight_only": args.preflight_only,
         "engine_or_kv_metrics_claimed": native_request_builder is not None,
+        "submission_protocol": {
+            "require_unified_diff_submission": bool(
+                getattr(args, "require_unified_diff_submission", False)
+            ),
+            "malformed_terminal_behavior": (
+                "recoverable_nonzero_observation"
+                if getattr(args, "require_unified_diff_submission", False) else
+                "native_mini_swe_acceptance"
+            ),
+        },
     }
     _write_json(output / "run_manifest.json", manifest)
     if args.preflight_only:
@@ -1542,6 +1555,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Use FULL for a decision instead of applying a negative policy when the "
             "ordered execution-receipt join is not exact."
+        ),
+    )
+    parser.add_argument(
+        "--require-unified-diff-submission",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Reject a terminal mini-swe-agent payload that is not structurally "
+            "a Git diff and return a recoverable protocol-error observation."
         ),
     )
     parser.add_argument("--skip-grading", action="store_true")
