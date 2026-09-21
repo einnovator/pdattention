@@ -9,6 +9,7 @@ import signal
 import threading
 
 from .autonomous_proxy import AutonomousSelectionConfig, AutonomousSelectionProxy
+from .run_autonomous_swebench import _exact_token_counter
 
 
 DEFAULT_TOOL_SEMANTICS = {
@@ -34,6 +35,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--policy", default="full")
     parser.add_argument("--budget-fraction", type=float, default=1.0)
     parser.add_argument("--model", default="qwen3-coder:30b")
+    parser.add_argument(
+        "--tokenizer",
+        help=(
+            "Exact tokenizer name or local path. If omitted, retain the "
+            "legacy whitespace diagnostic and label it explicitly."
+        ),
+    )
+    parser.add_argument("--tokenizer-revision")
+    parser.add_argument("--allow-whitespace-tokenizer", action="store_true")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=18185)
     parser.add_argument("--max-calls", type=int, default=60)
@@ -88,7 +98,9 @@ def _tool_semantics(path: Path | None) -> dict[str, dict[str, object]]:
     return {name: dict(value) for name, value in payload.items()}
 
 
-def build_config(args: argparse.Namespace) -> AutonomousSelectionConfig:
+def build_config(
+    args: argparse.Namespace, *, tokenizer_identity: str | None = None,
+) -> AutonomousSelectionConfig:
     return AutonomousSelectionConfig(
         policy=args.policy,
         budget_fraction=args.budget_fraction,
@@ -102,6 +114,9 @@ def build_config(args: argparse.Namespace) -> AutonomousSelectionConfig:
         top_p=1.0,
         seed=0,
         max_completion_tokens=args.max_completion_tokens,
+        tokenizer_identity=(
+            tokenizer_identity or "whitespace_v1_diagnostic_only"
+        ),
         max_calls=args.max_calls,
         task_id=args.task_id,
         completed_recent_turns=args.completed_recent_turns,
@@ -124,11 +139,23 @@ def build_config(args: argparse.Namespace) -> AutonomousSelectionConfig:
 def main() -> None:
     args = build_parser().parse_args()
 
-    config = build_config(args)
+    tokenizer_name = args.tokenizer or "whitespace"
+    tokenizer_revision = args.tokenizer_revision or (
+        "diagnostic-only" if tokenizer_name == "whitespace" else "main"
+    )
+    count_tokens, tokenizer_identity = _exact_token_counter(
+        tokenizer_name,
+        tokenizer_revision,
+        allow_whitespace=(
+            args.allow_whitespace_tokenizer or args.tokenizer is None
+        ),
+    )
+    config = build_config(args, tokenizer_identity=tokenizer_identity)
     proxy = AutonomousSelectionProxy(
         args.upstream,
         config=config,
         trace_path=Path(args.trace),
+        count_tokens=count_tokens,
         timeout_seconds=3600,
         upstream_qualification_path=args.upstream_qualification_path,
         upstream_connect_attempts=args.upstream_connect_attempts,
@@ -159,6 +186,7 @@ def main() -> None:
             "seed": 0,
             "max_completion_tokens": config.max_completion_tokens,
         },
+        "tokenizer": tokenizer_identity,
     }), flush=True)
 
     stopped = threading.Event()

@@ -44,6 +44,22 @@ from experiments.paper8_5_agent_memory.negative_receipts import NegativeRealizat
 from experiments.paper8_5_agent_memory.materialization import MaterializationMode
 
 
+def test_agent_transfer_proxy_binds_exact_tokenizer_identity():
+    args = build_agent_transfer_parser().parse_args([
+        "--upstream", "http://127.0.0.1:9/v1",
+        "--trace", "trace.jsonl",
+        "--task-id", "task-1",
+        "--tokenizer", "/models/tokenizer",
+        "--tokenizer-revision", "revision-1",
+    ])
+
+    config = build_agent_transfer_config(
+        args, tokenizer_identity="/models/tokenizer@revision-1",
+    )
+
+    assert config.tokenizer_identity == "/models/tokenizer@revision-1"
+
+
 def test_proxy_joins_generic_execution_receipt_without_changing_tool_text(
     tmp_path: Path,
 ):
