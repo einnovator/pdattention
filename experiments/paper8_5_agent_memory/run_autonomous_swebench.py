@@ -1199,6 +1199,14 @@ def run(args: argparse.Namespace) -> Path:
     finally:
         proxy.close()
 
+    # mini-swe-agent can exit its benchmark driver successfully after an
+    # individual environment-start failure.  Check the task artifact before
+    # inspecting the image so the campaign records the direct failure instead
+    # of masking it with a secondary image-identity error.
+    predictions = agent_output / "preds.json"
+    if not predictions.is_file():
+        raise RuntimeError(f"mini-swe-agent did not produce {predictions}")
+
     image_identity = _docker_image_identity(
         args,
         image=swebench_image(instance_id),
@@ -1218,9 +1226,6 @@ def run(args: argparse.Namespace) -> Path:
     ).encode())
     _write_json(output / "run_manifest.json", manifest)
 
-    predictions = agent_output / "preds.json"
-    if not predictions.is_file():
-        raise RuntimeError(f"mini-swe-agent did not produce {predictions}")
     auxiliary = create_auxiliary_workspace_state_prediction(
         instrumentation_root=args.instrumentation_output_root,
         output=output,

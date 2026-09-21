@@ -4240,6 +4240,52 @@ is preserved but excluded rather than silently renumbered. The raw runs,
 qualification decision, curves, and reductions are in
 \path{autonomous_nondominated_tail95_v1}.
 
+\subsection{Submission-guarded matched tail-90 bridge}
+
+The tail-95 stop exposed a protocol confound: mini-swe-agent accepted any
+terminal payload after its completion sentinel, even when that payload was
+source context rather than a unified diff. We therefore added a structural
+unified-diff validator. A malformed terminal payload is now returned as a
+recoverable nonzero observation; it is never replaced silently by the
+workspace diff. We then reran Tasks 1--3 with two fresh \textsc{Full}
+controls and a matched token-tail arm at a nominal 90\% ceiling. All runs use
+mini-swe-agent 2.4.6, the observed Qwen3-Coder-30B digest, the corresponding
+tokenizer, temperature zero, and immutable Docker image identities.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Submission-guarded mini-swe-agent tail-90 bridge. Own saving uses the
+candidate trajectory; paired saving uses the predeclared FULL-A workload.}
+\label{tab:mini-guarded-tail90}
+\begin{tabular}{lrrrrrr}
+\toprule
+Task & FULL-A & FULL-B & Tail & Calls A/B/T & Own save & Paired save \\
+\midrule
+\texttt{django-15277} & 1 & 1 & 1 & 24/27/27 & 12.93\% & $-25.95$\% \\
+\texttt{django-15368} & 1 & 1 & 1 & 15/21/16 & 13.10\% & 0.24\% \\
+\texttt{scikit-learn-13135} & 1 & 1 & 1 & 23/21/19 & 9.67\% & 32.13\% \\
+\midrule
+Pooled workload & 3 & 3 & 3 & 62/69/62 & 11.68\% & 9.38\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Thus the selective arm preserves 3/3 official resolutions and matches
+FULL-A's 62 aggregate calls. It materializes 337,133 of 381,737 tokens on its
+own trajectories, and 337,133 versus 372,032 tokens in the predeclared paired
+comparison. This passes the no-loss and no-aggregate-call-increase gates, but
+it remains far below the 30--50\% saving objective.
+
+The duplicate controls are essential. Their call counts differ by 3, 6, and
+2 even at temperature zero. On Task 1 the selective trajectory's first
+assistant-action divergence occurs at action 2, before the first selection
+change at request 3; its negative paired value therefore cannot be assigned
+cleanly to selection. We retain both the strict FULL-A pairing and the
+FULL-repeat envelope instead of choosing the more favorable control after the
+fact. Evidence and task-clustered curves are in
+\path{cross_agent_transfer/mini_swe_guarded_tail90_three_task_v2}.
+
 \section{Detailed Transfer Protocol}
 
 \subsection{Second open-source harness}
