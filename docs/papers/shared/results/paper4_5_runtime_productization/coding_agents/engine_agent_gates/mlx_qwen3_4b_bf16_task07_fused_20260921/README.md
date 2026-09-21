@@ -56,3 +56,9 @@ package use 2.4.6.  The manifests in this bundle all report
 
 Invalid infrastructure and eager-consumer attempts are quarantined outside the
 admitted bundle and are not included in any denominator.
+
+Two later locked identities were screened with plain execution only.  Task 8
+submitted after 11 calls but scored 0/1; Task 9 reached the 30-call horizon
+without a submission.  No selective arm was launched for either case.  Their
+classification and trajectory hashes are recorded in
+`followup_plain_screening.json`; they do not change the one-task admitted gate.
