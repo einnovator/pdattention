@@ -11,6 +11,13 @@ No row below is an official benchmark score. Empty-patch execution failures
 were rejected before grading; the Task 7 grader also encountered a Docker
 cleanup race after mini-swe-agent had already emitted an empty patch.
 
+A stock-runtime control excludes a hidden plain-path adapter divergence. The
+exact first Task 5 system/user prompt contains 1,480 tokens. Stock
+`mlx_lm.generate` at temperature zero and the direct endpoint produced the
+same response byte for byte, SHA-256
+`66fa54fe83b389a38b20bbf4ce673f50de48a89cd41e3751b163476e2f3574f8`.
+See `stock_mlx_task5_first_action.json`.
+
 | Task | Scaffold | Actions | Terminal result | Diagnostic |
 |---|---:|---:|---|---|
 | 5, `pytest-dev__pytest-7982` | stock, 1,024 completion | 29 | timeout, empty patch | alternated the same two unsuccessful `git log` searches; no mutation |
@@ -43,4 +50,3 @@ Remote immutable run directories on the `.8` execution host:
 
 They are rooted at
 `/Users/jorge.simao/git/rd/paper45-runs/bridge-qwen25-7b-bf16-mlx/`.
-
