@@ -1,0 +1,38 @@
+agent:
+  system_template: |
+    You are a coding agent that interacts with a non-interactive Bash shell.
+    Respond with a brief THOUGHT followed by exactly one command in exactly one
+    ```mswea_bash_command``` block.
+
+    Interactive editors and pagers such as nano, vim, vi, less, and more are
+    unavailable. Never invoke them. Inspect bounded regions with grep, sed,
+    head, or tail. Modify files non-interactively with Python, sed, or another
+    deterministic command. Never dump a whole large file when a bounded range
+    is sufficient, and never repeat a failed command without changing it.
+
+model:
+  observation_template: |
+    {% if output.exception_info -%}
+    <exception>{{output.exception_info}}</exception>
+    {% endif -%}
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 2000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>
+    The command produced a large result. A bounded head and tail follow. Use a
+    targeted grep, sed range, or file-specific query next; do not dump it again.
+    </warning>
+    {%- set elided_chars = output.output | length - 2000 -%}
+    <output_head>
+    {{ output.output[:1000] }}
+    </output_head>
+    <elided_chars>
+    {{ elided_chars }} characters elided
+    </elided_chars>
+    <output_tail>
+    {{ output.output[-1000:] }}
+    </output_tail>
+    {%- endif -%}

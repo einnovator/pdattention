@@ -637,6 +637,13 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "harness": "mini-swe-agent",
         "harness_version": args.harness_version,
         "harness_config": args.scaffold,
+        "harness_config_overrides": [
+            {
+                "path": str(Path(value)),
+                "sha256": hashlib.sha256(Path(value).read_bytes()).hexdigest(),
+            }
+            for value in getattr(args, "scaffold_override", ())
+        ],
         "consumption_policy": getattr(args, "consumption_policy", "standard"),
         "model_class": "litellm_textbased",
         "official_grader": args.grading,
@@ -824,6 +831,11 @@ def _execute_chunks(
                 "--subset", "verified", "--split", "test", "--filter", pattern,
                 "-m", f"openai/{args.served_model}", "--model-class", "litellm_textbased",
                 "-c", args.scaffold,
+                *[
+                    item
+                    for value in getattr(args, "scaffold_override", ())
+                    for item in ("-c", str(value))
+                ],
                 "-c", f"model.model_kwargs.api_base={agent_base_url}",
                 "-c", "model.model_kwargs.temperature=0",
                 "-c", f"model.model_kwargs.top_p={float(getattr(args, 'top_p', 1.0))}",
@@ -922,6 +934,9 @@ def _execute_chunks(
             "quantization": args.quantization,
             "kv_cache_dtype": args.kv_cache_dtype,
             "scaffold": args.scaffold,
+            "scaffold_overrides": [
+                str(value) for value in getattr(args, "scaffold_override", ())
+            ],
             "consumption_policy": getattr(args, "consumption_policy", "standard"),
             "context_limit": args.context_limit,
             "max_steps": args.max_steps,
@@ -978,6 +993,8 @@ def _execution_fingerprint(receipt: dict[str, Any]) -> str:
                 "max_completion_tokens",
                 "top_p",
                 "sampling_seed",
+                "harness_config",
+                "harness_config_overrides",
                 "consumption_policy",
                 "chat_template_no_thinking",
                 "prefix_caching",
@@ -1679,6 +1696,16 @@ def main() -> None:
     parser.add_argument("--harness-version", default=EXPECTED_PACKAGES["mini-swe-agent"])
     parser.add_argument("--grader-version", default=EXPECTED_PACKAGES["swebench"])
     parser.add_argument("--scaffold", default="swebench_backticks.yaml")
+    parser.add_argument(
+        "--scaffold-override",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "Additional recursively merged mini-swe-agent config. Every file "
+            "is checksum-bound in the run manifest and execution fingerprint."
+        ),
+    )
     parser.add_argument(
         "--chat-template-no-thinking",
         action="store_true",
