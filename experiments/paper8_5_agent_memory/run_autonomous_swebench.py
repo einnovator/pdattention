@@ -415,11 +415,26 @@ def _docker_image_identity(
     image_id = row.get("Id")
     if not isinstance(image_id, str) or not image_id:
         raise RuntimeError("Docker image inspect omitted the immutable image ID")
+    image_os = row.get("Os")
+    image_architecture = row.get("Architecture")
+    if not isinstance(image_os, str) or not image_os or not isinstance(
+        image_architecture, str
+    ) or not image_architecture:
+        raise RuntimeError("Docker image inspect omitted the observed image platform")
+    observed_platform = f"{image_os}/{image_architecture}"
+    if args.docker_platform and str(args.docker_platform) != observed_platform:
+        raise RuntimeError(
+            "Docker image platform differs from the requested execution platform: "
+            f"observed {observed_platform}, requested {args.docker_platform}"
+        )
     return {
         "environment_image_id": image_id,
         "environment_image_repo_digests": sorted(row.get("RepoDigests") or ()),
-        "environment_image_os": row.get("Os"),
-        "environment_image_architecture": row.get("Architecture"),
+        "environment_image_os": image_os,
+        "environment_image_architecture": image_architecture,
+        # Always record the observed platform.  A null requested platform must
+        # not make an otherwise immutable schema-2 execution unpairable.
+        "docker_platform": observed_platform,
     }
 
 

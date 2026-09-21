@@ -114,6 +114,32 @@ def test_autonomous_pair_reports_gross_net_calls_and_divergence(tmp_path):
     assert candidate["official_outcome"] == "resolved"
 
 
+def test_schema2_pair_recovers_observed_docker_platform(tmp_path):
+    full_path = _run(
+        tmp_path, "full", policy="full", calls=2, tokens=100,
+        resolved=True, pair_id="pair",
+    )
+    candidate_path = _run(
+        tmp_path, "candidate", policy="matched_token_tail", calls=2,
+        tokens=90, resolved=True, pair_id="pair",
+    )
+    for path in (full_path, candidate_path):
+        manifest_path = path / "run_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["docker_platform"] = None
+        manifest["environment_image_os"] = "linux"
+        manifest["environment_image_architecture"] = "amd64"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    full = load_autonomous_run(full_path)
+    candidate = load_autonomous_run(candidate_path)
+    pair_autonomous(candidate, full)
+
+    assert full["missing_pairing_identity"] == []
+    assert full["pairing_identity"]["docker_platform"] == "linux/amd64"
+    assert candidate["paired_net_saving_fraction"] == pytest.approx(.1)
+
+
 def test_explicit_legacy_pair_can_bind_backfilled_control_pair_ids(tmp_path):
     full = load_autonomous_run(_run(
         tmp_path, "full", policy="full", calls=2, tokens=100,

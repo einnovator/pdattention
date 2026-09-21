@@ -398,6 +398,17 @@ def load_autonomous_run(
             f"{trace_path}: materialized-token total does not match metrics"
         )
     pairing_identity = {key: manifest.get(key) for key in STRICT_PAIRING_KEYS}
+    # Early schema-2 manifests recorded Docker's immutable observed OS and
+    # architecture but left ``docker_platform`` null when no platform was
+    # explicitly requested.  Recover that same observed identity for pairing;
+    # this is not a guessed legacy exception and does not mutate the evidence.
+    if not pairing_identity.get("docker_platform"):
+        image_os = manifest.get("environment_image_os")
+        image_architecture = manifest.get("environment_image_architecture")
+        if image_os and image_architecture:
+            pairing_identity["docker_platform"] = (
+                f"{image_os}/{image_architecture}"
+            )
     pairing_identity["agent_behavior_sha256"] = (
         manifest.get("agent_behavior_sha256") or _agent_behavior_digest(manifest)
     )
