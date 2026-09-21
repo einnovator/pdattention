@@ -4600,10 +4600,73 @@ Furthermore, the historical OpenHands proxy trace records
 Qwen tokenizer and its manifest does not bind the endpoint model digest.  Its
 3/3 official quality outcome remains valid and its paired workload reduction
 is a within-agent diagnostic, but 46.86\% is not an exact cross-agent token
-comparison.  Strict transfer requires fresh Full/tail-90 runs for both agents
+comparison.  At that stage, strict transfer required fresh Full/tail-90 runs for both agents
 with the exact Qwen tokenizer revision and endpoint digest recorded.  Prior
 rows using Qwen2.5-Coder-14B or 7B remain model-specific diagnostics and are
 not pooled with either arm.
+
+That strict transfer is now complete on the common Tasks~1--3 cohort.
+Table~\ref{tab:openhands-exact-tail90} supersedes the historical whitespace
+token accounting for quantitative use.  All six arms bind the observed
+\texttt{qwen3-coder:30b} digest, its exact tokenizer revision, temperature
+zero, the task-derived workspace image, disabled native condensation, and
+zero semantic-request retries.  The policy is unchanged: matched token-tail
+at a nominal 90\% budget with two protected head turns and four protected tail
+turns.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Exact-token OpenHands transfer on the locked Tasks~1--3 cohort.
+Own saving removes trajectory-length effects; paired saving includes them.
+Every resolution cell is from the independent official grader.}
+\label{tab:openhands-exact-tail90}
+\begin{tabular}{lrrrrr}
+\toprule
+Task & FULL & Tail & Actions F/T & Own saving & Paired saving \\
+\midrule
+\texttt{django-15277} & 1 & 1 & 33/24 & 54.08\% & 63.26\% \\
+\texttt{django-15368} & 1 & 1 & 38/21 & 9.66\% & 39.11\% \\
+\texttt{scikit-learn-13135} & 1 & 1 & 20/19 & 9.57\% & 10.15\% \\
+\midrule
+Pooled workload & 3 & 3 & 91/64 & 29.82\% & 43.58\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The candidate materializes 629,228 of 896,615 tokens on its own trajectories,
+versus 1,115,305 tokens for paired \textsc{Full}; provider prompt accounting
+falls 39.90\%.  Thus the cohort reaches the exploratory 30--50\% paired
+workload target with no observed quality loss or aggregate action increase.
+The task-clustered mean paired saving is 37.51\%, and the wide
+10.15--63.26\% range is scientifically important: the same policy has little
+to retire on the short Scikit-learn trajectory but contracts the longer
+Django trajectories substantially.  One run per OpenHands arm is still too
+small for a production-default accuracy claim.
+
+The submission-guarded mini-swe-agent cohort uses the same three task
+identities, model digest, exact tokenizer, sampling controls, and frozen
+policy.  It preserves 3/3 official resolutions with 11.68\% own and 9.38\%
+paired saving and 62 versus 62 calls.  OpenHands preserves 3/3 with 29.82\%
+own and 43.58\% paired saving and 91 versus 64 actions.  The logical policy is
+engine independent, but opportunity is workload dependent: OpenHands carries
+richer schemas and larger observations, and its selective trajectories
+contract more.  Repeat controls are required before assigning the complete
+cross-agent gap causally to selection rather than backend trajectory variance.
+
+Admission also found a wire-compatibility failure that invalidated the first
+Task~2 \textsc{Full} attempt.  This Ollama OpenAI endpoint ignored
+\texttt{max\_completion\_tokens}; a declared 1,024-token request generated
+more than 12,000 tokens before cancellation.  A direct four-token diagnostic
+reproduces the defect, whereas \texttt{max\_tokens=4} stops at exactly four
+tokens.  The proxy now validates the logical limit, normalizes it to the
+portable wire key, and audits reported usage for overshoot.  The invalid run
+is quarantined and absent from every aggregate.  The runner additionally
+performs a bounded Docker-network preflight before the first semantic request.
+Evidence is in
+\path{cross_agent_transfer/ollama_completion_limit_wire_compatibility_v1},
+the three \path{openhands_task0*_exact_tail90_h2t4_v2} directories, and
+\path{cross_agent_transfer/openhands_exact_tail90_three_task_v2}.
 
 \subsection{Codex Responses admission}
 
