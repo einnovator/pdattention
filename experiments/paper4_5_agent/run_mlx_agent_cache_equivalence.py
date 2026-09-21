@@ -91,7 +91,13 @@ def _common_prefix(left: list[int], right: list[int]) -> int:
     return count
 
 
-def _assistant_prompts(tokenizer, trajectory: dict, turns: int) -> list[list[int]]:
+def _assistant_prompts(
+    tokenizer,
+    trajectory: dict,
+    turns: int,
+    *,
+    chat_template_kwargs: Mapping[str, object] | None = None,
+) -> list[list[int]]:
     messages = trajectory["messages"]
     indexes = [
         index for index, message in enumerate(messages)
@@ -100,7 +106,10 @@ def _assistant_prompts(tokenizer, trajectory: dict, turns: int) -> list[list[int
     prompts = []
     for index in indexes:
         rendered = tokenizer.apply_chat_template(
-            messages[:index], tokenize=True, add_generation_prompt=True
+            messages[:index],
+            tokenize=True,
+            add_generation_prompt=True,
+            **dict(chat_template_kwargs or {}),
         )
         if isinstance(rendered, str):
             rendered = tokenizer.encode(rendered, add_special_tokens=False)

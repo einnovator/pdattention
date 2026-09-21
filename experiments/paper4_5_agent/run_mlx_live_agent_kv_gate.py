@@ -7,6 +7,7 @@ import json
 import platform
 from pathlib import Path
 
+from pra_hf.agent_executor import configure_append_stable_template
 from pra_hf.live_history import LiveKVSelectionPlan
 
 from .run_mlx_agent_cache_equivalence import (
@@ -39,8 +40,21 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     from pra_mlx.native import capture_live_native_memory, make_native_prompt_cache
 
     model, tokenizer = load(args.model)
+    template_digest = configure_append_stable_template(
+        tokenizer, args.chat_template_profile
+    )
+    template_kwargs = (
+        {"enable_thinking": False}
+        if args.chat_template_profile == "qwen3-stable-no-thinking"
+        else None
+    )
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
-    prompts = _assistant_prompts(tokenizer, trajectory, args.turns)
+    prompts = _assistant_prompts(
+        tokenizer,
+        trajectory,
+        args.turns,
+        chat_template_kwargs=template_kwargs,
+    )
     messages = trajectory["messages"]
     assistant_indexes = [
         index for index, message in enumerate(messages)
@@ -156,6 +170,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "python_version": platform.python_version(),
         "hardware": args.hardware_label,
         "trajectory": str(args.trajectory),
+        "chat_template_profile": args.chat_template_profile,
+        "chat_template_digest": template_digest,
+        "chat_template_kwargs": dict(template_kwargs or {}),
         "retention_fraction": args.retention_fraction,
         "adaptor": "none",
         "same_resident_kv_fork": True,
@@ -198,6 +215,11 @@ def main() -> None:
     parser.add_argument("--continuation-tokens", type=int, default=16)
     parser.add_argument("--retention-fraction", type=float, default=1.0)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
+    parser.add_argument(
+        "--chat-template-profile",
+        choices=("native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
+        default="native",
+    )
     parser.add_argument("--hardware-label", default="unspecified")
     args = parser.parse_args()
     result = run(args)
