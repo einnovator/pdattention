@@ -321,6 +321,22 @@ checkpoint, precision, tokenizer, frozen policy, and task snapshots with both
 mini-swe-agent, OpenHands, and OpenCode.  Qwen3-Coder-30B cross-agent rows remain a
 separate model-family replication and cannot establish the joint claim.
 
+The first strict admission attempt is negative and therefore blocks selective
+arms rather than weakening their gate.  Direct MLX independently observed the
+pinned BF16 checkpoint and enforced the declared 8,192-token window before K/V
+allocation or mutation.  With stock mini-swe-agent, Tasks~3 and 4 reached that
+window after five and seven actions without a valid patch; Task~5 executed 29
+actions but alternated two unsuccessful searches and never mutated the
+workspace.  A task-independent scaffold diagnostic moved the existing
+noninteractive-shell rule into the system prompt and reduced oversized visible
+observations from 10,000 to 2,000 characters.  It enabled edits, but Task~4
+still left syntactically invalid Python before reaching the window, while the
+trivial OrderedSet Task~7 exhausted 30 actions and submitted an empty patch.
+These are model/task admission failures, not PRA-100 or PRA-90 results.  The
+corresponding selective rows remain prohibited until a repeatable plain success
+is found.  The manifests and reduction are archived in
+\path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_qwen25coder7b_bf16_admission_v2_20260921/}.
+
 The ordinary prefix cache remains available beside addressable resources.
 Local request deltas should continue through the engine's normal incremental
 path; persistent source records remain separately addressable.  PRA is useful
