@@ -99,7 +99,7 @@ def reduce_pair(
     full, _ = _arm(full_path)
     candidate, _ = _arm(candidate_path)
     identity_keys = (
-        "instance_id", "model", "model_revision", "tokenizer_revision",
+        "instance_id", "model", "model_revision", "tokenizer", "tokenizer_revision",
         "reference_trajectory_sha256", "source_image",
     )
     mismatches = {
