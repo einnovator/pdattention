@@ -706,6 +706,17 @@ def summarize_trace(path: Path) -> dict[str, Any]:
     reported_completion = sum(
         int(row["reported_completion_tokens"]) for row in usage_rows
     )
+    completion_limit_rows = []
+    completion_limit_violations = []
+    for row in usage_rows:
+        generation = row.get("generation")
+        generation = generation if isinstance(generation, Mapping) else {}
+        limit = generation.get("max_completion_tokens")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            continue
+        completion_limit_rows.append(row)
+        if int(row["reported_completion_tokens"]) > limit:
+            completion_limit_violations.append(row)
     native_delivery_rows = [row for row in rows if row.get("native_pra_delivery")]
     engine_rows = [
         row["engine_pra_metrics"] for row in native_delivery_rows
@@ -744,6 +755,15 @@ def summarize_trace(path: Path) -> dict[str, Any]:
         "cumulative_materialized_tokens": total_materialized,
         "reported_usage_coverage_calls": len(usage_rows),
         "cumulative_reported_completion_tokens": reported_completion,
+        "maximum_reported_completion_tokens": (
+            max(int(row["reported_completion_tokens"]) for row in usage_rows)
+            if usage_rows else None
+        ),
+        "completion_limit_coverage_calls": len(completion_limit_rows),
+        "completion_limit_violation_calls": len(completion_limit_violations),
+        "completion_limit_respected": (
+            not completion_limit_violations if completion_limit_rows else None
+        ),
         "cumulative_materialized_plus_reported_completion_tokens": (
             total_materialized + reported_completion
         ),

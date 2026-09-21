@@ -2319,6 +2319,7 @@ def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):
             "budget_satisfied": True,
             "upstream_status": 200,
             "reported_completion_tokens": 7,
+            "generation": {"max_completion_tokens": 8},
         })
     trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
     summary = summarize_trace(trace)
@@ -2332,7 +2333,25 @@ def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):
     assert summary["cumulative_logical_retention_fraction"] == pytest.approx(0.9)
     assert summary["reported_usage_coverage_calls"] == 5
     assert summary["cumulative_reported_completion_tokens"] == 35
+    assert summary["maximum_reported_completion_tokens"] == 7
+    assert summary["completion_limit_coverage_calls"] == 5
+    assert summary["completion_limit_violation_calls"] == 0
+    assert summary["completion_limit_respected"] is True
     assert summary["cumulative_materialized_plus_reported_completion_tokens"] == 435
+
+
+def test_summary_rejects_reported_completion_limit_overshoot(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    trace.write_text(json.dumps({
+        "reported_completion_tokens": 1025,
+        "generation": {"max_completion_tokens": 1024},
+    }) + "\n")
+
+    summary = summarize_trace(trace)
+
+    assert summary["completion_limit_coverage_calls"] == 1
+    assert summary["completion_limit_violation_calls"] == 1
+    assert summary["completion_limit_respected"] is False
 
 
 def test_summary_aggregates_native_engine_metrics_without_imputing_missing_values(tmp_path):
