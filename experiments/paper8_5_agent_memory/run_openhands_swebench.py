@@ -120,6 +120,64 @@ def _docker_image_exists(executable: str, image: str) -> bool:
     return inspected.returncode == 0
 
 
+def _container_api_preflight(
+    executable: str,
+    image: str,
+    base_url: str,
+    *,
+    attempts: int,
+    timeout_seconds: int,
+    interval_seconds: float,
+) -> dict[str, Any]:
+    """Verify API reachability from the same Docker network as the agent.
+
+    Host-side probes do not detect transient Docker Desktop routing failures.
+    This read-only ``/models`` check happens before any semantic model request,
+    so exhausted retries can be quarantined as infrastructure-only attempts.
+    """
+    if attempts < 1:
+        raise ValueError("container preflight attempts must be positive")
+    endpoint = base_url.rstrip("/") + "/models"
+    history: list[dict[str, Any]] = []
+    for attempt in range(1, attempts + 1):
+        command = (
+            executable,
+            "run",
+            "--rm",
+            "--platform",
+            "linux/amd64",
+            "--entrypoint",
+            "/usr/bin/curl",
+            image,
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--max-time",
+            str(timeout_seconds),
+            endpoint,
+        )
+        probe = subprocess.run(command, capture_output=True, check=False)
+        history.append({
+            "attempt": attempt,
+            "returncode": probe.returncode,
+            "stdout_sha256": _sha256(probe.stdout),
+            "stderr": probe.stderr.decode("utf-8", errors="replace")[-1000:],
+        })
+        if probe.returncode == 0:
+            return {
+                "status": "pass",
+                "endpoint": endpoint,
+                "attempts": history,
+            }
+        if attempt < attempts and interval_seconds > 0:
+            time.sleep(interval_seconds)
+    return {
+        "status": "fail",
+        "endpoint": endpoint,
+        "attempts": history,
+    }
+
+
 def _prepare_build_context(repository: Path, output: Path) -> Path:
     """Create the minimal immutable context needed by the two Docker builds.
 
@@ -229,6 +287,21 @@ def run(args: argparse.Namespace) -> Path:
     if build.returncode:
         raise RuntimeError(f"OpenHands task image build failed with {build.returncode}")
 
+    preflight = _container_api_preflight(
+        args.docker,
+        image,
+        args.base_url,
+        attempts=args.container_preflight_attempts,
+        timeout_seconds=args.container_preflight_timeout_seconds,
+        interval_seconds=args.container_preflight_interval_seconds,
+    )
+    _write_json(output / "container_api_preflight.json", preflight)
+    if preflight["status"] != "pass":
+        raise RuntimeError(
+            "OpenHands API was unreachable from the task container after "
+            f"{args.container_preflight_attempts} preflight attempts"
+        )
+
     command: tuple[str, ...] = (
         args.docker,
         "run",
@@ -326,6 +399,7 @@ def run(args: argparse.Namespace) -> Path:
             "max_completion_tokens": args.max_completion_tokens,
         },
         "base_url": args.base_url,
+        "container_api_preflight": preflight,
         "source_image": source_image,
         "derived_image": image,
         "runtime_image": runtime_image,
@@ -398,6 +472,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--request-timeout-seconds", type=int, default=1200)
     parser.add_argument("--request-retries", type=int, default=0)
+    parser.add_argument("--container-preflight-attempts", type=int, default=3)
+    parser.add_argument("--container-preflight-timeout-seconds", type=int, default=5)
+    parser.add_argument("--container-preflight-interval-seconds", type=float, default=2.0)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")
     parser.add_argument("--runtime-image")

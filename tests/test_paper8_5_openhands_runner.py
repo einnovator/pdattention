@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from experiments.paper8_5_agent_memory.run_openhands_swebench import (
+    _container_api_preflight,
     _event_summary,
     _prepare_build_context,
 )
@@ -167,3 +168,33 @@ def test_openhands_build_context_contains_only_declared_inputs(tmp_path: Path):
         "openhands_swebench_entry.py",
     ]
     assert (context / "execution_receipts.py").read_text(encoding="utf-8") == "SCHEMA = 1\n"
+
+
+def test_container_api_preflight_retries_before_semantic_execution(monkeypatch):
+    calls = []
+    outcomes = [
+        __import__("subprocess").CompletedProcess((), 7, b"", b"route failed"),
+        __import__("subprocess").CompletedProcess((), 0, b'{"data":[]}', b""),
+    ]
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return outcomes.pop(0)
+
+    monkeypatch.setattr(
+        "experiments.paper8_5_agent_memory.run_openhands_swebench.subprocess.run",
+        fake_run,
+    )
+    result = _container_api_preflight(
+        "docker",
+        "task-image:locked",
+        "http://host.docker.internal:18185/v1",
+        attempts=3,
+        timeout_seconds=5,
+        interval_seconds=0,
+    )
+
+    assert result["status"] == "pass"
+    assert len(result["attempts"]) == 2
+    assert calls[0][0][-1] == "http://host.docker.internal:18185/v1/models"
+    assert calls[0][1] == {"capture_output": True, "check": False}
