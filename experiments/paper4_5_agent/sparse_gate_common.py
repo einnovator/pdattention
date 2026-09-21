@@ -11,9 +11,17 @@ from typing import MutableMapping
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 
 
-def _ids(tokenizer, messages: Sequence[Mapping[str, object]]) -> list[int]:
+def _ids(
+    tokenizer,
+    messages: Sequence[Mapping[str, object]],
+    *,
+    chat_template_kwargs: Mapping[str, object] | None = None,
+) -> list[int]:
     rendered = tokenizer.apply_chat_template(
-        list(messages), tokenize=True, add_generation_prompt=False
+        list(messages),
+        tokenize=True,
+        add_generation_prompt=False,
+        **dict(chat_template_kwargs or {}),
     )
     if isinstance(rendered, str):
         rendered = tokenizer.encode(rendered, add_special_tokens=False)
@@ -42,6 +50,7 @@ def causal_message_spans(
     *,
     source_tokens: int,
     prefix_ids_cache: MutableMapping[str, tuple[int, ...]] | None = None,
+    chat_template_kwargs: Mapping[str, object] | None = None,
 ) -> tuple[LiveKVInterval, ...]:
     """Map complete chat records into the canonical prompt-token frame.
 
@@ -65,7 +74,11 @@ def causal_message_spans(
         prefix = (
             list(prefix_ids_cache[cache_key])
             if prefix_ids_cache is not None and cache_key in prefix_ids_cache
-            else _ids(tokenizer, prefix_messages)
+            else _ids(
+                tokenizer,
+                prefix_messages,
+                chat_template_kwargs=chat_template_kwargs,
+            )
         )
         if prefix_ids_cache is not None and cache_key not in prefix_ids_cache:
             prefix_ids_cache[cache_key] = tuple(prefix)
@@ -102,6 +115,7 @@ def sparse_causal_plan(
     *,
     source_tokens: int,
     retention_fraction: float,
+    chat_template_kwargs: Mapping[str, object] | None = None,
 ) -> LiveKVSelectionPlan:
     """Drop whole old causal groups while pinning preamble and active state."""
 
@@ -111,7 +125,11 @@ def sparse_causal_plan(
     if fraction == 1:
         return LiveKVSelectionPlan.full(source_tokens)
     spans = causal_message_spans(
-        tokenizer, messages, prompt_ids, source_tokens=source_tokens
+        tokenizer,
+        messages,
+        prompt_ids,
+        source_tokens=source_tokens,
+        chat_template_kwargs=chat_template_kwargs,
     )
     groups: dict[str, list[LiveKVInterval]] = {}
     order: list[str] = []

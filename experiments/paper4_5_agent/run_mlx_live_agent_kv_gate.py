@@ -32,6 +32,19 @@ def _ordinary_cache(model, layers: tuple[LayerKV, ...], source_tokens: int):
     ]
 
 
+def _qualification_passed(
+    retention_fraction: float,
+    *,
+    all_exact: bool,
+    sparse_position_gate_valid: bool,
+) -> bool:
+    """Fail closed unless the requested full or sparse gate actually ran."""
+
+    return bool(
+        all_exact if retention_fraction == 1 else sparse_position_gate_valid
+    )
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     import mlx.core as mx
     import mlx_lm
@@ -63,6 +76,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     prior_ids: list[int] = []
     source_cache = None
     rows = []
+    skipped_rows = []
     for turn, (assistant_index, prompt_ids) in enumerate(
         zip(assistant_indexes, prompts), start=1
     ):
@@ -93,8 +107,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 prompt_ids,
                 source_tokens=len(source_ids),
                 retention_fraction=args.retention_fraction,
+                chat_template_kwargs=template_kwargs,
             )
-        except RuntimeError:
+        except RuntimeError as exc:
+            skipped_rows.append({
+                "turn": turn,
+                "assistant_message_index": assistant_index,
+                "source_tokens": len(source_ids),
+                "reason": str(exc),
+            })
             prior_ids = source_ids
             continue
         resident = capture_live_native_memory(source_cache, plan)
@@ -178,11 +199,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "same_resident_kv_fork": True,
         "completed_turns": len(rows),
         "exact_turns": sum(int(row["token_exact"]) for row in rows),
-        "all_exact": all(row["token_exact"] for row in rows),
-        "zero_selected_text_reencoding": all(
+        "all_exact": bool(rows) and all(row["token_exact"] for row in rows),
+        "zero_selected_text_reencoding": bool(rows) and all(
             row["selected_text_reencoded_tokens"] == 0 for row in rows
         ),
-        "zero_physical_kv_copy": all(
+        "zero_physical_kv_copy": bool(rows) and all(
             not row["physical_kv_copy"] for row in rows
         ),
         "first_divergent_turn": next(
@@ -190,6 +211,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "reference_condition": "detached clone consuming identical selected resident K/V at identical original positions",
         "sparse_turns": sum(int(row["has_holes"]) for row in rows),
+        "skipped_turns": skipped_rows,
         "rows": rows,
     }
     result["sparse_position_gate_valid"] = bool(
@@ -200,6 +222,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         and all(
             row["source_position_base"] == row["source_tokens"] for row in rows
         )
+    )
+    result["qualification_passed"] = _qualification_passed(
+        args.retention_fraction,
+        all_exact=bool(result["all_exact"]),
+        sparse_position_gate_valid=bool(result["sparse_position_gate_valid"]),
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -226,8 +253,9 @@ def main() -> None:
     print(json.dumps({key: result[key] for key in (
         "engine", "model", "completed_turns", "exact_turns", "all_exact",
         "zero_selected_text_reencoding", "first_divergent_turn",
+        "sparse_position_gate_valid", "qualification_passed",
     )}, indent=2))
-    raise SystemExit(0 if result["all_exact"] else 1)
+    raise SystemExit(0 if result["qualification_passed"] else 1)
 
 
 if __name__ == "__main__":

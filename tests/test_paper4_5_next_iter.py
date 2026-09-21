@@ -3,6 +3,10 @@ from __future__ import annotations
 from experiments.paper4_5_agent.run_mlx_agent_cache_equivalence import (
     _assistant_prompts,
 )
+from experiments.paper4_5_agent.run_mlx_live_agent_kv_gate import (
+    _qualification_passed,
+)
+from experiments.paper4_5_agent.sparse_gate_common import causal_message_spans
 from experiments.paper4_5_runtime.build_product_matrix_v2 import build_matrix
 from experiments.paper4_5_runtime.run_agent_transport_scaling import (
     run_scaling_workload,
@@ -118,3 +122,45 @@ def test_mlx_gate_prompt_builder_forwards_frozen_template_kwargs() -> None:
             },
         )
     ]
+
+
+def test_sparse_span_builder_uses_the_same_template_kwargs_as_prompt() -> None:
+    calls = []
+
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            calls.append(kwargs)
+            return list(range(1, len(messages) + 1))
+
+    spans = causal_message_spans(
+        Tokenizer(),
+        [
+            {"role": "system", "content": "system"},
+            {"role": "assistant", "content": "action"},
+            {"role": "user", "content": "observation"},
+        ],
+        [1, 2, 3],
+        source_tokens=3,
+        chat_template_kwargs={"enable_thinking": False},
+    )
+
+    assert sum(span.tokens for span in spans) == 3
+    assert calls == [
+        {
+            "tokenize": True,
+            "add_generation_prompt": False,
+            "enable_thinking": False,
+        }
+    ] * 3
+
+
+def test_mlx_sparse_gate_rejects_vacuous_exactness() -> None:
+    assert not _qualification_passed(
+        0.9, all_exact=True, sparse_position_gate_valid=False
+    )
+    assert not _qualification_passed(
+        1.0, all_exact=False, sparse_position_gate_valid=False
+    )
+    assert _qualification_passed(
+        0.9, all_exact=True, sparse_position_gate_valid=True
+    )
