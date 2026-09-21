@@ -1521,6 +1521,15 @@ class AutonomousSelectionProxy:
                 ):
                     payload["max_tokens"] = self.config.max_completion_tokens
             self._validate_generation(payload)
+            # ``max_completion_tokens`` is accepted by recent OpenAI clients,
+            # but several OpenAI-compatible local runtimes silently ignore it.
+            # Normalize the already-validated logical limit to the older,
+            # widely enforced wire key before forwarding.  Without this step
+            # an OpenHands request declared as 1,024 tokens was observed to
+            # generate more than 12,000 tokens on Ollama.
+            if self.config.max_completion_tokens is not None:
+                payload["max_tokens"] = self.config.max_completion_tokens
+                payload.pop("max_completion_tokens", None)
             with self._lock:
                 if self._request_count >= self.config.max_calls:
                     raise PermissionError(

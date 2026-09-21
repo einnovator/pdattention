@@ -1907,6 +1907,32 @@ def _post(url: str, payload: dict) -> tuple[int, dict]:
         return error.code, json.loads(error.read())
 
 
+def test_proxy_normalizes_completion_limit_to_portable_wire_key(tmp_path):
+    upstream = _Upstream()
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="full",
+            expected_model="locked-model",
+            fill_missing_generation_parameters=True,
+            max_completion_tokens=1024,
+            max_calls=1,
+        ),
+        trace_path=tmp_path / "trace.jsonl",
+    )
+    payload = _payload()
+    payload["max_completion_tokens"] = 1024
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", payload)[0] == 200
+    finally:
+        proxy.close()
+        upstream.close()
+
+    assert upstream.requests[0]["max_tokens"] == 1024
+    assert "max_completion_tokens" not in upstream.requests[0]
+
+
 def test_proxy_forwards_ordinary_selected_text_and_logs_reacquisition(tmp_path):
     upstream = _Upstream()
     trace = tmp_path / "trace.jsonl"
