@@ -223,6 +223,17 @@ def gateway_preflight(
     runtime_identity = health.get("runtime_identity")
     if runtime_identity is not None and not isinstance(runtime_identity, dict):
         raise RuntimeError("endpoint runtime_identity must be a JSON object")
+    if bool(getattr(args, "require_observed_model_revision", False)):
+        from experiments.paper4_5_agent.runtime_identity import (
+            validate_health_checkpoint_identity,
+        )
+
+        try:
+            validate_health_checkpoint_identity(
+                runtime_identity, args.model_revision
+            )
+        except ValueError as error:
+            raise RuntimeError(str(error)) from error
     max_model_len = health.get(
         "max_model_len",
         engine.get("max_model_len", effective.get("max_model_len")),
@@ -574,6 +585,9 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "temperature": 0,
         "top_p": float(getattr(args, "top_p", 1.0)),
         "sampling_seed": int(getattr(args, "sampling_seed", 0)),
+        "require_observed_model_revision": bool(
+            getattr(args, "require_observed_model_revision", False)
+        ),
         "campaign_mode": args.mode,
         "selection_contract": selection_contract,
         "selection_record_path": str(selection_record) if selection_record else None,
@@ -1766,6 +1780,14 @@ def main() -> None:
         help=(
             "Require health/model/template admission even for a direct plain "
             "arm, so cross-arm engine configuration can be frozen."
+        ),
+    )
+    parser.add_argument(
+        "--require-observed-model-revision",
+        action="store_true",
+        help=(
+            "Require the endpoint to independently report the exact loaded "
+            "source-checkpoint revision; mandatory for strict cross-engine cells."
         ),
     )
     parser.add_argument(

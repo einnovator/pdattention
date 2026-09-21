@@ -44,7 +44,11 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
     return response
 
 
-def _handler(executor: object, model_id: str):
+def _handler(
+    executor: object,
+    model_id: str,
+    runtime_identity: Mapping[str, Any] | None = None,
+):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
             body = json.dumps(payload, default=str).encode("utf-8")
@@ -65,6 +69,7 @@ def _handler(executor: object, model_id: str):
                     "prefix_cache_enabled": True,
                     "chat_template_profile": executor.chat_template_profile,
                     "chat_template_digest": executor.chat_template_digest,
+                    "runtime_identity": dict(runtime_identity or {}),
                     "effective_capabilities": caps,
                     "engine": caps,
                 })
@@ -124,6 +129,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True)
     parser.add_argument(
+        "--revision",
+        help="Required immutable source revision for strict cross-engine cohorts.",
+    )
+    parser.add_argument(
         "--served-model",
         help="Stable OpenAI model name; defaults to the model load path.",
     )
@@ -163,6 +172,9 @@ def main() -> None:
     from vllm import LLM
 
     from pra_hf.agent_executor import validate_append_stable_template
+    from experiments.paper4_5_agent.runtime_identity import (
+        require_source_checkpoint_revision,
+    )
     from pra_vllm.agent_executor import (
         VLLMCudaAgentHistoryExecutor,
         VLLMInProcessSchedulerDriver,
@@ -190,8 +202,24 @@ def main() -> None:
     )
     if args.max_num_batched_tokens is not None:
         llm_options["max_num_batched_tokens"] = args.max_num_batched_tokens
+    if args.revision:
+        llm_options["revision"] = args.revision
     llm = LLM(**llm_options)
     tokenizer = llm.get_tokenizer()
+    hf_config = getattr(
+        getattr(getattr(llm, "llm_engine", None), "model_config", None),
+        "hf_config",
+        None,
+    )
+    observed_revision = (
+        require_source_checkpoint_revision(
+            args.model,
+            args.revision,
+            runtime_config=hf_config,
+        )
+        if args.revision
+        else None
+    )
     validate_append_stable_template(tokenizer)
     digest = hashlib.sha256(str(tokenizer.chat_template).encode()).hexdigest()
     executor = VLLMCudaAgentHistoryExecutor(
@@ -201,7 +229,15 @@ def main() -> None:
         chat_template_digest=digest,
     )
     ThreadingHTTPServer(
-        (args.host, args.port), _handler(executor, served_model)
+        (args.host, args.port),
+        _handler(
+            executor,
+            served_model,
+            {
+                "engine": "vllm-cuda",
+                "observed_source_checkpoint_revision": observed_revision,
+            },
+        ),
     ).serve_forever()
 
 

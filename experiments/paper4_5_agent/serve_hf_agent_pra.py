@@ -38,7 +38,11 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
     return response
 
 
-def _direct_handler(executor: object, model_id: str):
+def _direct_handler(
+    executor: object,
+    model_id: str,
+    runtime_identity: Mapping[str, Any] | None = None,
+):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
             encoded = json.dumps(payload, default=str).encode("utf-8")
@@ -64,6 +68,7 @@ def _direct_handler(executor: object, model_id: str):
                     "load_in_4bit": bool(getattr(executor, "load_in_4bit", False)),
                     "chat_template_profile": executor.chat_template_profile,
                     "chat_template_digest": executor.chat_template_digest,
+                    "runtime_identity": dict(runtime_identity or {}),
                     "effective_capabilities": capabilities,
                     "engine": capabilities,
                 })
@@ -171,6 +176,9 @@ def main() -> None:
         configure_append_stable_template,
         validate_append_stable_template,
     )
+    from experiments.paper4_5_agent.runtime_identity import (
+        require_source_checkpoint_revision,
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
     template_digest = configure_append_stable_template(
@@ -202,6 +210,11 @@ def main() -> None:
         )
     model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
     model.eval()
+    observed_revision = require_source_checkpoint_revision(
+        args.model,
+        args.revision,
+        runtime_config=getattr(model, "config", None),
+    )
     executor = HFAgentHistoryExecutor(
         model,
         tokenizer,
@@ -217,7 +230,15 @@ def main() -> None:
     executor.load_in_4bit = args.load_in_4bit
     try:
         ThreadingHTTPServer(
-            (args.host, args.port), _direct_handler(executor, served_model)
+            (args.host, args.port),
+            _direct_handler(
+                executor,
+                served_model,
+                {
+                    "engine": "huggingface",
+                    "observed_source_checkpoint_revision": observed_revision,
+                },
+            ),
         ).serve_forever()
     finally:
         executor.close()

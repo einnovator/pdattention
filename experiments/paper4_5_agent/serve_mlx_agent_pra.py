@@ -41,7 +41,10 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
     return response
 
 
-def _runtime_identity(pra_source_revision: str) -> dict[str, Any]:
+def _runtime_identity(
+    pra_source_revision: str,
+    observed_source_checkpoint_revision: str,
+) -> dict[str, Any]:
     """Describe the packages that execute MLX requests, not the caller venv."""
 
     packages: dict[str, str | None] = {}
@@ -63,6 +66,7 @@ def _runtime_identity(pra_source_revision: str) -> dict[str, Any]:
         "packages": packages,
         "package_record_sha256": records,
         "pra_source_revision": pra_source_revision,
+        "observed_source_checkpoint_revision": observed_source_checkpoint_revision,
     }
 
 
@@ -212,11 +216,19 @@ def main() -> None:
         validate_append_stable_template,
     )
     from pra_mlx import MLXAgentHistoryExecutor
+    from experiments.paper4_5_agent.runtime_identity import (
+        require_source_checkpoint_revision,
+    )
 
     # mlx-lm resolves a local snapshot path or Hub identifier itself.  The
     # required revision remains part of the executor's compatibility identity;
     # use a pinned local snapshot path when exact Hub revision loading matters.
     model, tokenizer = load(args.model)
+    observed_revision = require_source_checkpoint_revision(
+        args.model,
+        args.revision,
+        runtime_config=getattr(model, "config", None),
+    )
     template_digest = configure_append_stable_template(
         tokenizer, args.chat_template_profile
     )
@@ -247,7 +259,7 @@ def main() -> None:
             _direct_handler(
                 executor,
                 served_model,
-                _runtime_identity(args.pra_source_revision),
+                _runtime_identity(args.pra_source_revision, observed_revision),
             ),
         ).serve_forever()
     finally:
