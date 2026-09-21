@@ -1,0 +1,339 @@
+{
+  "schema_version": "paper4.5.frozen-agent-engine-gate.v1",
+  "engine": "mlx-qwen3-4b-bf16-fused",
+  "instance_id": "django__django-14089",
+  "temperature": 0,
+  "plain": {
+    "status": "complete",
+    "run_directory": "/Users/jorge.simao/git/rd/paper45-runs/bridge-qwen3-4b-bf16-mlx/task07-plain-f-fused-validator",
+    "run_id": "p45-qwen3-4b-bf16-mlx-task07-plain-f-fused-validator-20260921",
+    "chat_template_profile": "qwen3-stable-no-thinking",
+    "chat_template_digest": "8dc162e490e0aa52f43271901d541bda48d366682dd8e85cccc448935af9fac3",
+    "mode": "no-pra",
+    "task_success": true,
+    "grader_outcome": "resolved",
+    "termination_reason": "Submitted",
+    "calls_to_solution": 7,
+    "tool_calls": 7,
+    "action_trajectory_length": 7,
+    "action_trajectory_sha256": "f4fc11d4d2f9359ab4ef27b86d10813dc0f6155ee242fc4e0d5606eca197b513",
+    "action_trajectory": [
+      {
+        "content": "THOUGHT: I need to find the file where the OrderedSet is defined to add the __reversed__() method. Let me search for the file that contains the OrderedSet class.\n\n```mswea_bash_command\ngrep -r 'class OrderedSet' /testbed\n```",
+        "actions": [
+          {
+            "command": "grep -r 'class OrderedSet' /testbed"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The OrderedSet class is defined in django/utils/datastructures.py. I need to open this file and add the __reversed__() method to make it reversible.\n\n```mswea_bash_command\nsed -i '/class OrderedSet:/a\\    def __reversed__(self):\\n        return reversed(list(self))' /testbed/django/utils/datastructures.py\n```",
+        "actions": [
+          {
+            "command": "sed -i '/class OrderedSet:/a\\    def __reversed__(self):\\n        return reversed(list(self))' /testbed/django/utils/datastructures.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have added the __reversed__() method to the OrderedSet class. Now I need to create a script to verify that the change works as expected. Let me create a simple script that uses reversed() on an OrderedSet.\n\n```mswea_bash_command\ncat > /testbed/test_ordered_set_reversed.py << EOF\nfrom django.utils.datastructures import OrderedSet\n\nos = OrderedSet([1, 2, 3])\nreversed_os = reversed(os)\nprint(list(reversed_os))\nEOF\n```",
+        "actions": [
+          {
+            "command": "cat > /testbed/test_ordered_set_reversed.py << EOF\nfrom django.utils.datastructures import OrderedSet\n\nos = OrderedSet([1, 2, 3])\nreversed_os = reversed(os)\nprint(list(reversed_os))\nEOF"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have created a script to test the reversed() function on an OrderedSet. Now I need to run this script to verify that the change works as expected.\n\n```mswea_bash_command\npython3 /testbed/test_ordered_set_reversed.py\n```",
+        "actions": [
+          {
+            "command": "python3 /testbed/test_ordered_set_reversed.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The script ran successfully and the output is [3, 2, 1], which is the reversed order of the OrderedSet. This confirms that the change works as expected. Now I need to create a git patch to submit my changes.\n\n```mswea_bash_command\ngit diff -- /testbed/django/utils/datastructures.py > /testbed/patch.txt\n```",
+        "actions": [
+          {
+            "command": "git diff -- /testbed/django/utils/datastructures.py > /testbed/patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have created the patch file with my changes. Now I need to verify the patch file to ensure it only contains the intended changes. Let me inspect the patch file.\n\n```mswea_bash_command\ncat /testbed/patch.txt\n```",
+        "actions": [
+          {
+            "command": "cat /testbed/patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The patch file contains only the intended changes to the OrderedSet class. Now I need to submit the patch using the exact command required.\n\n```mswea_bash_command\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat /testbed/patch.txt\n```",
+        "actions": [
+          {
+            "command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat /testbed/patch.txt"
+          }
+        ]
+      }
+    ],
+    "patch_sha256": "2c03bf246b8035309a8d593ea3ffda4661558673db81ea2dca9b349269d61802",
+    "patch_bytes": 405,
+    "engine_version": "0.31.3",
+    "engine_runtime_identity": {
+      "packages": {
+        "mlx": "0.32.2",
+        "mlx-lm": "0.31.3"
+      },
+      "package_record_sha256": {
+        "mlx": "cca5a19efca4d81b34f6b86a675c893792cc98d9bae6d7013665d009422f6c30",
+        "mlx-lm": "743f90141a22c8b2c31eef9d26ffcdbcddd5c6546e9519295915c0016ce9f969"
+      },
+      "pra_source_revision": "62d7c0da",
+      "observed_source_checkpoint_revision": "1cfa9a7208912126459214e8b04321603b3df60c"
+    },
+    "exact_environment": true,
+    "configuration_differences": [],
+    "requested_retention_fraction": 1.0,
+    "realized_retention_fraction": null,
+    "realized_retention_fraction_min": null,
+    "realized_retention_fraction_max": null,
+    "engine_reported_history_kv_retention_fraction_min": null,
+    "engine_reported_history_kv_retention_fraction_max": null,
+    "selected_history_reencoded_tokens": null,
+    "physical_kv_copy_bytes": null,
+    "total_kv_copy_bytes": null,
+    "canonical_suffix_graft_d2d_bytes": null,
+    "host_to_device_bytes": null,
+    "consumer_temporary_bytes": null,
+    "consumer_temporary_peak_bytes": null,
+    "fused_attention_calls": null,
+    "logical_input_tokens_estimate": null,
+    "physical_input_tokens_estimate": null,
+    "wall_time_s": 53.23641395568848,
+    "trajectory_path": "/Users/jorge.simao/git/rd/paper45-runs/bridge-qwen3-4b-bf16-mlx/task07-plain-f-fused-validator/chunk_00/django__django-14089/django__django-14089.traj.json",
+    "trajectory_sha256": "6043a57fdc3412ea31358e09c690dfb95e685e5726d1d36faf5803e98671c19c"
+  },
+  "selection_neutral_live_prefix_control": null,
+  "pra_100": {
+    "status": "complete",
+    "run_directory": "/Users/jorge.simao/git/rd/paper45-runs/bridge-qwen3-4b-bf16-mlx/task07-pra100-d-fused-validator",
+    "run_id": "p45-qwen3-4b-bf16-mlx-task07-pra100-d-fused-validator-20260921",
+    "chat_template_profile": "qwen3-stable-no-thinking",
+    "chat_template_digest": "8dc162e490e0aa52f43271901d541bda48d366682dd8e85cccc448935af9fac3",
+    "mode": "direct-native-pra",
+    "task_success": true,
+    "grader_outcome": "resolved",
+    "termination_reason": "Submitted",
+    "calls_to_solution": 7,
+    "tool_calls": 7,
+    "action_trajectory_length": 7,
+    "action_trajectory_sha256": "f4fc11d4d2f9359ab4ef27b86d10813dc0f6155ee242fc4e0d5606eca197b513",
+    "action_trajectory": [
+      {
+        "content": "THOUGHT: I need to find the file where the OrderedSet is defined to add the __reversed__() method. Let me search for the file that contains the OrderedSet class.\n\n```mswea_bash_command\ngrep -r 'class OrderedSet' /testbed\n```",
+        "actions": [
+          {
+            "command": "grep -r 'class OrderedSet' /testbed"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The OrderedSet class is defined in django/utils/datastructures.py. I need to open this file and add the __reversed__() method to make it reversible.\n\n```mswea_bash_command\nsed -i '/class OrderedSet:/a\\    def __reversed__(self):\\n        return reversed(list(self))' /testbed/django/utils/datastructures.py\n```",
+        "actions": [
+          {
+            "command": "sed -i '/class OrderedSet:/a\\    def __reversed__(self):\\n        return reversed(list(self))' /testbed/django/utils/datastructures.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have added the __reversed__() method to the OrderedSet class. Now I need to create a script to verify that the change works as expected. Let me create a simple script that uses reversed() on an OrderedSet.\n\n```mswea_bash_command\ncat > /testbed/test_ordered_set_reversed.py << EOF\nfrom django.utils.datastructures import OrderedSet\n\nos = OrderedSet([1, 2, 3])\nreversed_os = reversed(os)\nprint(list(reversed_os))\nEOF\n```",
+        "actions": [
+          {
+            "command": "cat > /testbed/test_ordered_set_reversed.py << EOF\nfrom django.utils.datastructures import OrderedSet\n\nos = OrderedSet([1, 2, 3])\nreversed_os = reversed(os)\nprint(list(reversed_os))\nEOF"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have created a script to test the reversed() function on an OrderedSet. Now I need to run this script to verify that the change works as expected.\n\n```mswea_bash_command\npython3 /testbed/test_ordered_set_reversed.py\n```",
+        "actions": [
+          {
+            "command": "python3 /testbed/test_ordered_set_reversed.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The script ran successfully and the output is [3, 2, 1], which is the reversed order of the OrderedSet. This confirms that the change works as expected. Now I need to create a git patch to submit my changes.\n\n```mswea_bash_command\ngit diff -- /testbed/django/utils/datastructures.py > /testbed/patch.txt\n```",
+        "actions": [
+          {
+            "command": "git diff -- /testbed/django/utils/datastructures.py > /testbed/patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have created the patch file with my changes. Now I need to verify the patch file to ensure it only contains the intended changes. Let me inspect the patch file.\n\n```mswea_bash_command\ncat /testbed/patch.txt\n```",
+        "actions": [
+          {
+            "command": "cat /testbed/patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The patch file contains only the intended changes to the OrderedSet class. Now I need to submit the patch using the exact command required.\n\n```mswea_bash_command\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat /testbed/patch.txt\n```",
+        "actions": [
+          {
+            "command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat /testbed/patch.txt"
+          }
+        ]
+      }
+    ],
+    "patch_sha256": "2c03bf246b8035309a8d593ea3ffda4661558673db81ea2dca9b349269d61802",
+    "patch_bytes": 405,
+    "engine_version": "0.31.3",
+    "engine_runtime_identity": {
+      "packages": {
+        "mlx": "0.32.2",
+        "mlx-lm": "0.31.3"
+      },
+      "package_record_sha256": {
+        "mlx": "cca5a19efca4d81b34f6b86a675c893792cc98d9bae6d7013665d009422f6c30",
+        "mlx-lm": "743f90141a22c8b2c31eef9d26ffcdbcddd5c6546e9519295915c0016ce9f969"
+      },
+      "pra_source_revision": "62d7c0da",
+      "observed_source_checkpoint_revision": "1cfa9a7208912126459214e8b04321603b3df60c"
+    },
+    "exact_environment": true,
+    "configuration_differences": [],
+    "requested_retention_fraction": 1.0,
+    "realized_retention_fraction": 1.0,
+    "realized_retention_fraction_min": 1.0,
+    "realized_retention_fraction_max": 1.0,
+    "engine_reported_history_kv_retention_fraction_min": 1.0,
+    "engine_reported_history_kv_retention_fraction_max": 1.0,
+    "selected_history_reencoded_tokens": 0,
+    "physical_kv_copy_bytes": 0,
+    "total_kv_copy_bytes": 3546464256,
+    "canonical_suffix_graft_d2d_bytes": 82132992,
+    "host_to_device_bytes": 0,
+    "consumer_temporary_bytes": 2189246464,
+    "consumer_temporary_peak_bytes": 371900416,
+    "fused_attention_calls": null,
+    "logical_input_tokens_estimate": 12093,
+    "physical_input_tokens_estimate": 12093,
+    "wall_time_s": 35.72520089149475,
+    "trajectory_path": "/Users/jorge.simao/git/rd/paper45-runs/bridge-qwen3-4b-bf16-mlx/task07-pra100-d-fused-validator/chunk_00/django__django-14089/django__django-14089.traj.json",
+    "trajectory_sha256": "ad9a9427d6118c053e5ad70a3ef030842f9c2def6426108906006867a7c4d70e"
+  },
+  "pra_90": {
+    "status": "complete",
+    "run_directory": "/Users/jorge.simao/git/rd/paper45-runs/bridge-qwen3-4b-bf16-mlx/task07-tail90-d-fused-validator",
+    "run_id": "p45-qwen3-4b-bf16-mlx-task07-tail90-d-fused-validator-20260921",
+    "chat_template_profile": "qwen3-stable-no-thinking",
+    "chat_template_digest": "8dc162e490e0aa52f43271901d541bda48d366682dd8e85cccc448935af9fac3",
+    "mode": "direct-native-pra",
+    "task_success": true,
+    "grader_outcome": "resolved",
+    "termination_reason": "Submitted",
+    "calls_to_solution": 5,
+    "tool_calls": 5,
+    "action_trajectory_length": 5,
+    "action_trajectory_sha256": "7e1d3c87bec01b8ee3aaa662ee443288f3d116d7cfc21aac6224f193a76ac317",
+    "action_trajectory": [
+      {
+        "content": "THOUGHT: I need to find the file where the OrderedSet is defined to add the __reversed__() method. Let me search for the file that contains the OrderedSet class.\n\n```mswea_bash_command\ngrep -r 'class OrderedSet' /testbed\n```",
+        "actions": [
+          {
+            "command": "grep -r 'class OrderedSet' /testbed"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The OrderedSet class is defined in django/utils/datastructures.py. I need to open this file and add the __reversed__() method to make it reversible.\n\n```mswea_bash_command\nsed -i '/class OrderedSet:/a\\    def __reversed__(self):\\n        return reversed(list(self))' /testbed/django/utils/datastructures.py\n```",
+        "actions": [
+          {
+            "command": "sed -i '/class OrderedSet:/a\\    def __reversed__(self):\\n        return reversed(list(self))' /testbed/django/utils/datastructures.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have added the __reversed__() method to the OrderedSet class. Now I need to create a patch file that contains the changes I made to the source code.\n\n```mswea_bash_command\ngit diff -- /testbed/django/utils/datastructures.py > patch.txt\n```",
+        "actions": [
+          {
+            "command": "git diff -- /testbed/django/utils/datastructures.py > patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have created the patch file with the changes I made. Now I need to verify that the patch file only contains the changes to the specific source files I modified and that it follows the correct format.\n\n```mswea_bash_command\ncat patch.txt\n```",
+        "actions": [
+          {
+            "command": "cat patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The patch file contains the correct changes to the source file. Now I need to submit the patch file as requested.\n\n```mswea_bash_command\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt\n```",
+        "actions": [
+          {
+            "command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt"
+          }
+        ]
+      }
+    ],
+    "patch_sha256": "2c03bf246b8035309a8d593ea3ffda4661558673db81ea2dca9b349269d61802",
+    "patch_bytes": 405,
+    "engine_version": "0.31.3",
+    "engine_runtime_identity": {
+      "packages": {
+        "mlx": "0.32.2",
+        "mlx-lm": "0.31.3"
+      },
+      "package_record_sha256": {
+        "mlx": "cca5a19efca4d81b34f6b86a675c893792cc98d9bae6d7013665d009422f6c30",
+        "mlx-lm": "743f90141a22c8b2c31eef9d26ffcdbcddd5c6546e9519295915c0016ce9f969"
+      },
+      "pra_source_revision": "62d7c0da",
+      "observed_source_checkpoint_revision": "1cfa9a7208912126459214e8b04321603b3df60c"
+    },
+    "exact_environment": true,
+    "configuration_differences": [],
+    "requested_retention_fraction": 0.9,
+    "realized_retention_fraction": 0.9381175889328063,
+    "realized_retention_fraction_min": 0.8820391227030231,
+    "realized_retention_fraction_max": 1.0,
+    "engine_reported_history_kv_retention_fraction_min": 0.8694652098907418,
+    "engine_reported_history_kv_retention_fraction_max": 1.0,
+    "selected_history_reencoded_tokens": 0,
+    "physical_kv_copy_bytes": 0,
+    "total_kv_copy_bytes": 3423338496,
+    "canonical_suffix_graft_d2d_bytes": 51462144,
+    "host_to_device_bytes": 0,
+    "consumer_temporary_bytes": 2288205824,
+    "consumer_temporary_peak_bytes": 626475008,
+    "fused_attention_calls": null,
+    "logical_input_tokens_estimate": 8096,
+    "physical_input_tokens_estimate": 7595,
+    "wall_time_s": 26.39269995689392,
+    "trajectory_path": "/Users/jorge.simao/git/rd/paper45-runs/bridge-qwen3-4b-bf16-mlx/task07-tail90-d-fused-validator/chunk_00/django__django-14089/django__django-14089.traj.json",
+    "trajectory_sha256": "28cc749ffe34b43f8146ea1a1b03249ee4bb0a0183ea1a8ef3c7f4355fe02fb6"
+  },
+  "gates": {
+    "plain_task_success": true,
+    "pra_100_task_success": true,
+    "pra_100_parity_reference": "fresh_prefill",
+    "pra_100_exact_action_trajectory": true,
+    "pra_100_exact_action_trajectory_vs_fresh_prefill": true,
+    "pra_100_exact_action_trajectory_vs_live_prefix_control": null,
+    "pra_100_exact_patch": true,
+    "pra_100_exact_patch_vs_fresh_prefill": true,
+    "pra_100_engine_runtime_identity_match": true,
+    "pra_100_chat_template_digest_match": true,
+    "pra_100_behavioral_parity": true,
+    "pra_90_execution_allowed": true,
+    "pra_90_first_action_divergence": 3,
+    "pra_90_patch_matches_plain": true,
+    "engine_task_gate_complete": true,
+    "easy14_expansion_allowed": false,
+    "easy14_expansion_blocker": "requires completed 100%->90% gates for every qualified engine"
+  },
+  "classification": "retention_quality_result_at_90_percent",
+  "claim_boundary": "A 100% divergence from the matched consumption-path control is an implementation failure. Fresh-prefill versus incremental-live-prefix divergence is reported separately. A 90% divergence is a selection/retention-quality result only after the matched 100% gate passes."
+}

@@ -61,6 +61,14 @@ frozen plan omits about 40\% of resident
 history, but its receipt-bearing transfers remain hybrid transformed-context
 evidence rather than strict resident-subset reuse.
 
+A later strict BF16 MLX gate isolates a second model/task pair.  On locked
+Task~7, plain and PRA-100 both resolve in seven byte-identical actions with the
+same patch.  Tail-90 resolves with that patch in five actions at 93.81\% mean
+realized retention and zero selected-history re-encoding.  Its own-trajectory
+physical-input saving is 6.19\%; the 37.20\% paired physical-workload reduction
+mostly reflects two fewer model calls.  This is a one-task correctness and
+accounting result, not an accuracy or latency estimate.
+
 The resulting measurement contract establishes two boundaries: logical
 selection does not imply physical saving, and physical omission does not imply
 end-to-end workload saving.
@@ -518,6 +526,32 @@ evidence is archived under
 The frozen matched-tail transfer and first-divergence receipt are archived under
 \path{shared/results/paper4_5_runtime_productization/coding_agents/agent_policy_transfer/sglang_task01_matched_tail_ad1152b9/}.
 
+The next strict gate uses Qwen3-4B BF16 revision
+\texttt{1cfa9a7208912126459214e8b04321603b3df60c}, one fused direct-MLX
+endpoint, the append-stable no-thinking template, and locked baseline-success
+Task~7 (\texttt{django\_\_django-14089}).  Plain and PRA-100 each resolve in
+seven actions with byte-identical trajectories and the same 405-byte patch.
+Tail-90 first diverges at action three, skips two verification actions, and
+still submits the identical passing patch in five calls.  Mean realized
+retention is 93.81\% (86.95--100\% by request); selected history is never
+re-encoded, selected intervals are not packed by the production path, and no
+host--device transfer occurs.  Physical input is 7,595 of 8,096 logical tokens,
+or 6.19\% own-trajectory saving.  Relative to PRA-100's 12,093 tokens, the
+37.20\% reduction includes a 33.05\% logical workload contraction from two
+fewer calls, so it cannot be attributed to K/V omission alone.
+
+This task also caught a consumer bug before the quality claim was admitted.
+The eager segmented path differed from its identical-subset dense reference by
+0.5 maximum logit value on the first sparse request; the fused disjoint path is
+exact on all four eligible sparse live-cache turns.  Qualification is not free:
+the per-request dense same-subset reference and canonical suffix growth produce
+3.546~GB PRA-100 and 3.423~GB tail-90 cumulative total-K/V-copy counts, while
+whole-request peak temporary allocation is 371.9 and 626.5~MB.  These copies
+belong to the validation/reference and canonical-growth scopes, not selected-
+interval packing, and are excluded from any production speed claim.  The full
+receipts are archived under
+\path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_qwen3_4b_bf16_task07_fused_20260921/}.
+
 \subsection{Frozen agent-plan transfer separates omission from economics}
 
 Paper~8.5 supplies one Prompt Pinned plan on Scikit-learn-14496.  The current
@@ -642,14 +676,15 @@ not establish portable serving speedups.  The changing-selection experiment
 also shows why globally packed text cannot be treated as the universal semantic
 reference for independently encoded chunks.
 
-The current agent transfer is one frozen task-plan identity and is hybrid
-because closure receipts are encoded after caching.  Its value is diagnostic:
-similar original-K/V omission leads to preserved, reduced, or negative workload
-benefit across consumers.  The strict next experiment removes synthetic
-history, holds the selected records fixed, and repeats the paired autonomous
-gate with task-clustered replication.  HF and vLLM CUDA have bounded mechanism
-evidence but no admissible post-contract autonomous reduced-plan row; their
-workload coordinate $E$ therefore remains explicitly open.
+The receipt-bearing frozen-plan transfer remains hybrid because closure
+receipts are encoded after caching.  Its value is diagnostic: similar original-
+K/V omission leads to preserved, reduced, or negative workload benefit across
+consumers.  The strict MLX Task-7 gate now removes synthetic history and admits
+one paired autonomous plain/PRA-100/tail-90 result.  It establishes exact
+PRA-100 behavior and one preserved tail-90 solve, but not task-clustered
+accuracy or production economics.  HF, vLLM CUDA, and fresh SGLang have bounded
+mechanism evidence but no admissible post-contract autonomous reduced-plan row;
+their workload coordinate $E$ therefore remains explicitly open.
 
 \section{Conclusion}
 
@@ -2014,6 +2049,12 @@ to the selected K/V payload. & Report selection aliases and consumer scratch
 separately, including peak and cumulative temporary bytes for the actual
 attention path. \\
 \addlinespace
+Eager segmented MLX consumer & The first real sparse Task-7 request differed
+from its identical-subset dense reference by 0.5 maximum logit value.  The
+attempt is an engine failure, not a policy-quality result. & The fused disjoint
+consumer passes all four eligible sparse live-cache turns and the autonomous
+task; eager and fused paths remain separate qualification scopes. \\
+\addlinespace
 Mutable MLX cache views & Views borrowed from cache objects whose backing
 storage could grow, compact, or be released during a request.  Correct values
 in one probe did not establish safe ownership. & Pin an immutable source
@@ -2226,14 +2267,19 @@ controls reproduce the plain engine's six actions and exact patch at PRA-100.
 Task-aware PRA-90 preserves both official solves and call counts, with zero
 selected-history re-encoding or selected-K/V copy.  A separate hybrid
 llama.cpp/Qwen3-Coder-30B transfer preserves its eight-call solve while omitting
-40.23\% weighted steady-state original K/V. & The stricter frozen matched-tail
+40.23\% weighted steady-state original K/V.  A post-fix MLX/Qwen3-4B BF16 gate
+also matches all seven plain actions at PRA-100; tail-90 preserves the official
+solve and patch in five calls at 93.81\% mean retention. & The stricter frozen matched-tail
 policy loses the Task-1 solve identically on MLX and SGLang-MLX at 89.57\%
 retention, demonstrating policy/model dependence.  The successful task-aware
 MLX/SGLang result is one short task and realizes only 2.19\% physical-input saving; other K/V
 movement and consumer scratch remain engine dependent.  The llama.cpp plan
 contains post-cache receipts and is not a strict resident-subset result.
-Earlier agent rows remain superseded diagnostics.  Fresh HF/vLLM rows, broader
-tasks, and repeated cross-model economics are pending. \\
+The Qwen3-4B tail row has only 6.19\% within-trajectory omission; its 37.20\%
+paired reduction is dominated by call contraction, while qualification-
+reference copying and a 626.5~MB peak request temporary remain visible.  Earlier
+agent rows remain superseded diagnostics.  Fresh HF/vLLM rows, broader tasks,
+and repeated cross-model economics are pending. \\
 \bottomrule
 \end{tabularx}
 \caption{Four-claim evidence map.  Passing a mechanism gate does not silently
@@ -4006,11 +4052,13 @@ a configured slot checkpoint directory.  HF, MLX, vLLM, and SGLang now clear
 bounded sparse-consumer mechanism gates.  The autonomous agent executions that
 previously followed those gates are not current evidence: they predate the
 final cache, position, copy-accounting, and Paper~8.5 policy-transfer contract.
-Fresh post-fix plain/PRA-100/PRA-policy executions are required independently
-for every engine.  The campaign is therefore frozen, and no Easy-14 expansion
-is permitted until one model/task pair per engine passes that sequence and the
-reduced-history policy passes Paper~8.5's paired saving, success, and call-count
-gate.
+Direct MLX now has one fresh post-fix plain/PRA-100/tail-90 task gate: PRA-100
+matches all seven plain actions and tail-90 preserves the solve and patch in
+five calls.  HF, vLLM, and SGLang still require their own fresh post-fix
+plain/PRA-100/PRA-policy executions.  The campaign is therefore frozen, and no
+Easy-14 expansion is permitted until one model/task pair per engine passes that
+sequence and the reduced-history policy passes Paper~8.5's paired saving,
+success, and call-count gate.
 
 \subsubsection{Claim 4: observed coding-agent utility frontier}
 
