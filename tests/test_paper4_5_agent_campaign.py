@@ -121,6 +121,7 @@ from experiments.paper4_5_agent.runners.swebench_verified import (
     _grader_error_type,
     _is_h100_80gb,
     _normalize_report,
+    _recover_completed_instance_reports,
     _prepull_swebench_images,
     _raise_on_agent_infrastructure_error,
     _trajectory_metrics,
@@ -3245,6 +3246,44 @@ def test_swebench_chunk_report_requires_exact_ids(tmp_path: Path) -> None:
     assert _normalize_report(report, ["a", "b"])["resolved_ids"] == ["b"]
     with pytest.raises(RuntimeError, match="frozen chunk"):
         _normalize_report(report, ["a", "c"])
+
+
+def test_swebench_recovers_authoritative_reports_after_cleanup_race(
+    tmp_path: Path,
+) -> None:
+    for instance_id, resolved in (("repo__one-1", True), ("repo__two-2", False)):
+        report = tmp_path / "logs" / "run" / "model" / instance_id / "report.json"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(json.dumps({
+            instance_id: {
+                "resolved": resolved,
+                "tests_status": {"FAIL_TO_PASS": {"success": [], "failure": []}},
+            }
+        }), encoding="utf-8")
+
+    recovered = _recover_completed_instance_reports(
+        tmp_path, ["repo__one-1", "repo__two-2"]
+    )
+
+    assert recovered is not None
+    assert recovered["submitted_ids"] == ["repo__one-1", "repo__two-2"]
+    assert recovered["resolved_ids"] == ["repo__one-1"]
+    assert recovered["error_ids"] == []
+    assert recovered["aggregate_recovered_after_cleanup_failure"] is True
+
+
+def test_swebench_cleanup_recovery_fails_closed_on_ambiguous_report(
+    tmp_path: Path,
+) -> None:
+    instance_id = "repo__one-1"
+    for run in ("a", "b"):
+        report = tmp_path / run / instance_id / "report.json"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(json.dumps({
+            instance_id: {"resolved": True, "tests_status": {}}
+        }), encoding="utf-8")
+
+    assert _recover_completed_instance_reports(tmp_path, [instance_id]) is None
 
 
 def test_swebench_completed_chunks_reach_final_aggregation(

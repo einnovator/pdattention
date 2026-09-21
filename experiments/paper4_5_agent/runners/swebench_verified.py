@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from ..benchmark import load_benchmark_card
 from ..context_treatment import (
@@ -884,13 +884,35 @@ def _execute_chunks(
                 "--max_workers", str(args.grader_workers), "--cache_level", "base",
                 "--clean", "True", "--report_dir", str(chunk_dir),
             ]
-            grader_wall_time_s = _run(
-                grade_command, output / f"chunk_{chunk_number:02d}.grader.log",
-                args.timeout_seconds, extra_environment=dataset_environment,
-                cwd=chunk_dir,
-            )
-            raw_report = _find_report(chunk_dir, f"{args.run_id}_c{chunk_number}")
-            chunk_result = _normalize_report(raw_report, chunk_ids)
+            grader_log = output / f"chunk_{chunk_number:02d}.grader.log"
+            grade_started = time.perf_counter()
+            try:
+                grader_wall_time_s = _run(
+                    grade_command, grader_log,
+                    args.timeout_seconds, extra_environment=dataset_environment,
+                    cwd=chunk_dir,
+                )
+            except RuntimeError:
+                grader_wall_time_s = time.perf_counter() - grade_started
+                recovered = _recover_completed_instance_reports(chunk_dir, chunk_ids)
+                if recovered is None:
+                    raise
+                chunk_result = recovered
+                _write_json(chunk_dir / "grader_post_completion_failure.json", {
+                    "schema_version": 1,
+                    "classification": "post_grade_cleanup_failure",
+                    "source_log": str(grader_log),
+                    "instance_ids": chunk_ids,
+                    "official_instance_reports": recovered[
+                        "official_instance_reports"
+                    ],
+                    "admitted_as_benchmark_result": True,
+                })
+            else:
+                raw_report = _find_report(
+                    chunk_dir, f"{args.run_id}_c{chunk_number}"
+                )
+                chunk_result = _normalize_report(raw_report, chunk_ids)
             chunk_result["grader_wall_time_s"] = grader_wall_time_s
             chunk_result["agent_timeout_ids"] = chunk_ids if timed_out else []
             chunk_result["agent_context_exhaustion_ids"] = context_exhaustion_ids
@@ -1265,6 +1287,48 @@ def _normalize_report(path: Path, expected_ids: list[str]) -> dict[str, Any]:
         "submitted_ids": expected_ids,
         "resolved_ids": [item for item in expected_ids if item in set(payload.get("resolved_ids") or ())],
         "error_ids": [item for item in expected_ids if item in set(payload.get("error_ids") or ())],
+    }
+
+
+def _recover_completed_instance_reports(
+    chunk_dir: Path,
+    expected_ids: list[str],
+) -> dict[str, Any] | None:
+    """Recover grading completed before a post-run cleanup/reporting crash.
+
+    SWE-bench writes each authoritative instance ``report.json`` before its
+    aggregate reporting pass. Docker Desktop can race that final pass while a
+    just-removed container is still returned by ``containers.list``. Recovery
+    is allowed only when every frozen instance has one unambiguous report with
+    a boolean official resolution and structured test status.
+    """
+
+    resolved = []
+    report_paths = []
+    for instance_id in expected_ids:
+        matches = sorted(
+            path for path in chunk_dir.rglob("report.json")
+            if path.parent.name == instance_id
+        )
+        if len(matches) != 1:
+            return None
+        payload = json.loads(matches[0].read_text(encoding="utf-8"))
+        row = payload.get(instance_id)
+        if not isinstance(row, Mapping):
+            return None
+        if not isinstance(row.get("resolved"), bool):
+            return None
+        if not isinstance(row.get("tests_status"), Mapping):
+            return None
+        if row["resolved"]:
+            resolved.append(instance_id)
+        report_paths.append(str(matches[0]))
+    return {
+        "submitted_ids": list(expected_ids),
+        "resolved_ids": resolved,
+        "error_ids": [],
+        "official_instance_reports": report_paths,
+        "aggregate_recovered_after_cleanup_failure": True,
     }
 
 
