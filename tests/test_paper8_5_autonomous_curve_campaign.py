@@ -8,6 +8,7 @@ import pytest
 from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
     _completed_result,
     _command,
+    _refreshed_completed_cell,
     _retry_path,
     adaptive_gate,
     candidate_control_gate,
@@ -226,6 +227,14 @@ def test_imported_controls_are_bound_and_emit_explicit_revision_exception(tmp_pa
     assert import_completed_controls(
         state, cells, source_state, expected_campaign_id="baseline"
     ) == 2
+    for cell_id in ("task01-full-a", "task01-full-b"):
+        state["cells"][cell_id].pop("imported_control")
+        state["cells"][cell_id].pop("source_campaign_state")
+        state["cells"][cell_id].pop("source_campaign_state_sha256")
+    assert import_completed_controls(
+        state, cells, source_state, expected_campaign_id="baseline"
+    ) == 2
+    assert state["cells"]["task01-full-a"]["imported_control"] is True
     state["cells"]["task01-dag100"] = {
         **cells[2], "status": "complete", "output": str(tmp_path / "candidate"),
     }
@@ -236,6 +245,23 @@ def test_imported_controls_are_bound_and_emit_explicit_revision_exception(tmp_pa
     )
     assert policy_pair["allow_legacy_pair"] is True
     assert "historical schema-1 run" in policy_pair["pairing_reason"]
+
+
+def test_completed_control_refresh_preserves_import_provenance(tmp_path):
+    refreshed = _refreshed_completed_cell(
+        {"cell_id": "task01-full-a", "policy": "full"},
+        {"status": "complete", "calls": 12},
+        tmp_path / "full-a",
+        {
+            "imported_control": True,
+            "source_campaign_state": "baseline/campaign_state.json",
+            "source_campaign_state_sha256": "digest",
+        },
+    )
+
+    assert refreshed["imported_control"] is True
+    assert refreshed["source_campaign_state_sha256"] == "digest"
+    assert refreshed["calls"] == 12
 
 
 def test_campaign_rejects_unbounded_autonomous_generation():

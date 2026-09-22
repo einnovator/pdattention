@@ -141,8 +141,13 @@ def import_completed_controls(
             raise ValueError(f"imported control {cell_id} is not a completed run")
         existing = state["cells"].get(cell_id)
         if existing and existing.get("status") == "complete":
-            continue
+            existing_output = Path(str(existing.get("output", ""))).resolve()
+            if existing_output != output:
+                raise ValueError(
+                    f"completed control {cell_id} conflicts with imported output"
+                )
         state["cells"][cell_id] = {
+            **dict(existing or {}),
             **target,
             **result,
             "output": str(output),
@@ -309,6 +314,22 @@ def _retry_path(base: Path, *, reserved: Sequence[Path] = ()) -> Path:
         if candidate.resolve() not in reserved_paths and not candidate.exists():
             return candidate
     raise RuntimeError(f"too many preserved retry attempts for {base}")
+
+
+def _refreshed_completed_cell(
+    cell: Mapping[str, Any],
+    prior: Mapping[str, Any],
+    output: Path,
+    existing: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Refresh measured fields without losing imported-control provenance."""
+
+    return {
+        **dict(existing or {}),
+        **dict(cell),
+        **dict(prior),
+        "output": str(output),
+    }
 
 
 def write_curve_spec(state: Mapping[str, Any], output: Path) -> Path:
@@ -518,9 +539,12 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 recorded_output if _completed_result(recorded_output) is not None
                 else base_output
             )
-            state["cells"][cell_id] = {
-                **cell, **prior, "output": str(completed_output)
-            }
+            state["cells"][cell_id] = _refreshed_completed_cell(
+                cell,
+                prior,
+                completed_output,
+                state["cells"].get(cell_id),
+            )
             continue
         cell_output = _retry_path(base_output)
         if not cell["is_control"]:
