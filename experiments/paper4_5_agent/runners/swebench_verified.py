@@ -439,7 +439,14 @@ def gateway_preflight(
     probe_request = urllib.request.Request(
         f"{root}/v1/chat/completions",
         data=probe_payload,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            **(
+                {"X-PRA-Run-Lease": str(args.endpoint_run_token)}
+                if getattr(args, "endpoint_run_token", None)
+                else {}
+            ),
+        },
         method="POST",
     )
     try:
@@ -845,6 +852,14 @@ def _execute_chunks(
                 "-c", f"model.model_kwargs.top_p={float(getattr(args, 'top_p', 1.0))}",
                 "-c", f"model.model_kwargs.seed={int(getattr(args, 'sampling_seed', 0))}",
             ]
+            if getattr(args, "endpoint_run_token", None):
+                lease_headers = json.dumps(
+                    {"X-PRA-Run-Lease": str(args.endpoint_run_token)},
+                    separators=(",", ":"),
+                )
+                agent_command.extend([
+                    "-c", f"model.model_kwargs.extra_headers={lease_headers}",
+                ])
             agent_command.extend(_completion_token_overrides(args))
             agent_command.extend([
                 "-c", f"agent.step_limit={args.max_steps}", "-w", str(args.workers),
@@ -1872,6 +1887,10 @@ def main() -> None:
         help="Normalize a previously observed timed-out chunk without rerunning its agent.",
     )
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument(
+        "--endpoint-run-token",
+        help="Frozen endpoint lease used to reject stale agent processes.",
+    )
     parser.add_argument(
         "--require-endpoint-preflight",
         action="store_true",

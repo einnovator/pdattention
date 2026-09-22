@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import importlib.metadata
 import json
 from pathlib import Path
@@ -79,6 +80,7 @@ def _direct_handler(
     model_id: str,
     runtime_identity: Mapping[str, Any] | None = None,
     request_log: Path | None = None,
+    run_token: str | None = None,
 ):
     log_lock = threading.Lock()
 
@@ -130,6 +132,14 @@ def _direct_handler(
         def do_POST(self) -> None:  # noqa: N802
             if urllib.parse.urlsplit(self.path).path != "/v1/chat/completions":
                 self._json(404, {"error": "not_found"})
+                return
+            if run_token is not None and not hmac.compare_digest(
+                str(self.headers.get("X-PRA-Run-Lease") or ""), run_token
+            ):
+                self._json(409, {
+                    "error": "stale_run_lease",
+                    "message": "request does not own this frozen engine run",
+                })
                 return
             try:
                 payload = json.loads(
@@ -236,6 +246,14 @@ def main() -> None:
         type=Path,
         help="Optional JSONL request-shape and timing receipt (no message text).",
     )
+    parser.add_argument(
+        "--run-token",
+        help=(
+            "Optional frozen run lease. POST requests must present the same "
+            "value in X-PRA-Run-Lease, preventing stale agents from crossing "
+            "a server restart or task boundary."
+        ),
+    )
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
@@ -325,6 +343,7 @@ def main() -> None:
                 served_model,
                 _runtime_identity(args.pra_source_revision, observed_revision),
                 args.request_log,
+                args.run_token,
             ),
         ).serve_forever()
     finally:

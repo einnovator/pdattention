@@ -119,6 +119,10 @@ def main() -> None:
     )
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument(
+        "--endpoint-run-token",
+        help="Frozen endpoint lease used to reject stale agent processes.",
+    )
+    parser.add_argument(
         "--endpoint-preflight-receipt", type=Path,
         help=(
             "Reuse a previously completed generation-probe receipt after a clean "
@@ -174,6 +178,7 @@ def main() -> None:
         timeout_seconds=3600,
         preflight_only=options.preflight_only,
         endpoint_preflight_receipt=options.endpoint_preflight_receipt,
+        endpoint_run_token=options.endpoint_run_token,
         allow_partial_reproduction=False,
         local_calibration=True,
         recover_timeout_chunk=options.recover_timeout_chunk,

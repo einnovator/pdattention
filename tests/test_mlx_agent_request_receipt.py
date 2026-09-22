@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import urllib.request
+import urllib.error
 from http.server import ThreadingHTTPServer
 
 from pra_hf.deployment import PRAEngineResult
@@ -74,3 +75,31 @@ def test_mlx_endpoint_writes_request_shape_without_message_text(tmp_path) -> Non
     assert rows[0]["messages"][0]["content_chars"] == 13
     assert "secret prompt" not in receipt.read_text()
     assert rows[1]["usage"]["total_tokens"] == 4
+
+
+def test_mlx_endpoint_rejects_a_stale_run_lease(tmp_path) -> None:
+    executor = type("Executor", (), {"tokenizer": object()})()
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        _direct_handler(executor, "model", run_token="owned-run"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
+            data=json.dumps({"model": "model", "messages": []}).encode(),
+            headers={"content-type": "application/json", "X-PRA-Run-Lease": "stale"},
+        )
+        try:
+            urllib.request.urlopen(request)
+        except urllib.error.HTTPError as error:
+            assert error.code == 409
+            payload = json.loads(error.read())
+        else:
+            raise AssertionError("stale run lease was accepted")
+        assert payload["error"] == "stale_run_lease"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
