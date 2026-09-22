@@ -1,0 +1,63 @@
+{
+  "schema_version": "paper8.5.cross-agent-model-replication.v2",
+  "status": "frozen_before_execution",
+  "purpose": "Cross-agent and cross-model replication without model-visible record rewriting masquerading as K/V omission.",
+  "task_cohort": {
+    "ordered_instance_ids": [
+      "django__django-15277",
+      "django__django-15368",
+      "scikit-learn__scikit-learn-13135"
+    ],
+    "admission": "Run an exact FULL control first and score selective treatment only on contemporaneous FULL successes."
+  },
+  "logical_policy": {
+    "policy_id": "TAIL90_CAUSAL_H2T4_DECLARED_SAFE_V4",
+    "implementation": "matched_token_tail",
+    "budget_fraction": 0.9,
+    "protected_head_turns": 2,
+    "protected_tail_turns": 4,
+    "keep_all_genuine_user_prompts": true,
+    "causal_group_atomicity": true,
+    "boundary_compaction": "declared_safe",
+    "record_internal_rule": "A tool observation may be subdivided only when stable natural child spans and their completeness are declared before model-visible materialization and before K/V encoding. Otherwise retire the whole causal group or leave budget unused.",
+    "agent_id_visible_to_policy": false,
+    "task_id_visible_to_policy": false
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "agents": [
+    "mini-swe-agent@2.4.6",
+    "openhands@1.49.2",
+    "pi@0.75.3",
+    "kilo@7.7.5",
+    "pra-agent@locked-revision",
+    "opencode@1.18.31"
+  ],
+  "models": [
+    {
+      "id": "qwen3-coder:30b",
+      "revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca"
+    },
+    {
+      "id": "mlx-community/Qwen3-14B-4bit",
+      "revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4"
+    },
+    {
+      "id": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+      "revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477"
+    }
+  ],
+  "reporting": [
+    "official resolution and paired preservation",
+    "whole-record logical saving",
+    "pre-segmented child-span saving",
+    "ordinary-text materialized saving reported separately",
+    "calls or normalized actions to solution",
+    "first changed model input and first action divergence"
+  ],
+  "paper4_5_mapping": "Only omitted whole records and omitted stable pre-encoded child spans count as potential resident K/V omission. Rewritten text, receipts, and post-cache compaction do not."
+}

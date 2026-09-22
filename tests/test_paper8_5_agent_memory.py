@@ -762,6 +762,59 @@ def test_matched_token_tail_does_not_trim_small_or_non_tool_records():
     assert all(row.mode == MaterializationMode.WHOLE_RECORD for row in result.records)
 
 
+def test_matched_token_tail_can_disable_unsafe_boundary_rewriting():
+    messages = _messages(3)
+    messages[5]["content"] = (
+        "<returncode>0</returncode>\n<output>\n"
+        + "\n".join(f"source line {index}" for index in range(200))
+        + "\n</output>"
+    )
+    history = recordize_minisweagent_messages(messages)
+    costs = {
+        record.record_id: whitespace_tokens(record.content)
+        for record in history.records
+    }
+    prompt_and_newest = sum(costs[row] for row in ("m0", "m1", "m6", "m7"))
+    result = materialize_matched_token_tail(
+        history,
+        max_materialized_tokens=prompt_and_newest + costs["m4"] + 20,
+        config=MatchedTokenTailConfig(
+            tool_observation_threshold_tokens=20,
+            boundary_compaction="disabled",
+        ),
+    )
+
+    assert result.logical_plan.selected_record_ids == ("m0", "m1", "m6", "m7")
+    assert result.materialized_tokens == result.full_selected_tokens
+    assert all(row.mode == MaterializationMode.WHOLE_RECORD for row in result.records)
+
+
+def test_matched_token_tail_declared_safe_requires_record_metadata():
+    messages = _messages(3)
+    messages[5]["content"] = (
+        "<returncode>0</returncode>\n<output>\n"
+        + "\n".join(f"source line {index}" for index in range(200))
+        + "\n</output>"
+    )
+    history = recordize_minisweagent_messages(messages)
+    costs = {
+        record.record_id: whitespace_tokens(record.content)
+        for record in history.records
+    }
+    prompt_and_newest = sum(costs[row] for row in ("m0", "m1", "m6", "m7"))
+    result = materialize_matched_token_tail(
+        history,
+        max_materialized_tokens=prompt_and_newest + costs["m4"] + 20,
+        config=MatchedTokenTailConfig(
+            tool_observation_threshold_tokens=20,
+            boundary_compaction="declared_safe",
+        ),
+    )
+
+    assert "m5" not in result.logical_plan.selected_record_ids
+    assert result.materialized_tokens == result.full_selected_tokens
+
+
 def test_matched_token_tail_uses_measured_fallback_for_one_oversized_line():
     messages = _messages(1)
     messages[3]["content"] = (

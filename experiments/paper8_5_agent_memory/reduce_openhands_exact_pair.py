@@ -37,6 +37,7 @@ def _arm(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if len(tokenizers) != 1 or any("whitespace" in value for value in tokenizers):
         raise ValueError(f"arm lacks one exact tokenizer identity: {sorted(tokenizers)}")
     full_tokens = sum(int(row.get("full_tokens") or 0) for row in rows)
+    selected_tokens = sum(int(row.get("selected_tokens") or 0) for row in rows)
     materialized = sum(int(row.get("materialized_tokens") or 0) for row in rows)
     prompt_tokens = sum(int(row.get("reported_prompt_tokens") or 0) for row in rows)
     completion_tokens = sum(
@@ -52,11 +53,19 @@ def _arm(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         if isinstance(limit, int) and not isinstance(limit, bool) and observed is not None:
             if int(observed) > limit:
                 violations.append(int(row["request_index"]))
+    action_count = summary.get("action_count")
+    if action_count is None:
+        action_count = summary.get("assistant_model_calls")
+    if action_count is None:
+        action_count = len(rows)
     return ({
+        "agent": manifest.get("agent") or "openhands-sdk",
+        "agent_version": manifest.get("agent_version"),
         "official_resolved": resolved,
-        "actions": int(summary.get("action_count") or 0),
+        "actions": int(action_count),
         "calls": len(rows),
         "full_tokens": full_tokens,
+        "selected_tokens": selected_tokens,
         "materialized_tokens": materialized,
         "provider_prompt_tokens": prompt_tokens,
         "provider_completion_tokens": completion_tokens,
@@ -79,7 +88,7 @@ def _arm(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         "patch_sha256": manifest.get("patch_sha256"),
         "tokenizer": next(iter(tokenizers)),
         "instance_id": instance_id,
-        "model": manifest.get("served_model"),
+        "model": manifest.get("served_model") or manifest.get("model"),
         "model_revision": manifest.get("model_revision"),
         "tokenizer_revision": manifest.get("tokenizer_revision"),
         "reference_trajectory_sha256": manifest.get("reference_trajectory_sha256"),
@@ -99,7 +108,8 @@ def reduce_pair(
     full, _ = _arm(full_path)
     candidate, _ = _arm(candidate_path)
     identity_keys = (
-        "instance_id", "model", "model_revision", "tokenizer", "tokenizer_revision",
+        "agent", "agent_version", "instance_id", "model", "model_revision",
+        "tokenizer", "tokenizer_revision",
         "reference_trajectory_sha256", "source_image",
     )
     mismatches = {
@@ -109,7 +119,11 @@ def reduce_pair(
     candidate_full = int(candidate["full_tokens"])
     candidate_materialized = int(candidate["materialized_tokens"])
     full_materialized = int(full["materialized_tokens"])
+    candidate_selected = int(candidate["selected_tokens"])
     candidate["own_logical_saving"] = (
+        1 - candidate_selected / candidate_full if candidate_full else 0.0
+    )
+    candidate["own_materialized_saving"] = (
         1 - candidate_materialized / candidate_full if candidate_full else 0.0
     )
     qualification = (
@@ -123,7 +137,8 @@ def reduce_pair(
     return {
         "schema_version": 3,
         "study": "paper8_5_cross_agent_exact_tokenizer_transfer",
-        "agent": "openhands-sdk",
+        "agent": full["agent"],
+        "agent_version": full["agent_version"],
         "instance_id": full["instance_id"],
         "policy": policy,
         "nominal_budget_fraction": budget_fraction,

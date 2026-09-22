@@ -396,6 +396,7 @@ class AutonomousSelectionConfig:
     materialization_tail_lines: int = 30
     materialization_match_context_lines: int = 4
     materialization_max_matched_lines: int = 32
+    matched_tail_boundary_compaction: str = "legacy"
     expected_model: str | None = None
     temperature: float = 0.0
     top_p: float = 1.0
@@ -442,6 +443,13 @@ class AutonomousSelectionConfig:
         if self.input_protocol not in {"mini_swe_bash", "openai_tools"}:
             raise ValueError(
                 "input_protocol must be mini_swe_bash or openai_tools"
+            )
+        if self.matched_tail_boundary_compaction not in {
+            "legacy", "declared_safe", "disabled",
+        }:
+            raise ValueError(
+                "matched_tail_boundary_compaction must be legacy, "
+                "declared_safe, or disabled"
             )
         if self.policy not in AUTONOMOUS_POLICIES:
             raise ValueError(
@@ -760,6 +768,7 @@ def transform_autonomous_payload(
     matched_tail_config = MatchedTokenTailConfig(
         protected_head_turns=config.protected_head_turns,
         protected_tail_turns=config.protected_tail_turns,
+        boundary_compaction=config.matched_tail_boundary_compaction,
     )
     mandatory_ids = (
         matched_token_tail_full_floor_record_ids(history, matched_tail_config)
@@ -1047,6 +1056,9 @@ def transform_autonomous_payload(
         "materialized_retention_fraction": materialized.materialized_retention_fraction,
         "protected_head_turns": config.protected_head_turns,
         "protected_tail_turns": config.protected_tail_turns,
+        "matched_tail_boundary_compaction": (
+            config.matched_tail_boundary_compaction
+        ),
         "selection_reasons": dict(plan.selection_reasons),
         "compact_completed_finalizations": config.compact_completed_finalizations,
         "retire_closed_instructions": config.retire_closed_instructions,

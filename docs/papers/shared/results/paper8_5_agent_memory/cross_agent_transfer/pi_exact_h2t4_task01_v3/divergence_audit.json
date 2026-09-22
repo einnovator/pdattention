@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "first_request_with_changed_materialized_input": 8,
+  "request_8": {
+    "full_tokens": 17794,
+    "selected_tokens": 17727,
+    "materialized_tokens": 17727,
+    "logical_retention": 0.9962346858491626
+  },
+  "first_tool_action_divergence": 8,
+  "common_tool_prefix_length": 7,
+  "full_action_8": "read /testbed/django/db/models/fields/__init__.py offset=2317 limit=100",
+  "candidate_action_8": "edit /testbed/django/db/models/fields/__init__.py",
+  "request_9_record_internal_rewrite": {
+    "full_tokens": 18036,
+    "selected_tokens": 17969,
+    "materialized_tokens": 16229,
+    "rewritten_record_kind": "older oversized source-view observation",
+    "warning": "The materializer exposed a tail fragment with an explicit elision marker; this is not a whole-record K/V omission."
+  },
+  "failure_chain": [
+    "Three native edit attempts failed.",
+    "The candidate wrote a partial file fragment to fixed_charfield.py.",
+    "It copied that fragment over the complete tracked source file.",
+    "A later attempt to restore a nonexistent backup failed with exit code 1.",
+    "The submitted patch deleted 2443 lines and failed the official grader."
+  ],
+  "cross_arm_workspace_contamination": false,
+  "interpretation": "Genuine selective-policy failure. The arm also proves that record-internal ordinary-text rewriting cannot be counted as native K/V omission and must be disabled unless safe internal spans are declared before K/V creation."
+}

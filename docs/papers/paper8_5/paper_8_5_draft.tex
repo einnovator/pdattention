@@ -58,15 +58,17 @@ accuracy.
 A post-refactor policy audit finds that historical matched-tail runs recorded
 H2/T4 parameters that their materializer did not consume.  After correcting
 the implementation, mini-swe-agent preserves 3/3 paired solves, but saves only
-8.17\% within trajectory and 6.28\% against pooled FULL-A input while adding
-three calls.  The old totals remain reproducible for the legacy pure-tail
+6.03\% through whole-causal-group retirement and 8.17\% after record-internal
+span materialization within trajectory, plus 6.28\% against pooled FULL-A input,
+while adding three calls.  The old totals remain reproducible for the legacy pure-tail
 policy; they are not evidence for corrected H2/T4.
 
 Cross-agent transfer to OpenHands supplies a separate three-identity result.
 After 3/3 Full admission, the retrospectively audited legacy causal-tail
 implementation preserves 3/3 official
-resolutions, reduces actions from 114 to 79, saves 22.49\% within its own
-trajectories, and saves 46.86\% against paired Full input.  The latter includes
+resolutions, reduces actions from 114 to 79, saves 20.71\% through whole-group
+retirement and 22.49\% after record-internal span materialization within its
+own trajectories, and saves 46.86\% against paired Full input.  The latter includes
 trajectory contraction and must not be read as per-request omission.  The
 cohort is one run per identity and one model family, so it is evidence for
 transfer and the target operating region rather than a production default.
@@ -74,6 +76,14 @@ Although its manifests recorded two protected head and four protected tail
 turns, a later code audit found that this materializer consumed neither floor;
 the row therefore describes pure prompt-pinned recency and is not evidence for
 the corrected H2/T4 policy.
+
+In corrected exact-token transfer on one shared identity, OpenHands preserves
+the official solve at 35.35\% own-trajectory whole-record saving, whereas Pi
+loses the solve: its 8.53\% materialized saving contains only 0.30\%
+whole-group retirement and is dominated by unsafe post-hoc rewriting of an
+oversized observation.  This contrast motivates a portable declared-safe
+contract: internal spans are selectable only when stable natural boundaries
+exist before K/V encoding; otherwise only whole records may retire.
 
 Finally, per-request omission can reverse economically: one six-issue policy
 omits 55.34\% against its own trajectory and resolves 6/6, but expands from 60
@@ -644,8 +654,10 @@ superseded H2/T4 label.
 
 The corrected H2/T4 arm keeps the first two and latest four complete causal
 turns.  On the same three identities it preserves 3/3 official resolutions,
-but uses 64 calls versus 61/69 for FULL-A/FULL-B.  It saves 8.17\% against its
-own trajectory counterfactual and 6.28\% against pooled FULL-A input; the
+but uses 64 calls versus 61/69 for FULL-A/FULL-B.  It saves 6.03\% through
+whole-causal-group retirement and 8.17\% after record-internal span
+materialization against its own trajectory counterfactual, plus 6.28\%
+against pooled FULL-A input; the
 task-macro paired value is $-3.93$\% because Task~2 expands from 15 to 22
 calls.  Thus corrected H2/T4 passes the observed quality gate but fails the
 predeclared no-call-increase efficiency gate.  A second corrected Task~1 run
@@ -663,6 +675,20 @@ OpenHands history contains one oversized early source-view observation that
 can retire once more specific reads supersede it.  This one-identity result is
 not an accuracy estimate, but it demonstrates that the corrected policy is
 transverse to the agent interface and that savings are workload-dependent.
+
+The next exact transfer prevents a favorable-only interpretation.  Pi 0.75.3
+solves the same task under a fresh 28-call \textsc{Full} control, but corrected
+H2/T4 fails in 28 calls.  It saves 8.53\% of materialized ordinary-text input
+while retiring only 0.30\% as whole causal groups.  The first changed input
+precedes the first changed tool action; after repeated edit failures the agent
+copies a partial fragment over a complete source file, producing a 91,283-byte
+patch that fails the official grader.  The apparent saving mostly comes from
+rewriting one selected oversized source view, not omitting reusable records.
+We therefore supersede generic boundary rewriting with a declared-safe rule:
+an observation may be subdivided only into stable natural child spans created
+before model-visible materialization and K/V encoding.  Otherwise the policy
+retires the whole causal group or leaves budget unused.  This negative result
+is a policy-transfer failure, not an inference-engine result.
 
 \subsection{Task-clustered headline comparison}
 
@@ -685,8 +711,9 @@ treatment.
 Policy & Cohort & IDs & Resolved F/P & Calls F/P & Input F/P & Save own/paired & Status \\
 \midrule
 Matched Recency & development & 3 (6 runs) & 5/6; 4/6 & 154/113 & not admitted & 6.35\%/n.a. & two losses; incomplete legacy identity \\
-Matched Recency H2/T4 & post-fix audit & 3 & 3/3; 3/3 & 61/64 & 364,457/341,556 & 8.17/6.28\% & $+3$ calls; not promoted \\
+Matched Recency H2/T4 & post-fix audit & 3 & 3/3; 3/3 & 61/64 & 364,457/341,556 & 6.03L/8.17M; 6.28P\% & $+3$ calls; not promoted \\
 Matched Recency H2/T4 & OpenHands post-fix & 1 & 1/1; 1/1 & 33/31 & 509,381/287,641 & 35.35/43.53\% & $-2$ actions; repeat pending \\
+Matched Recency H2/T4 & Pi post-fix & 1 & 1/1; 0/1 & 28/28 & 464,135/424,805 & 0.30L/8.53M; 8.47P\% & lost success; superseded \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
@@ -4347,13 +4374,13 @@ tokenizer, temperature zero, and immutable Docker image identities.
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Submission-guarded mini-swe-agent legacy pure-tail-90 bridge. Own
-saving uses the candidate trajectory; paired saving uses the predeclared
+\caption{Submission-guarded mini-swe-agent legacy pure-tail-90 bridge. Own M
+is materialized saving on the candidate trajectory; paired M uses the predeclared
 FULL-A workload. The historical manifests' H2/T4 label is superseded.}
 \label{tab:mini-guarded-tail90}
 \begin{tabular}{lrrrrrr}
 \toprule
-Task & FULL-A & FULL-B & Tail & Calls A/B/T & Own save & Paired save \\
+Task & FULL-A & FULL-B & Tail & Calls A/B/T & Own M & Paired M \\
 \midrule
 \texttt{django-15277} & 1 & 1 & 1 & 24/27/27 & 12.93\% & $-25.95$\% \\
 \texttt{django-15368} & 1 & 1 & 1 & 15/21/16 & 13.10\% & 0.24\% \\
@@ -4367,7 +4394,9 @@ Pooled workload & 3 & 3 & 3 & 62/69/62 & 11.68\% & 9.38\% \\
 Thus the legacy selective arm preserves 3/3 official resolutions and matches
 FULL-A's 62 aggregate calls. It materializes 337,133 of 381,737 tokens on its
 own trajectories, and 337,133 versus 372,032 tokens in the predeclared paired
-comparison. This passes the no-loss and no-aggregate-call-increase gates, but
+comparison. Whole-causal-group selection retains 348,364 tokens, for 8.74\%
+own logical saving; natural-boundary record-internal spans raise materialized
+saving to 11.68\%. This passes the no-loss and no-aggregate-call-increase gates, but
 it remains far below the 30--50\% saving objective.
 
 The duplicate controls are essential. Their call counts differ by 3, 6, and
@@ -4381,9 +4410,10 @@ fact. Evidence and task-clustered curves are in
 
 Fresh corrected H2/T4 execution resolves all three tasks.  Calls are
 23/15/23 for FULL-A, 27/21/21 for FULL-B, and 20/22/22 for the candidate.
-Candidate own savings are 9.35\%, 8.11\%, and 7.62\%; paired savings versus
+Candidate materialized own savings are 9.35\%, 8.11\%, and 7.62\%; paired savings versus
 FULL-A are 22.88\%, $-48.93$\%, and 14.27\%.  The pooled 8.17\% own and 6.28\%
-paired savings come with three additional calls versus FULL-A, so the arm does
+paired materialized savings come with three additional calls versus FULL-A,
+while pooled whole-group logical saving is 6.03\%.  Thus the arm does
 not pass the efficiency gate.  A second corrected Task~1 execution resolves in
 26 calls at 11.28\% own saving.  Its first fork from FULL-A precedes the first
 selection change by six actions, preventing attribution of its longer
@@ -4399,6 +4429,28 @@ retirement produces material headroom.  This is evidence for portability of
 the logical abstraction, not yet for cross-agent accuracy: it is one identity
 and one selective execution.  The immutable decision record is in
 \path{cross_agent_transfer/openhands_corrected_h2t4_task01_v3}.
+
+The first exact Pi treatment is a negative transfer on the same Task~1 and
+Qwen3-Coder-30B endpoint.  Its fresh \textsc{Full} control resolves in 28 model
+calls with the minimal 689-byte patch.  The treatment also stops after 28
+calls, but fails officially with a 91,283-byte patch that removes 2,443 source
+lines.  Own-trajectory whole-group saving is only 0.30\%; record-internal
+ordinary-text materialization raises the apparent value to 8.53\%, and paired
+materialized saving is 8.47\%.  The two arms share seven initial tool actions.
+Request~8 is the first changed materialized input and tool action; request~9
+begins repeatedly tail-rewriting an older oversized source view.  Three failed
+edits are followed by creation of a partial file fragment, destructive copy,
+and a failed attempt to restore a nonexistent backup.  The derived base image
+is clean, so this is not cross-arm workspace contamination.
+
+This execution fails the policy gate and exposes an invalid runtime mapping:
+post-hoc text rewriting cannot be counted as resident K/V omission.  The
+replacement frozen contract permits internal selection only when natural
+child spans, completeness, and stable identity were declared before the
+original K/V was encoded.  Otherwise only whole-record retirement is eligible.
+Evidence and the first-divergence audit are in
+\path{cross_agent_transfer/pi_exact_h2t4_task01_v3}; the replacement contract
+is \path{configs/cross_agent_model_replication_v2.json}.
 
 \section{Detailed Transfer Protocol}
 
@@ -4735,24 +4787,27 @@ not part of this result.
 \scriptsize
 \caption{Exact-token OpenHands legacy pure-tail transfer on the locked
 Tasks~1--3 cohort.
-Own saving removes trajectory-length effects; paired saving includes them.
+Own L/M separates whole-causal-group logical retirement from record-internal
+materialization; paired M includes trajectory-length effects.
 Every resolution cell is from the independent official grader.}
 \label{tab:openhands-exact-tail90}
 \begin{tabular}{lrrrrr}
 \toprule
-Task & FULL & Tail & Actions F/T & Own saving & Paired saving \\
+Task & FULL & Tail & Actions F/T & Own L/M & Paired M \\
 \midrule
-\texttt{django-15277} & 1 & 1 & 33/24 & 54.08\% & 63.26\% \\
-\texttt{django-15368} & 1 & 1 & 38/21 & 9.66\% & 39.11\% \\
-\texttt{scikit-learn-13135} & 1 & 1 & 20/19 & 9.57\% & 10.15\% \\
+\texttt{django-15277} & 1 & 1 & 33/24 & 54.08/54.08\% & 63.26\% \\
+\texttt{django-15368} & 1 & 1 & 38/21 & 6.05/9.66\% & 39.11\% \\
+\texttt{scikit-learn-13135} & 1 & 1 & 20/19 & 1.21/9.57\% & 10.15\% \\
 \midrule
-Pooled workload & 3 & 3 & 91/64 & 29.82\% & 43.58\% \\
+Pooled workload & 3 & 3 & 91/64 & 26.52/29.82\% & 43.58\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The candidate materializes 629,228 of 896,615 tokens on its own trajectories,
-versus 1,115,305 tokens for paired \textsc{Full}; provider prompt accounting
+The candidate selects 658,833 of 896,615 tokens as whole causal groups and
+materializes 629,228 after natural-boundary subdivision, giving 26.52\%
+logical and 29.82\% materialized own saving.  It materializes those 629,228
+tokens versus 1,115,305 for paired \textsc{Full}; provider prompt accounting
 falls 39.90\%.  Thus the cohort reaches the exploratory 30--50\% paired
 workload target with no observed quality loss or aggregate action increase.
 The task-clustered mean paired saving is 37.51\%, and the wide
@@ -4763,9 +4818,11 @@ small for a production-default accuracy claim.
 
 The submission-guarded mini-swe-agent cohort uses the same three task
 identities, model digest, exact tokenizer, sampling controls, and audited
-legacy pure-tail policy.  It preserves 3/3 official resolutions with 11.68\% own and 9.38\%
-paired saving and 62 versus 62 calls.  OpenHands preserves 3/3 with 29.82\%
-own and 43.58\% paired saving and 91 versus 64 actions.  The logical policy is
+legacy pure-tail policy.  It preserves 3/3 official resolutions with
+8.74/11.68\% logical/materialized own and 9.38\% paired materialized saving,
+and 62 versus 62 calls.  OpenHands preserves 3/3 with 26.52/29.82\%
+logical/materialized own and 43.58\% paired materialized saving and 91 versus
+64 actions.  The logical policy is
 engine independent, but opportunity is workload dependent: OpenHands carries
 richer schemas and larger observations, and its selective trajectories
 contract more.  Repeat controls are required before assigning the complete
@@ -4919,9 +4976,18 @@ replay, HF cache views, MLX interval views, vLLM pages, llama.cpp resident slots
 and SGLang cache objects. The runtime study must not retune selection semantics
 per engine.
 
-Paper~8.5 reports selected logical tokens, not K/V savings. K/V residence,
-copying, re-encoding, TTFT, and latency are measured only after the frozen plan
-is transferred to the runtime study.
+Paper~8.5 reports two nested selection ledgers, not measured K/V savings.
+Whole-group logical saving is the conservative lower bound that maps directly
+when every causal group owns persistent original-position K/V.  Additional
+record-internal materialized saving maps only when oversized observations were
+pre-segmented at natural boundaries and every child span retains a stable
+original K/V identity; text slicing or summary generation after caching does
+not qualify.  Paired saving additionally includes trajectory contraction and
+therefore predicts total workload economics, not per-request K/V omission.
+Paper~4.5 must replay both ledgers unchanged and report resident K/V references,
+copies, re-encoding, newly encoded suffix, temporary bytes, TTFT, and latency
+separately.  It may count neither rewritten receipts nor compacted text as
+resident-subset reuse.
 
 \section{Pending Confirmatory Outcomes}
 

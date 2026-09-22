@@ -22,6 +22,7 @@ from .run_pi_swebench import (
     _sha256,
     _write_json,
     load_locked_task,
+    observed_model_identity,
     swebench_image,
     task_prompt,
 )
@@ -47,6 +48,7 @@ def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
     trajectory = Path(args.reference_trajectory).resolve()
+    model_identity = observed_model_identity(args)
     model_config = Path(args.model_config).resolve()
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -170,6 +172,9 @@ def run(args: argparse.Namespace) -> Path:
         "reference_trajectory": str(trajectory),
         "reference_trajectory_sha256": _sha256(trajectory.read_bytes()),
         "model": args.model,
+        "served_model": getattr(args, "served_model", None) or args.model,
+        "model_revision": getattr(args, "model_revision", None),
+        "observed_model_identity": model_identity,
         "model_config_sha256": _sha256(model_config.read_bytes()),
         "source_image": source_image,
         "derived_image": image,
@@ -218,6 +223,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", required=True)
     parser.add_argument("--arm", default="FULL")
     parser.add_argument("--model", default="openai-compatible/qwen3-coder:30b")
+    parser.add_argument("--served-model")
+    parser.add_argument("--model-revision")
+    parser.add_argument("--ollama-tags-url")
     parser.add_argument("--agent-version", default="7.7.5")
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")

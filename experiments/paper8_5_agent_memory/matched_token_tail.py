@@ -25,6 +25,7 @@ class MatchedTokenTailConfig:
     tool_observation_threshold_tokens: int = 512
     protected_head_turns: int = 0
     protected_tail_turns: int = 0
+    boundary_compaction: str = "legacy"
 
     def __post_init__(self) -> None:
         if self.tool_observation_threshold_tokens <= 0:
@@ -33,6 +34,10 @@ class MatchedTokenTailConfig:
             raise ValueError("protected_head_turns cannot be negative")
         if self.protected_tail_turns < 0:
             raise ValueError("protected_tail_turns cannot be negative")
+        if self.boundary_compaction not in {"legacy", "declared_safe", "disabled"}:
+            raise ValueError(
+                "boundary_compaction must be legacy, declared_safe, or disabled"
+            )
 
 
 def _protected_turn_record_ids(
@@ -179,6 +184,11 @@ def materialize_matched_token_tail(
             row for row in turn_rows
             if row.has_role(AgentRecordRole.TOOL_OBSERVATION)
             and costs[row.record_id] > config.tool_observation_threshold_tokens
+            and config.boundary_compaction != "disabled"
+            and (
+                config.boundary_compaction == "legacy"
+                or row.metadata.get("record_internal_materialization_safe") is True
+            )
         ]
         fixed = [row for row in turn_rows if row not in eligible]
         fixed_tokens = sum(costs[row.record_id] for row in fixed)

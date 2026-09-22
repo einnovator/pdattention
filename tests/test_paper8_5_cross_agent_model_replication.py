@@ -14,6 +14,10 @@ CORRECTED_MINI_SPEC = (
     / "experiments/paper8_5_agent_memory/configs/"
     / "transverse_mini_swe_tail90_v3_h2t4_corrected.json"
 )
+SAFE_CONTRACT = (
+    ROOT
+    / "experiments/paper8_5_agent_memory/configs/cross_agent_model_replication_v2.json"
+)
 
 
 def test_cross_agent_model_replication_keeps_the_policy_transverse() -> None:
@@ -91,3 +95,15 @@ def test_corrected_mini_campaign_has_distinct_policy_identity() -> None:
     assert payload["history"]["tail_turns"] == 4
     assert payload["arms"][0]["arm_id"] == "matched_tail90_corrected_h2t4"
     assert "consume both" in payload["qualification"]["implementation_gate"]
+
+
+def test_safe_cross_agent_contract_rejects_undeclared_record_rewriting() -> None:
+    payload = json.loads(SAFE_CONTRACT.read_text(encoding="utf-8"))
+    policy = payload["logical_policy"]
+
+    assert payload["status"] == "frozen_before_execution"
+    assert policy["agent_id_visible_to_policy"] is False
+    assert policy["task_id_visible_to_policy"] is False
+    assert policy["boundary_compaction"] == "declared_safe"
+    assert "before K/V encoding" in policy["record_internal_rule"]
+    assert "Rewritten text" in payload["paper4_5_mapping"]

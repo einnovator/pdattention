@@ -13,14 +13,30 @@ from .run_autonomous_swebench import _exact_token_counter
 
 
 DEFAULT_TOOL_SEMANTICS = {
-    "read": {"category": "filesystem", "operation_kind": "read"},
+    "read": {
+        "category": "filesystem",
+        "operation_kind": "read",
+        "resource_arguments": ["path", "file_path"],
+    },
     "grep": {"category": "filesystem", "operation_kind": "read"},
     "find": {"category": "filesystem", "operation_kind": "search_discovery"},
     "glob": {"category": "filesystem", "operation_kind": "search_discovery"},
     "ls": {"category": "filesystem", "operation_kind": "search_discovery"},
-    "edit": {"category": "filesystem", "operation_kind": "write"},
-    "write": {"category": "filesystem", "operation_kind": "write"},
-    "apply_patch": {"category": "filesystem", "operation_kind": "write"},
+    "edit": {
+        "category": "filesystem",
+        "operation_kind": "write",
+        "resource_arguments": ["path", "file_path"],
+    },
+    "write": {
+        "category": "filesystem",
+        "operation_kind": "write",
+        "resource_arguments": ["path", "file_path"],
+    },
+    "apply_patch": {
+        "category": "filesystem",
+        "operation_kind": "write",
+        "resource_arguments": ["path", "file_path"],
+    },
     # Arbitrary shell is deliberately an unknown barrier unless execution
     # middleware supplies complete resource/effect evidence.
     "bash": {"category": "shell", "operation_kind": "unknown"},
@@ -56,6 +72,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--boundary-mode", default="boundary_free")
     parser.add_argument("--protected-head-turns", type=int, default=1)
     parser.add_argument("--protected-tail-turns", type=int, default=1)
+    parser.add_argument(
+        "--matched-tail-boundary-compaction",
+        choices=("legacy", "declared_safe", "disabled"),
+        default="legacy",
+        help=(
+            "Whether matched-tail may rewrite an oversized boundary tool "
+            "observation. Cross-agent runs should use declared_safe or disabled."
+        ),
+    )
     parser.add_argument("--completed-recent-turns", type=int, default=1)
     parser.add_argument("--completed-mutation-turns", type=int, default=1)
     parser.add_argument("--completed-verification-turns", type=int, default=1)
@@ -106,6 +131,7 @@ def build_config(
         budget_fraction=args.budget_fraction,
         protected_head_turns=args.protected_head_turns,
         protected_tail_turns=args.protected_tail_turns,
+        matched_tail_boundary_compaction=args.matched_tail_boundary_compaction,
         input_protocol="openai_tools",
         tool_semantics_by_name=_tool_semantics(args.tool_semantics_json),
         fill_missing_generation_parameters=True,
@@ -171,6 +197,9 @@ def main() -> None:
             "boundary_mode": config.boundary_mode.value,
             "protected_head_turns": config.protected_head_turns,
             "protected_tail_turns": config.protected_tail_turns,
+            "matched_tail_boundary_compaction": (
+                config.matched_tail_boundary_compaction
+            ),
             "completed_recent_turns": config.completed_recent_turns,
             "completed_mutation_turns": config.completed_mutation_turns,
             "completed_verification_turns": config.completed_verification_turns,

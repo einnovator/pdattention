@@ -979,6 +979,7 @@ def test_matched_token_tail_is_a_strict_autonomous_text_ceiling_without_sidecars
     assert result.trace["policy"] == "matched_token_tail"
     assert result.trace["protected_head_turns"] == 1
     assert result.trace["protected_tail_turns"] == 1
+    assert result.trace["matched_tail_boundary_compaction"] == "legacy"
     assert result.trace["selection_reasons"]
     assert result.trace["selection_abstained_for_sidecar"] is False
     assert result.trace["budget_interpretation"] == (

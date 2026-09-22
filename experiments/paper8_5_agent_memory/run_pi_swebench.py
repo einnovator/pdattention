@@ -26,6 +26,8 @@ import subprocess
 import time
 from typing import Any, Mapping, Sequence
 
+from .model_identity import fetch_ollama_model_identity
+
 _PR_DESCRIPTION = re.compile(
     r"<pr_description>\s*(.*?)\s*</pr_description>", re.DOTALL | re.IGNORECASE
 )
@@ -39,6 +41,24 @@ def _write_json(path: Path, value: Mapping[str, Any]) -> None:
     path.write_text(
         json.dumps(dict(value), indent=2, sort_keys=True, default=str) + "\n",
         encoding="utf-8",
+    )
+
+
+def observed_model_identity(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Bind a typed-agent run to an observed endpoint digest when requested."""
+
+    url = getattr(args, "ollama_tags_url", None)
+    revision = getattr(args, "model_revision", None)
+    if bool(url) != bool(revision):
+        raise ValueError(
+            "--ollama-tags-url and --model-revision must be supplied together"
+        )
+    if not url:
+        return None
+    return fetch_ollama_model_identity(
+        url,
+        expected_model=getattr(args, "served_model", None) or args.model,
+        expected_revision=revision,
     )
 
 
@@ -106,6 +126,7 @@ def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
     trajectory = Path(args.reference_trajectory).resolve()
+    model_identity = observed_model_identity(args)
     model_config = Path(args.model_config).resolve()
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -246,6 +267,9 @@ def run(args: argparse.Namespace) -> Path:
         "reference_trajectory": str(trajectory),
         "reference_trajectory_sha256": _sha256(trajectory.read_bytes()),
         "model": args.model,
+        "served_model": getattr(args, "served_model", None) or args.model,
+        "model_revision": getattr(args, "model_revision", None),
+        "observed_model_identity": model_identity,
         "provider": args.provider,
         "source_image": source_image,
         "derived_image": image,
@@ -290,6 +314,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", required=True)
     parser.add_argument("--arm", default="FULL")
     parser.add_argument("--model", default="qwen3-coder:30b")
+    parser.add_argument("--served-model")
+    parser.add_argument("--model-revision")
+    parser.add_argument("--ollama-tags-url")
     parser.add_argument("--provider", default="paper85-ollama")
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")
