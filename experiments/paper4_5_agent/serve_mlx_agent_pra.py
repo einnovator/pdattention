@@ -81,6 +81,7 @@ def _direct_handler(
     runtime_identity: Mapping[str, Any] | None = None,
     request_log: Path | None = None,
     run_token: str | None = None,
+    interaction_log: Path | None = None,
 ):
     log_lock = threading.Lock()
 
@@ -91,6 +92,31 @@ def _direct_handler(
         encoded = json.dumps(payload, sort_keys=True, default=str)
         with log_lock, request_log.open("a", encoding="utf-8") as stream:
             stream.write(encoded + "\n")
+
+    def write_interaction(payload: Mapping[str, Any]) -> None:
+        if interaction_log is None:
+            return
+        interaction_log.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(payload, sort_keys=True, default=str)
+        with log_lock, interaction_log.open("a", encoding="utf-8") as stream:
+            stream.write(encoded + "\n")
+
+    def economical_message(row: Mapping[str, Any], index: int) -> dict[str, Any]:
+        content = str(row.get("content") or "")
+        limit = 8_000
+        visible = content
+        elided = 0
+        if len(content) > limit:
+            visible = content[:4_000] + "\n...[ELIDED]...\n" + content[-4_000:]
+            elided = len(content) - 8_000
+        return {
+            "message_index": index,
+            "role": row.get("role"),
+            "content": visible,
+            "content_chars": len(content),
+            "elided_chars": elided,
+            "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        }
 
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
@@ -180,6 +206,20 @@ def _direct_handler(
                     "top_p": payload.get("top_p"),
                     "seed": payload.get("seed"),
                 })
+                # The first request records the system/task pair. Later calls
+                # record only the newly completed action/observation pair,
+                # keeping a human-auditable trajectory without quadratic dumps.
+                tail_start = 0 if len(messages) <= 2 else max(0, len(messages) - 2)
+                write_interaction({
+                    "event": "request_messages",
+                    "request_id": request.request_id,
+                    "message_count": len(messages),
+                    "messages": [
+                        economical_message(row, index)
+                        for index, row in enumerate(messages[tail_start:], tail_start)
+                        if isinstance(row, Mapping)
+                    ],
+                })
                 result = executor.generate(request)
                 if bool(request.metadata.get("ephemeral_session", False)):
                     executor.close_session(str(request.session_id))
@@ -253,6 +293,11 @@ def main() -> None:
             "value in X-PRA-Run-Lease, preventing stale agents from crossing "
             "a server restart or task boundary."
         ),
+    )
+    parser.add_argument(
+        "--interaction-log",
+        type=Path,
+        help="Optional economical JSONL action/observation trajectory.",
     )
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--max-model-len", type=int, default=8192)
@@ -344,6 +389,7 @@ def main() -> None:
                 _runtime_identity(args.pra_source_revision, observed_revision),
                 args.request_log,
                 args.run_token,
+                args.interaction_log,
             ),
         ).serve_forever()
     finally:

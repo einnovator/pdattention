@@ -41,9 +41,13 @@ def test_mlx_endpoint_writes_request_shape_without_message_text(tmp_path) -> Non
             raise AssertionError(f"unexpected ephemeral session {session_id}")
 
     receipt = tmp_path / "requests.jsonl"
+    interaction = tmp_path / "interactions.jsonl"
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0),
-        _direct_handler(Executor(), "model", request_log=receipt),
+        _direct_handler(
+            Executor(), "model", request_log=receipt,
+            interaction_log=interaction,
+        ),
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -75,6 +79,15 @@ def test_mlx_endpoint_writes_request_shape_without_message_text(tmp_path) -> Non
     assert rows[0]["messages"][0]["content_chars"] == 13
     assert "secret prompt" not in receipt.read_text()
     assert rows[1]["usage"]["total_tokens"] == 4
+    transcript = [json.loads(line) for line in interaction.read_text().splitlines()]
+    assert transcript[0]["messages"] == [{
+        "message_index": 0,
+        "role": "user",
+        "content": "secret prompt",
+        "content_chars": 13,
+        "elided_chars": 0,
+        "content_sha256": rows[0]["messages"][0]["content_sha256"],
+    }]
 
 
 def test_mlx_endpoint_rejects_a_stale_run_lease(tmp_path) -> None:
