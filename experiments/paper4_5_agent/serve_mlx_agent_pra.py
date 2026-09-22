@@ -6,6 +6,9 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+from pathlib import Path
+import threading
+import time
 import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -75,7 +78,18 @@ def _direct_handler(
     executor: object,
     model_id: str,
     runtime_identity: Mapping[str, Any] | None = None,
+    request_log: Path | None = None,
 ):
+    log_lock = threading.Lock()
+
+    def write_receipt(payload: Mapping[str, Any]) -> None:
+        if request_log is None:
+            return
+        request_log.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(payload, sort_keys=True, default=str)
+        with log_lock, request_log.open("a", encoding="utf-8") as stream:
+            stream.write(encoded + "\n")
+
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
             encoded = json.dumps(payload, default=str).encode("utf-8")
@@ -124,10 +138,51 @@ def _direct_handler(
                 if payload.get("stream"):
                     raise ValueError("streaming is disabled for the frozen agent gate")
                 request = PRAWireRequest.from_openai(payload)
+                started = time.perf_counter()
+                messages = payload.get("messages") or []
+                message_receipts = [
+                    {
+                        "role": row.get("role"),
+                        "content_chars": len(str(row.get("content") or "")),
+                        "content_sha256": hashlib.sha256(
+                            str(row.get("content") or "").encode("utf-8")
+                        ).hexdigest(),
+                    }
+                    for row in messages
+                    if isinstance(row, Mapping)
+                ]
+                rendered_tokens = executor.tokenizer.apply_chat_template(
+                    messages, tokenize=True, add_generation_prompt=True
+                )
+                write_receipt({
+                    "event": "request_start",
+                    "request_id": request.request_id,
+                    "session_id": request.session_id,
+                    "body_sha256": hashlib.sha256(
+                        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+                    ).hexdigest(),
+                    "payload_keys": sorted(payload),
+                    "message_count": len(messages),
+                    "messages": message_receipts,
+                    "rendered_prompt_tokens": len(rendered_tokens),
+                    "max_tokens": payload.get("max_tokens"),
+                    "temperature": payload.get("temperature"),
+                    "top_p": payload.get("top_p"),
+                    "seed": payload.get("seed"),
+                })
                 result = executor.generate(request)
                 if bool(request.metadata.get("ephemeral_session", False)):
                     executor.close_session(str(request.session_id))
-                self._json(200, _completion(request, result))
+                response = _completion(request, result)
+                write_receipt({
+                    "event": "request_end",
+                    "request_id": request.request_id,
+                    "session_id": request.session_id,
+                    "elapsed_seconds": time.perf_counter() - started,
+                    "usage": response.get("usage"),
+                    "finish_reason": response["choices"][0]["finish_reason"],
+                })
+                self._json(200, response)
             except LiveKVSessionTerminatedError as error:
                 self._json(409, {
                     "error": "session_terminated",
@@ -176,6 +231,11 @@ def main() -> None:
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18124)
+    parser.add_argument(
+        "--request-log",
+        type=Path,
+        help="Optional JSONL request-shape and timing receipt (no message text).",
+    )
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
@@ -264,6 +324,7 @@ def main() -> None:
                 executor,
                 served_model,
                 _runtime_identity(args.pra_source_revision, observed_revision),
+                args.request_log,
             ),
         ).serve_forever()
     finally:
