@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
+from experiments.paper4_5_agent.openai_response import completion_finish_reason
 from pra_hf.gateway import PRAGateway, serve_gateway
 
 
@@ -1760,7 +1761,7 @@ def _completion(
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": result.text},
-            "finish_reason": "stop",
+            "finish_reason": completion_finish_reason(request, result),
         }],
     }
     usage = _usage(raw)

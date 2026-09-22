@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Mapping
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
+from experiments.paper4_5_agent.openai_response import completion_finish_reason
 from pra_hf.live_history import LiveKVSessionTerminatedError
 
 
@@ -72,7 +73,7 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": result.text},
-            "finish_reason": "stop",
+            "finish_reason": completion_finish_reason(request, result),
         }],
     }
     native = raw.get("pra") if isinstance(raw.get("pra"), Mapping) else {}

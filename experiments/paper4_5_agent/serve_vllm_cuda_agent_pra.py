@@ -16,6 +16,7 @@ os.environ.setdefault("VLLM_USE_V2_MODEL_RUNNER", "0")
 os.environ.setdefault("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
+from experiments.paper4_5_agent.openai_response import completion_finish_reason
 
 
 def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, Any]:
@@ -28,7 +29,7 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": result.text},
-            "finish_reason": "stop",
+            "finish_reason": completion_finish_reason(request, result),
         }],
         "pra": {
             **dict(pra),
