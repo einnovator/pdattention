@@ -10,9 +10,10 @@ import subprocess
 import sys
 import threading
 import urllib.request
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 import yaml
@@ -97,6 +98,54 @@ from experiments.paper4_5_agent.runners.r2egym import (
     trajectories_to_predictions,
     write_task_results,
 )
+
+
+@pytest.fixture
+def llama_live_prefix_contract(monkeypatch):
+    """Provide the Paper 6.7 value contract without a sibling checkout.
+
+    Paper 4.5 deliberately consumes the engine adapter as an optional runtime
+    dependency. Its unit suite must nevertheless run from a clean Paper 4.5
+    checkout, so these tests install a minimal structural stand-in for the
+    three immutable plan values used by the campaign adapter.
+    """
+
+    @dataclass(frozen=True)
+    class LlamaCppLivePrefixRange:
+        record_id: str
+        parent_record_id: str
+        causal_group_id: str
+        start: int
+        end: int
+
+    @dataclass(frozen=True)
+    class LlamaCppPositionedHistorySpan:
+        record_id: str
+        position_start: int
+        token_ids: tuple[int, ...]
+
+    @dataclass(frozen=True)
+    class LlamaCppLivePrefixPlan:
+        source_slot: int
+        source_tokens: int
+        ranges: tuple[LlamaCppLivePrefixRange, ...]
+        materialized_history: tuple[LlamaCppPositionedHistorySpan, ...] = ()
+        commit_to_source: bool = True
+
+        @property
+        def selected_tokens(self):
+            return sum(row.end - row.start for row in self.ranges)
+
+        @property
+        def materialized_tokens(self):
+            return sum(len(row.token_ids) for row in self.materialized_history)
+
+    contract = ModuleType("pra_llamacpp")
+    contract.LlamaCppLivePrefixRange = LlamaCppLivePrefixRange
+    contract.LlamaCppPositionedHistorySpan = LlamaCppPositionedHistorySpan
+    contract.LlamaCppLivePrefixPlan = LlamaCppLivePrefixPlan
+    monkeypatch.setitem(sys.modules, "pra_llamacpp", contract)
+    return contract
 from experiments.paper4_5_agent.summarize_baseline import summarize
 from experiments.paper4_5_agent.run_campaign import (
     _campaign_environment,
@@ -1804,7 +1853,9 @@ def test_complete_selection_continues_live_slot_without_detached_prefix_check() 
     assert adapter.generate(request) is continued
 
 
-def test_live_record_plan_selects_resident_kv_without_omitted_text_prefill() -> None:
+def test_live_record_plan_selects_resident_kv_without_omitted_text_prefill(
+    llama_live_prefix_contract,
+) -> None:
     calls = []
 
     class Native:
@@ -1890,7 +1941,9 @@ def test_live_record_plan_selects_resident_kv_without_omitted_text_prefill() -> 
     assert result.raw["pra"]["selected_text_reencoded_tokens"] == 0
 
 
-def test_live_record_plan_encodes_compact_receipt_at_original_position() -> None:
+def test_live_record_plan_encodes_compact_receipt_at_original_position(
+    llama_live_prefix_contract,
+) -> None:
     calls = []
 
     class Native:
@@ -1984,7 +2037,9 @@ def test_live_record_plan_encodes_compact_receipt_at_original_position() -> None
     assert result.raw["pra"]["realized_retention_fraction"] == pytest.approx(0.8)
 
 
-def test_full_live_record_selection_continues_canonical_prefix_without_slot_handoff() -> None:
+def test_full_live_record_selection_continues_canonical_prefix_without_slot_handoff(
+    llama_live_prefix_contract,
+) -> None:
     continued = []
 
     class Native:
@@ -2744,12 +2799,71 @@ def test_wire_agent_memory_plan_maps_to_native_records_without_rerouting() -> No
         b"large completed response"
     ).hexdigest()
     assert metadata["materialized_message_replacements"][0]["record_id"] == "mini/action"
+    assert metadata["agent_history_selection_policy"] == (
+        "persistent_instruction_epoch_retirement"
+    )
+    assert metadata["selection_materialization"] == (
+        "paper8.5-records-plus-materialized-replacements-v1"
+    )
+    assert metadata["native_materialization_class"] == "hybrid_transformed_context"
+    assert metadata["synthetic_history_tokens_expected"] is True
     assert metadata["source_bootstrap_contract"] == "full-logical-history-once-v1"
     assert metadata["source_bootstrap_logical_messages"] == payload["messages"]
     assert len(metadata["source_wire_plan_digest"]) == 64
 
 
-def test_imported_persistent_history_bootstrap_generates_first_turn_as_full() -> None:
+def test_wire_agent_memory_plan_without_replacements_is_strict_resident_subset() -> None:
+    payload = {
+        "model": "model",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "old task"},
+            {"role": "assistant", "content": "inspect"},
+            {"role": "user", "content": "result"},
+            {"role": "user", "content": "current task"},
+        ],
+    }
+    wire_plan = {
+        "schema_version": 1,
+        "policy": "persistent_instruction_epoch_retirement",
+        "selected_record_ids": ["system", "old-task", "current-task"],
+        "record_replacements": {},
+    }
+
+    transformed, trace = transform_wire_agent_memory_plan_payload(
+        payload,
+        wire_plan=wire_plan,
+        record_message_indices={
+            "system": 0,
+            "old-task": 1,
+            "inspect": 2,
+            "result": 3,
+            "current-task": 4,
+        },
+        mandatory_message_indices=[0, 4],
+        session_id="persistent-session",
+        request_index=2,
+    )
+
+    metadata = transformed["pra"]["metadata"]
+    assert metadata["materialized_message_replacements"] == []
+    assert metadata["selection_materialization"] == (
+        "paper8.5-strict-original-record-subset-v1"
+    )
+    assert metadata["native_materialization_class"] == "strict_resident_subset"
+    assert metadata["synthetic_history_tokens_expected"] is False
+    assert metadata["agent_history_selection_policy"] == (
+        "persistent_instruction_epoch_retirement"
+    )
+    assert transformed["pra"]["pra_policy"]["profile"] == (
+        "persistent_instruction_epoch_retirement"
+    )
+    assert trace.agent_history_selection_policy == (
+        "persistent_instruction_epoch_retirement"
+    )
+
+
+def test_imported_persistent_history_bootstrap_prefills_then_selects_first_turn() -> None:
     calls = []
     erased = []
 
@@ -2769,12 +2883,12 @@ def test_imported_persistent_history_bootstrap_generates_first_turn_as_full() ->
             if path == "/tokenize":
                 return {"tokens": [ord(char) for char in body["content"]]}
             assert path == "/completion"
-            assert body["n_predict"] == 10
+            assert body["n_predict"] == 0
             return {
-                "content": "answer",
-                "tokens": [90, 91],
-                "tokens_evaluated": len("SOLDNOW"),
-                "timings": {"cache_n": 0, "prompt_n": len("SOLDNOW")},
+                "content": "",
+                "tokens": [],
+                "tokens_evaluated": len("SOLDNO"),
+                "timings": {"cache_n": 0, "prompt_n": len("SOLDNO")},
             }
 
         @staticmethod
@@ -2828,24 +2942,46 @@ def test_imported_persistent_history_bootstrap_generates_first_turn_as_full() ->
         openai_fields={"prefix_caching": True, "seed": 0},
         max_new_tokens=10,
     )
-    adapter._generate_from_live_records = lambda *args: (_ for _ in ()).throw(
-        AssertionError("selection must wait until the imported source is resident")
-    )
+    selected_calls = []
+
+    def selected(request, source, logical_messages):
+        selected_calls.append((request, source, logical_messages))
+        assert adapter._live_session_tokens["imported-session"] == tuple(
+            map(ord, "SOLDNO")
+        )
+        return PRAEngineResult(
+            "answer",
+            {
+                "tokens": [90, 91],
+                "pra": {
+                    "native_kv": True,
+                    "selected_kv_tokens": 3,
+                    "selected_history_reencoded_tokens": 0,
+                },
+            },
+            ({"stage": "selected-live-kv"},),
+        )
+
+    adapter._generate_from_live_records = selected
 
     result = adapter.generate(request)
 
     assert result.text == "answer"
     assert erased == [1, 0]
     prime = next(body for path, body in calls if path == "/completion")
-    assert prime["prompt"] == "SOLDNOW"
+    assert prime["prompt"] == list(map(ord, "SOLDNO"))
+    assert prime["n_predict"] == 0
+    assert len(selected_calls) == 1
     assert adapter._live_session_tokens["imported-session"] == (
         *tuple(map(ord, "SOLDNOW")), 90,
     )
     assert result.raw["pra"]["source_bootstrap"] is True
-    assert result.raw["pra"]["source_bootstrap_evaluated_tokens"] == 7
-    assert result.raw["pra"]["native_kv"] is False
-    assert result.raw["pra"]["selection_deferred_until_source_resident"] is True
-    assert result.trace[0]["stage"] == "llama_cpp_live_history_source_bootstrap_generate"
+    assert result.raw["pra"]["source_bootstrap_evaluated_tokens"] == 6
+    assert result.raw["pra"]["source_bootstrap_generated_tokens"] == 0
+    assert result.raw["pra"]["native_kv"] is True
+    assert result.raw["pra"]["selection_deferred_until_source_resident"] is False
+    assert result.trace[0]["stage"] == "llama_cpp_live_history_source_bootstrap_prefill"
+    assert result.trace[1]["stage"] == "selected-live-kv"
 
 
 def test_paper8_5_fixture_bounds_active_tail_to_current_episode() -> None:

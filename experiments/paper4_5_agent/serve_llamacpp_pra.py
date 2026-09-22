@@ -1185,12 +1185,14 @@ class HybridLlamaCppAdapter:
         request: PRAWireRequest,
         logical_messages: list[dict[str, Any]],
     ) -> PRAEngineResult:
-        """Capture and generate the imported session's first turn losslessly.
+        """Prime an imported source once, then generate from its selected K/V.
 
-        Splitting source capture (``n_predict=0``) from first-turn generation
-        changes llama.cpp's long-prefill numerical path.  The initial imported
-        turn therefore follows the ordinary FULL request exactly and pins that
-        resulting live state. Sparse selection begins on the next request.
+        Bootstrap is a cache-population operation, not a model-visible FULL
+        control. Generating while the complete source is being captured would
+        make request one consume a different context from the frozen policy
+        and can permanently change the autonomous trajectory. The source is
+        therefore prefetched with ``n_predict=0`` and the same request is then
+        executed through the normal original-position sparse path.
         """
 
         if request.session_id is None:
@@ -1199,21 +1201,25 @@ class HybridLlamaCppAdapter:
         native = self.native_adapter.native_executor
         source, destination = self._allocate_live_pair(session_id)
         full_tokens = self._full_logical_tokens(request, logical_messages)
-        if not full_tokens:
+        if len(full_tokens) < 2:
             raise ValueError("live history source bootstrap rendered no tokens")
-        full_prompt = native._render_chat(logical_messages, request, generate=True)
+        # Leave the final generation-boundary token on the wire. llama.cpp's
+        # live-prefix endpoint rejects an empty prompt, and this one-token
+        # suffix also gives the selected view the same explicit boundary as a
+        # normal continuation without re-encoding any selected history.
+        bootstrap_tokens = full_tokens[:-1]
 
         # Session import owns a fresh source. Do not silently inherit K/V from
         # a prior control or tenant that happened to use the same engine slot.
         native._erase_request_slot(source)
         if destination != source:
             native._erase_request_slot(destination)
-        raw = dict(native._request_json(
+        prime = dict(native._request_json(
             "/completion",
             {
-                "prompt": full_prompt,
+                "prompt": list(bootstrap_tokens),
                 "id_slot": source,
-                "n_predict": request.resolved_max_new_tokens,
+                "n_predict": 0,
                 "cache_prompt": True,
                 "temperature": float(request.openai_fields.get("temperature", 0)),
                 "seed": int(request.openai_fields.get("seed", 0)),
@@ -1221,61 +1227,56 @@ class HybridLlamaCppAdapter:
                 "pra_pin_resource": True,
             },
         ))
-        timings = raw.get("timings") if isinstance(raw.get("timings"), Mapping) else {}
+        timings = (
+            prime.get("timings")
+            if isinstance(prime.get("timings"), Mapping)
+            else {}
+        )
         cached = int(timings.get("cache_n", 0) or 0)
-        evaluated = raw.get("tokens_evaluated", timings.get("prompt_n"))
-        evaluated = int(evaluated if evaluated is not None else len(full_tokens) - cached)
-        if cached + evaluated < len(full_tokens):
+        evaluated = prime.get("tokens_evaluated", timings.get("prompt_n"))
+        evaluated = int(
+            evaluated
+            if evaluated is not None
+            else len(bootstrap_tokens) - cached
+        )
+        if cached + evaluated < len(bootstrap_tokens):
             raise RuntimeError(
                 "live history source bootstrap did not evaluate the complete transcript"
             )
 
-        pra = dict(raw.get("pra") or {})
-        pra.update({
-            "native_kv": False,
-            "native_tokens": cached,
-            "wire_tokens": len(full_tokens),
-            "selected_kv_tokens": 0,
-            "selected_text_reencoded_tokens": 0,
-            "selected_history_reencoded_tokens": 0,
-            "physical_kv_copy": False,
-            "physical_kv_copy_bytes": 0,
-            "total_kv_copy_bytes": 0,
-            "canonical_suffix_graft_d2d_bytes": 0,
-            "host_to_device_bytes": 0,
-            "full_retention": True,
-            "realized_retention_fraction": 1.0,
-            "source_bootstrap": True,
-            "source_bootstrap_tokens": len(full_tokens),
-            "source_bootstrap_cached_tokens": cached,
-            "source_bootstrap_evaluated_tokens": evaluated,
-            "selection_deferred_until_source_resident": True,
-        })
-        raw["pra"] = pra
-        raw.update(
-            prefix_cache_enabled=True,
-            prefix_cached_tokens=cached,
-            engine_cached_tokens_total=cached,
-            prefix_cache_hit=bool(cached),
-            native_attached_resources=[],
-        )
-        result = PRAEngineResult(
-            str(raw.get("content", "")),
-            raw,
-            ({
-                "stage": "llama_cpp_live_history_source_bootstrap_generate",
-                "source_slot": source,
-                "request_slot": destination,
-                "source_bootstrap_tokens": len(full_tokens),
-                "source_bootstrap_cached_tokens": cached,
-                "source_bootstrap_evaluated_tokens": evaluated,
-                "selection_deferred_until_source_resident": True,
-            },),
-        )
-        self._remember_resident_tokens(request, result, logical_messages)
+        self._live_session_tokens[session_id] = tuple(bootstrap_tokens)
         self._logical_session_messages[session_id] = [
             dict(message) for message in logical_messages
         ]
+        result = self._generate_from_live_records(
+            request, source, logical_messages,
+        )
+        raw = dict(result.raw)
+        pra = dict(raw.get("pra") or {})
+        pra.update({
+            "source_bootstrap": True,
+            "source_bootstrap_tokens": len(bootstrap_tokens),
+            "source_bootstrap_cached_tokens": cached,
+            "source_bootstrap_evaluated_tokens": evaluated,
+            "source_bootstrap_generated_tokens": 0,
+            "selection_deferred_until_source_resident": False,
+        })
+        raw["pra"] = pra
+        result = PRAEngineResult(
+            result.text,
+            raw,
+            ({
+                "stage": "llama_cpp_live_history_source_bootstrap_prefill",
+                "source_slot": source,
+                "request_slot": destination,
+                "source_bootstrap_tokens": len(bootstrap_tokens),
+                "source_bootstrap_cached_tokens": cached,
+                "source_bootstrap_evaluated_tokens": evaluated,
+                "source_bootstrap_generated_tokens": 0,
+                "selection_deferred_until_source_resident": False,
+            }, *result.trace),
+        )
+        self._remember_resident_tokens(request, result, logical_messages)
         return result
 
     def _logical_prompt_tokens(self, request: PRAWireRequest) -> tuple[int, ...]:

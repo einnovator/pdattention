@@ -673,8 +673,18 @@ class VLLMCudaAgentHistoryExecutor:
             selected_indices = tuple(range(len(messages)))
             requested_selected_indices = selected_indices
             retention_rounded_up = False
+            bootstrap_discarded_tokens = 0
+            initial_store = state.source_tokens == 0
             if state.source_tokens == 0:
-                source_tokens = (len(prompt) // block) * block
+                # Leave at least one real query token after the complete-page
+                # source. An imported frozen session is first captured under a
+                # hidden store request, then the same model-visible request is
+                # executed from the requested selected pages.
+                source_tokens = (
+                    ((len(prompt) - 1) // block) * block
+                    if source_bootstrap
+                    else (len(prompt) // block) * block
+                )
                 if source_tokens <= 0:
                     raise RuntimeError("Initial agent prompt has no complete vLLM KV page.")
                 command = SparseCudaConnectorCommand(
@@ -689,16 +699,24 @@ class VLLMCudaAgentHistoryExecutor:
                 receipt = self.driver.generate(
                     prompt,
                     command,
-                    max_tokens=request.resolved_max_new_tokens,
+                    max_tokens=(1 if source_bootstrap else request.resolved_max_new_tokens),
                 )
                 if int(receipt.callback_delta.get("source_pin_events", 0)) != 1:
                     raise RuntimeError("vLLM store request lacks its source-pin callback.")
                 state.source_tokens = source_tokens
+                if source_bootstrap:
+                    # The sampled capture token is never returned, committed,
+                    # or added to logical history. vLLM's public generation
+                    # API currently has no prefill-only request; account for
+                    # this hidden bootstrap work explicitly.
+                    bootstrap_discarded_tokens = len(receipt.token_ids)
+                    state.history_tokens = list(prompt[:source_tokens])
                 page_indices = tuple(range(source_tokens // block))
                 selected_tokens = source_tokens
                 submitted_suffix_tokens = len(prompt)
                 mode = "initial_store"
-            else:
+
+            if not initial_store or source_bootstrap:
                 selected_indices = self._selected_indices(request)
                 requested_selected_indices = selected_indices
                 selection_contract = request.metadata.get("selection_contract")
@@ -816,7 +834,7 @@ class VLLMCudaAgentHistoryExecutor:
             trace = {
                 "stage": "vllm_scheduler_agent_alias",
                 "engine": "vllm-cuda",
-                "native_kv_used": not source_bootstrap,
+                "native_kv_used": bool(not initial_store or source_bootstrap),
                 "consumption_mode": mode,
                 "source_logical_key": state.source_key,
                 "source_generation": state.generation,
@@ -831,9 +849,7 @@ class VLLMCudaAgentHistoryExecutor:
                 "retention_rounded_up": retention_rounded_up,
                 "selected_kv_tokens": selected_tokens,
                 "requested_retention_fraction": requested,
-                "effective_requested_retention_fraction": (
-                    1.0 if source_bootstrap else requested
-                ),
+                "effective_requested_retention_fraction": requested,
                 "realized_retention_fraction": selected_tokens
                 / max(command.source_position_base, 1),
                 "realized_historical_kv_retention": selected_tokens
@@ -851,7 +867,9 @@ class VLLMCudaAgentHistoryExecutor:
                 "source_bootstrap_evaluated_tokens": (
                     len(prompt) if source_bootstrap else None
                 ),
-                "selection_deferred_until_source_resident": source_bootstrap,
+                "source_bootstrap_generated_tokens": 0,
+                "source_bootstrap_discarded_tokens": bootstrap_discarded_tokens,
+                "selection_deferred_until_source_resident": False,
                 "selection_contract": request.metadata.get(
                     "selection_contract", "minimum-retention-floor"
                 ),

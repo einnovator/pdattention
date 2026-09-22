@@ -652,7 +652,7 @@ def test_pra100_can_compare_every_token_with_live_prefix_cache(fake_mlx) -> None
     )
 
 
-def test_source_bootstrap_defers_selection_until_full_history_is_resident(fake_mlx) -> None:
+def test_source_bootstrap_selects_on_first_model_visible_request(fake_mlx) -> None:
     executor = _executor()
     logical = (
         {"role": "system", "content": "S" * 40},
@@ -670,11 +670,12 @@ def test_source_bootstrap_defers_selection_until_full_history_is_resident(fake_m
 
     assert tuple(executor._sessions["session"].ledger.messages[:-1]) == logical
     assert first_trace["source_bootstrap"] is True
-    assert first_trace["selection_deferred_until_source_resident"] is True
-    assert first_trace["native_kv_used"] is False
-    assert first_trace["full_retention"] is True
+    assert first_trace["selection_deferred_until_source_resident"] is False
+    assert first_trace["source_bootstrap_generated_tokens"] == 0
+    assert first_trace["native_kv_used"] is True
+    assert first_trace["full_retention"] is False
     assert first_trace["requested_retention_fraction"] == 0.5
-    assert first_trace["effective_requested_retention_fraction"] == 1.0
+    assert first_trace["effective_requested_retention_fraction"] == 0.5
     assert first_trace["source_bootstrap_evaluated_tokens"] == first_trace[
         "logical_prompt_tokens"
     ]
@@ -871,7 +872,9 @@ def test_sparse_same_subset_mismatch_fails_closed_and_releases_borrows(fake_mlx)
     logical = (*initial, {"role": "assistant", "content": "A"}, {
         "role": "user", "content": "O" * 40,
     })
-    with pytest.raises(RuntimeError, match="same-subset correctness gate failed"):
+    with pytest.raises(
+        RuntimeError, match=r"candidate_token=\d+, reference_token=\d+"
+    ):
         executor.generate(_request(
             logical,
             request_messages=(logical[0], logical[1], logical[3]),

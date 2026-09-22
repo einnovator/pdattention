@@ -60,6 +60,13 @@ bundle, despite zero history re-encoding and selected-K/V copy.  A separate
 frozen plan omits about 40\% of resident
 history, but its receipt-bearing transfers remain hybrid transformed-context
 evidence rather than strict resident-subset reuse.
+An audit then found that every engine adapter had silently consumed request one
+as full history while importing that source.  After correction, a strict
+selection-only llama.cpp transfer omits 36.53\% with zero selected-history
+re-encoding or K/V copy, but fails the task in twenty calls; its matched
+PRA-100 and plain controls both solve, although their successful trajectories
+are not byte-identical.  Compact-text policy success therefore does not by
+itself qualify original-position sparse-K/V utility.
 
 A later strict BF16 MLX gate isolates a second model/task pair.  On locked
 Task~7, plain and PRA-100 both resolve in seven byte-identical actions with the
@@ -603,6 +610,40 @@ These rows establish the second systems boundary:
 \]
 Selection-only reruns with zero synthetic history are required before the plan
 can enter the strict native class.
+
+A first such rerun also corrected a shared bootstrap error.  The adapters had
+captured an imported transcript by generating request one from \textsc{Full}
+history, deferring selection to request two.  HF, MLX, SGLang, and llama.cpp
+now populate the canonical source without a model-visible completion and apply
+the declared subset immediately.  Pinned vLLM lacks a public prefill-only API;
+it samples and discards one hidden capture token, reports that overhead, and
+does not commit it to agent history.
+
+On Qwen3-Coder-30B Q4 and locked
+\texttt{django\_\_django-15741}, plain full-history execution resolves in ten
+calls and native PRA-100 resolves in eight with zero selected-history
+re-encoding and selected-K/V copy.  The first three commands match, but the
+later successful trajectories differ, so exact PRA-100 trajectory parity is
+still open for this identity.  The strict selection-only arm uses 372,180 of
+586,360 cumulative logical tokens (36.53\% saving), re-encodes and copies zero
+selected K/V, but fails official grading after twenty calls.  This valid
+negative transfer blocks production-default promotion and shows that compact
+ordinary-text policy qualification is not equivalent to original-position K/V
+consumption.  The auditable bundle is
+\path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_selection_only_e2_django15741_v1}.
+
+The same corrected request-9 gate does not yet qualify the direct MLX 14B
+path.  On MLX 0.32.2 / MLX-LM 0.31.3 with Qwen3-14B 4-bit, both fused and
+eager disjoint consumers differ from the native dense identical-subset
+reference by 0.5 logits, above the predeclared 0.01 limit; the eager first
+token nevertheless matches (ID 3617).  The engine rejects the request before
+generation, so this is a mechanism negative rather than an autonomous task
+result.  A 154-token control further localizes the discrepancy: fused and eager
+disjoint consumers each agree exactly with a packed copy under the same
+consumer, yet differ from native dense MLX by 1.375 and 1.1611 logits.  Both
+preserve four generated tokens, and the fused diagnostic preserves 16/16, but
+the predeclared numerical gate remains failed; consumer equivalence cannot be
+inferred from short token agreement.
 
 \section{Prefix Cache and PRA Are Complementary}
 
@@ -4368,6 +4409,96 @@ The all-call mean K/V omission is 35.22\% after charging the initial full
 bootstrap.  Consumer temporary bytes remain unmeasured, not zero.  The
 auditable bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_e2_f1c_scikit14496_v1/autonomous_llamacpp_qwen3coder30b_postfix_v1}.
+
+\paragraph{Selection-only transfer exposed a cross-engine bootstrap error.}
+A subsequent strict export from Paper~8.5 contains no compact receipts or
+synthetic replacement text.  Auditing its first autonomous request found that
+all five campaign adapters had treated source capture as a model-visible
+\textsc{Full} request: llama.cpp, HF, MLX, SGLang, and vLLM silently deferred
+the requested selection until request two.  Such a run does not test the
+frozen policy on the first action and can permanently alter an autonomous
+trajectory.  The corrected contract separates source population from
+consumption.  The complete canonical transcript is evaluated once into an
+owned cache, but request one immediately consumes its declared resident
+subset.  llama.cpp, HF, MLX, and SGLang perform a non-generating capture.
+vLLM's public generation API has no prefill-only operation in the pinned
+version, so its capture samples and discards one hidden token; that token is
+neither returned nor committed to agent history and is reported separately as
+bootstrap overhead.
+
+The corrected llama.cpp control uses Qwen3-Coder-30B Q4 on
+\texttt{django\_\_django-15741} with the same locked five-episode prefix.
+Plain full-history execution resolves in ten calls.  Native PRA-100 resolves
+in eight calls with zero selected-history re-encoding and zero selected-K/V
+copy.  The first three shell commands and first two complete assistant
+responses match, after which the successful trajectories differ; PRA-100
+therefore passes official utility and physical-accounting gates but not exact
+action-trajectory parity.  This difference must be investigated as a
+prefix-cache versus fresh-prefill numerical/dispatch effect before claiming a
+deterministic semantic no-op for this identity.
+
+The strict original-position policy omits 36.53\% of cumulative logical
+history and still re-encodes and copies zero selected K/V, but it fails the
+official task after twenty calls.  The same policy had succeeded when Paper~8.5
+presented selected records as compact ordinary text.  Thus compact-text policy
+qualification does not automatically transfer to sparse original-position
+K/V consumption: positional presentation is part of the treatment.  This is
+an admissible negative result and blocks promotion of this selection-only
+policy as a Paper~4.5 default.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Corrected selection-only autonomous llama.cpp transfer on
+\texttt{django\_\_django-15741}.  Every model-visible selective request applies
+selection immediately; no receipt text is materialized.}
+\begin{tabular}{lrrrrr}
+\toprule
+Condition & Solved & Calls & Logical saving & Selected re-enc. & Selected K/V copy \\
+\midrule
+Plain full history & 1/1 & 10 & 0\% & n/a & n/a \\
+Native PRA-100 & 1/1 & 8 & 0\% & 0 & 0 B \\
+Strict original-position E2 & 0/1 & 20 & 36.53\% & 0 & 0 B \\
+\bottomrule
+\end{tabular}
+\label{tab:agent-selection-only-bootstrap-corrected}
+\end{table}
+
+The evidence, trajectories, manifests, and per-request ledgers are under
+\path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_selection_only_e2_django15741_v1}.  Diagnostic runs that generated
+request one from full history, or attempted an empty selected suffix, are
+quarantined and excluded from the table.
+
+The corrected direct-MLX request-9 transfer remains below the autonomous
+admission line.  MLX 0.32.2 / MLX-LM 0.31.3 and
+\texttt{mlx-community/Qwen3-14B-4bit} revision
+\texttt{a4d9b2df59d2c150bef02fcbe0d91046\allowbreak b7ca33a4} capture the canonical source
+without a model-visible bootstrap completion and apply the declared subset on
+request one.  The fused interval-addressed consumer then produces a maximum
+logit difference of 0.5 against its independently packed, identical-subset
+MLX reference, exceeding the predeclared 0.01 gate.  The request is rejected
+before generation; it is not counted as either task success or failure.  A
+16~GB-host attempt is separately quarantined because canonical capture drove
+active swap to 23.5~GB.  The reported numerical negative is from the 48~GB
+host, where memory pressure remained healthy.  Holding tokens, positions,
+model, and reference fixed while changing only the fused consumer to the eager
+multi-segment implementation produces the same 0.5 delta; candidate and
+dense-reference first-token IDs both equal 3617.  The long-context discrepancy
+is therefore not specific to the fused Metal kernel.  Tolerance relaxation is
+not a valid substitute for a new, predeclared decision-equivalence protocol.
+
+The bounded eager control sharpens the diagnosis without clearing the frozen
+request.  With 154 source tokens, fused and eager disjoint consumers each have
+0.0 logit delta against a physically packed reference consumed by the same
+implementation.  Against MLX's native dense consumer, however, the maximum
+deltas are 1.375 and 1.1611328125.  Both strict runs preserve all four
+generated tokens; a separately labeled fused 16-token diagnostic also
+preserves 16/16.  Its relaxed diagnostic tolerance is deliberately excluded
+from qualification.  The result separates exact selection/interval addressing
+from unresolved cross-consumer numerical equivalence.  The existing numerical
+protocol remains a strict negative; any deterministic decision-equivalence
+protocol must be declared separately and must compare every generated token,
+not reinterpret this failed gate after the fact.
 
 The first corrected direct-MLX hybrid transfer uses the same task and frozen
 five-episode prefix with Qwen3-Coder-30B-A3B-Instruct 4-bit.  PRA-100 resolves

@@ -690,7 +690,7 @@ def transform_wire_agent_memory_plan_payload(
     segment_tokens: int = 256,
     count_tokens: Callable[[str], int] | None = None,
     tokenizer_identity: str = "whitespace_v1",
-    agent_history_selection_policy: str = PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
+    agent_history_selection_policy: str | None = None,
 ) -> tuple[dict[str, Any], TreatmentTrace]:
     """Map an agent-neutral wire plan onto live-history native PRA.
 
@@ -712,6 +712,13 @@ def transform_wire_agent_memory_plan_payload(
         raise ValueError("wire agent-memory plan has no selected record identities")
     if not isinstance(replacements, Mapping):
         raise ValueError("wire agent-memory plan replacements are not an object")
+    source_policy = str(
+        agent_history_selection_policy
+        or wire_plan.get("policy")
+        or "paper8.5-external-frozen-wire-plan-v1"
+    )
+    if not source_policy.strip():
+        raise ValueError("wire agent-memory plan has no policy identity")
 
     coordinate_map = {
         str(record_id): int(index)
@@ -762,8 +769,6 @@ def transform_wire_agent_memory_plan_payload(
     resource_indices = [
         index for index in selected_indices if index not in set(mandatory)
     ]
-    if agent_history_selection_policy not in FROZEN_AGENT_MEMORY_POLICIES:
-        raise ValueError("wire plans require a frozen agent-memory policy")
     exact_count = count_tokens or _count_tokens
     started = time.perf_counter()
     selected_segments = _segments(
@@ -787,7 +792,7 @@ def transform_wire_agent_memory_plan_payload(
     realized_retention = physical_tokens / logical_tokens if logical_tokens else 1.0
     plan_digest = hashlib.sha256(json.dumps({
         "contract": FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
-        "policy": agent_history_selection_policy,
+        "policy": source_policy,
         "tokenizer_identity": tokenizer_identity,
         "source_wire_plan_digest": source_wire_plan_digest,
         "mandatory_message_indices": mandatory,
@@ -820,14 +825,20 @@ def transform_wire_agent_memory_plan_payload(
         "connection": "direct",
         "benchmark_fairness": "agent-visible-messages-only",
         "selection_contract": FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
-        "agent_history_selection_policy": agent_history_selection_policy,
+        "agent_history_selection_policy": source_policy,
         "selection_tokenizer_identity": tokenizer_identity,
         "selection_materialization": (
-            "paper8.5-prompt-pinned-records-plus-closure-receipts-v1"
+            "paper8.5-records-plus-materialized-replacements-v1"
+            if frozen_replacements
+            else "paper8.5-strict-original-record-subset-v1"
         ),
-        "selection_budget_policy": (
-            "paper8.5_prompt_pinned_e2_f1c_frozen_v1"
+        "native_materialization_class": (
+            "hybrid_transformed_context"
+            if frozen_replacements
+            else "strict_resident_subset"
         ),
+        "selection_budget_policy": "paper8.5_external_frozen_wire_plan_v1",
+        "synthetic_history_tokens_expected": bool(frozen_replacements),
         "agent_memory_plan_digest": plan_digest,
         "source_wire_plan_digest": source_wire_plan_digest,
         "realized_retention_fraction": realized_retention,
@@ -874,7 +885,7 @@ def transform_wire_agent_memory_plan_payload(
         },
         "allow_text_fallback": False,
         "required_capabilities": ["logical_refs", "native_kv"],
-        "pra_policy": {"profile": agent_history_selection_policy},
+        "pra_policy": {"profile": source_policy},
         "metadata": native_metadata,
     })
     transformed["pra"] = envelope
@@ -892,7 +903,7 @@ def transform_wire_agent_memory_plan_payload(
         selected_digest,
         time.perf_counter() - started,
         token_estimator=tokenizer_identity,
-        agent_history_selection_policy=agent_history_selection_policy,
+        agent_history_selection_policy=source_policy,
         requested_budget_tokens=physical_tokens,
         logical_budget_unused_tokens=0,
     )

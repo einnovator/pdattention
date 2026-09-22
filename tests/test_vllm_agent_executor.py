@@ -183,7 +183,7 @@ def test_stateful_bridge_stores_then_loads_only_suffix_with_exact_commands() -> 
     assert driver.evictions
 
 
-def test_initial_vllm_store_imports_full_history_before_sparse_selection() -> None:
+def test_initial_vllm_store_selects_on_first_model_visible_request() -> None:
     driver = _Driver()
     executor = VLLMCudaAgentHistoryExecutor(
         driver,
@@ -205,11 +205,15 @@ def test_initial_vllm_store_imports_full_history_before_sparse_selection() -> No
     ))
     trace = first.trace[0]
 
-    assert trace["consumption_mode"] == "initial_store"
+    assert driver.commands[0].mode == "store"
+    assert driver.commands[1].mode == "load"
+    assert trace["consumption_mode"].startswith("sparse_original_position_pages")
     assert trace["source_bootstrap"] is True
-    assert trace["selection_deferred_until_source_resident"] is True
-    assert trace["native_kv_used"] is False
-    assert trace["full_retention"] is True
+    assert trace["selection_deferred_until_source_resident"] is False
+    assert trace["source_bootstrap_generated_tokens"] == 0
+    assert trace["source_bootstrap_discarded_tokens"] == 1
+    assert trace["native_kv_used"] is True
+    assert trace["full_retention"] is False
     assert tuple(executor._sessions["s"].ledger.messages[:-1]) == logical
 
     next_logical = tuple(executor._sessions["s"].ledger.messages) + (

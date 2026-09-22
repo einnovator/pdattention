@@ -1,0 +1,183 @@
+{
+  "schema_version": "paper4.5.mlx-live-kv-lifecycle.v4",
+  "probe": "mlx_real_model_request_owned_sparse_kv",
+  "engine": "mlx-lm",
+  "model": "/Users/jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-14B-4bit/snapshots/a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+  "mlx_lm_version": "0.31.3",
+  "python_version": "3.12.12",
+  "hardware": "16GB Apple short-context control",
+  "materialization_policy": "disjoint_segmented",
+  "fused_disjoint_attention": false,
+  "segmented_attention_patched_layers": 40,
+  "trajectory": ".runtime/mlx14-short-control/trajectory.json",
+  "request_replay": null,
+  "selection_fixture": null,
+  "request_index": null,
+  "request_input_sha256": null,
+  "source_policy": null,
+  "turn": 4,
+  "retention_fraction": 0.5,
+  "source_tokens": 154,
+  "wire_suffix_tokens": 3,
+  "wire_prefill_step_size": 4,
+  "source_prefill_step_size": 512,
+  "selected_kv_tokens": 123,
+  "materialized_history_tokens": 0,
+  "realized_retention_fraction": 0.7987012987012987,
+  "historical_kv_retention_fraction": 0.7987012987012987,
+  "source_position_base": 154,
+  "has_holes": true,
+  "physical_kv_copy": false,
+  "runtime_physical_kv_copy_report": null,
+  "pra_interval_pack_copy": false,
+  "physical_kv_copy_qualification": "qualified_zero_copy_interval_addressed_metal",
+  "consumer_implementation": "portable_disjoint_segmented",
+  "reference_condition": "packed-value oracle with identical segment boundaries, original positions, and Metal consumer",
+  "selected_kv_segments": 2,
+  "logical_selected_intervals": 6,
+  "physical_kv_segments": 2,
+  "selection_pack_bytes": 0,
+  "selection_materialization_elapsed_ms": 4.296166,
+  "dense_reference_pack_bytes": 20152320,
+  "dense_reference_materialization_elapsed_ms": 145.670667,
+  "selection_active_memory_delta_bytes": 0,
+  "selection_peak_memory_bytes": 0,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 503808,
+    "active_before_bytes": 8349757454,
+    "active_after_bytes": 8349936712,
+    "active_delta_bytes": 179258,
+    "absolute_peak_bytes": 8349997194,
+    "peak_delta_bytes": 239740,
+    "peak_delta_to_selected_layer_kv_ratio": 0.47585588160569103,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "allocation_measurement_method": {
+    "selection": "Reset the MLX peak allocator, construct the selected interval views, force every selected key/value array with mx.eval, and compare active and peak bytes with the pre-selection baseline.",
+    "consumption": "Reset the MLX peak allocator, run one real first-layer attention query over all selected interval key/value views plus one local token, force the output with mx.eval, and compare peak delta against the selected first-layer K/V byte extent.",
+    "full_kv_sized_threshold": "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+  },
+  "required_runtime_fix": null,
+  "selected_text_reencoded_tokens": 0,
+  "offloaded_payload_type": "bytes",
+  "offloaded_payload_bytes": 25261658,
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_logit_exact": true,
+  "max_abs_logit_delta_dense_engine_oracle": 1.1611328125,
+  "dense_engine_oracle_token_ids": [
+    151667,
+    198,
+    32313,
+    11
+  ],
+  "candidate_token_ids": [
+    151667,
+    198,
+    32313,
+    11
+  ],
+  "max_abs_logit_delta_after_restore": 0.0,
+  "checks": {
+    "two_concurrent_borrowers": true,
+    "offload_rejected_with_two_borrowers": true,
+    "normal_finish_released_exactly_once": true,
+    "offload_rejected_with_one_borrower": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "dense_engine_oracle_token_exact": true,
+    "dense_engine_oracle_logit_within_tolerance": false,
+    "cooperative_cancel_released_exactly_once": true,
+    "error_released_exactly_once": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restore_reached_hot_tier": true,
+    "restored_source_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "restored_generation_logit_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "selected_history_reencoding_equals_explicit_materialization": true,
+    "physical_kv_copy_reported": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "selection_pack_bytes_reported": true
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 4,
+      "cancelled": 2,
+      "error": 1
+    }
+  },
+  "selection_plan": {
+    "source_tokens": 154,
+    "source_position_base": 154,
+    "selected_tokens": 123,
+    "full_retention": false,
+    "has_holes": true,
+    "physical_intervals": [
+      {
+        "start": 0,
+        "end": 54
+      },
+      {
+        "start": 85,
+        "end": 154
+      }
+    ],
+    "intervals": [
+      {
+        "start": 0,
+        "end": 34,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 34,
+        "end": 54,
+        "record_id": "message:1:user",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 85,
+        "end": 88,
+        "record_id": "message:4:assistant",
+        "causal_group_id": "turn:4"
+      },
+      {
+        "start": 88,
+        "end": 116,
+        "record_id": "message:5:user",
+        "causal_group_id": "turn:4"
+      },
+      {
+        "start": 116,
+        "end": 119,
+        "record_id": "message:6:assistant",
+        "causal_group_id": "turn:6"
+      },
+      {
+        "start": 119,
+        "end": 154,
+        "record_id": "message:7:user",
+        "causal_group_id": "turn:6"
+      }
+    ]
+  },
+  "engine_request_callback_integration": true,
+  "experiment_revision": "0d3a508013b0cb8e09a82fe5421dcbbd2dd3a4c3",
+  "implementation_files": {
+    "src/pra_mlx/native.py": "3bbe17ec446b87244422bc610c54463681e48bfbe5edf175d2b980ca0da120ac",
+    "src/pra_mlx/mlx_live_kv.py": "44ff6d29cf6c980a8ece5d6a5ff1775a8b68139ef664313d6f293515cd54cb34",
+    "src/pra_mlx/qwen3_segmented.py": "c53be3228420bf8a46139743e4fab87e3d77d3b5f5a3bc3a4277d3e898947d6f",
+    "experiments/paper4_5_agent/run_mlx_live_agent_kv_lifecycle.py": "23019068eec0d38fb3deb83b02e7647d399a3aa70c89423d8c2c10cd83b12a18"
+  },
+  "elapsed_seconds": 70.76360129204113,
+  "engine_lifecycle_qualified": false,
+  "qualification_blockers": [
+    "dense_engine_oracle_logit_within_tolerance"
+  ]
+}

@@ -300,6 +300,15 @@ def main() -> None:
         help="Optional economical JSONL action/observation trajectory.",
     )
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
+    parser.add_argument(
+        "--prefill-step-size",
+        type=int,
+        default=2048,
+        help=(
+            "Bounded one-time canonical-source prefill chunk. Use 512 on "
+            "16 GB Apple Silicon to avoid activation-memory thrashing."
+        ),
+    )
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
     parser.add_argument(
@@ -375,6 +384,7 @@ def main() -> None:
         chat_template_profile=args.chat_template_profile,
         chat_template_digest=template_digest,
         max_abs_logit_delta=args.max_abs_logit_delta,
+        prefill_step_size=args.prefill_step_size,
         require_full_retention_reference=args.require_full_retention_reference,
         agent_history_qualified=args.agent_history_qualified,
         fused_disjoint_attention=args.fused_disjoint_attention,

@@ -65,6 +65,17 @@ def _max_abs_delta(left: object, right: object) -> float:
     return float(item() if callable(item) else delta)
 
 
+def _argmax_token(logits: object) -> int:
+    """Synchronously resolve one next-token decision for gate diagnostics."""
+
+    import mlx.core as mx
+
+    token = mx.argmax(logits)
+    mx.eval(token)
+    item = getattr(token, "item", None)
+    return int(item() if callable(item) else token)
+
+
 def _render_text(
     tokenizer: object,
     messages: Sequence[Mapping[str, Any]],
@@ -813,13 +824,7 @@ class MLXAgentHistoryExecutor:
         mandatory = tuple(map(int, request.metadata.get("mandatory_message_indices", ())))
         selected = self._selected_message_indices(request) if live_projection else ()
         materialized = ()
-        if source_bootstrap:
-            # Import the canonical session through the same dense numerical
-            # path as an ordinary FULL first turn. Sparse selection starts on
-            # the next request after the complete source K/V is resident.
-            effective_requested = 1.0
-            selected = tuple(range(len(messages)))
-        elif live_projection:
+        if live_projection:
             materialized = positioned_materialized_history(
                 self.tokenizer,
                 request,
@@ -893,6 +898,8 @@ class MLXAgentHistoryExecutor:
         reference_pack_bytes = 0
         same_subset_reference_kind: str | None = None
         logit_delta: float | None = None
+        same_subset_candidate_token: int | None = None
+        same_subset_reference_token: int | None = None
         full_reference_cache: Sequence[object] | None = None
         full_reference_logits: object | None = None
         full_reference_max_delta: float | None = None
@@ -1002,13 +1009,19 @@ class MLXAgentHistoryExecutor:
                 logit_delta = _max_abs_delta(
                     logits[0, -1], reference_logits[0, -1]
                 )
+                same_subset_candidate_token = _argmax_token(logits[0, -1])
+                same_subset_reference_token = _argmax_token(
+                    reference_logits[0, -1]
+                )
                 reference.finish()
                 reference = None
                 if logit_delta > self.max_abs_logit_delta:
                     raise RuntimeError(
                         "MLX sparse same-subset correctness gate failed: "
                         f"max_abs_logit_delta={logit_delta:.9g}, "
-                        f"limit={self.max_abs_logit_delta:.9g}."
+                        f"limit={self.max_abs_logit_delta:.9g}, "
+                        f"candidate_token={same_subset_candidate_token}, "
+                        f"reference_token={same_subset_reference_token}."
                     )
 
             eos = self._eos_ids()
@@ -1129,7 +1142,9 @@ class MLXAgentHistoryExecutor:
         trace = {
             "stage": "native_attach",
             "engine": "mlx-lm",
-            "native_kv_used": not source_bootstrap,
+            # Canonical source capture does not generate. Request one already
+            # consumes the requested resident selection.
+            "native_kv_used": True,
             "source_tokens": len(source),
             "selected_kv_tokens": plan.selected_tokens,
             "materialized_history_encoded_tokens": materialized_tokens,
@@ -1161,7 +1176,8 @@ class MLXAgentHistoryExecutor:
             "source_bootstrap_evaluated_tokens": (
                 len(prompt) if source_bootstrap else None
             ),
-            "selection_deferred_until_source_resident": source_bootstrap,
+            "source_bootstrap_generated_tokens": 0 if source_bootstrap else None,
+            "selection_deferred_until_source_resident": False,
             "selection_contract": contract or "minimum-retention-floor",
             "pra_100_semantic_noop": bool(plan.full_retention),
             "exact_trajectory_eligible": bool(plan.full_retention),
@@ -1221,6 +1237,13 @@ class MLXAgentHistoryExecutor:
             "same_subset_reference_kind": same_subset_reference_kind,
             "same_subset_max_abs_logit_delta": logit_delta,
             "same_subset_gate_limit": self.max_abs_logit_delta,
+            "same_subset_candidate_first_token_id": same_subset_candidate_token,
+            "same_subset_reference_first_token_id": same_subset_reference_token,
+            "same_subset_first_token_match": (
+                None
+                if same_subset_candidate_token is None
+                else same_subset_candidate_token == same_subset_reference_token
+            ),
             "fused_disjoint_attention": self.fused_disjoint_attention,
             "segmented_attention_dispatch": "sparse_only",
             "attention_path": (

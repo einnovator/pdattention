@@ -184,8 +184,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "lifecycle_empty": lifecycle_empty,
     }
+    if args.require_strict_resident_subset:
+        checks["strict_original_subset_has_no_materialized_history"] = (
+            materialized_tokens == 0
+            and not geometry.materialized_history_spans
+        )
     payload: dict[str, object] = {
-        "schema_version": "paper4.5.llamacpp-frozen-receipt-lifecycle.v1",
+        "schema_version": "paper4.5.llamacpp-frozen-agent-kv-lifecycle.v2",
+        "native_materialization_class": (
+            "strict_resident_subset"
+            if materialized_tokens == 0
+            else "hybrid_transformed_context"
+        ),
         "qualified": all(checks.values()),
         "qualification_blockers": [name for name, passed in checks.items() if not passed],
         "checks": checks,
@@ -270,6 +280,14 @@ def main() -> None:
     parser.add_argument("--request-slot", type=int, default=1)
     parser.add_argument("--continuation-tokens", type=int, default=2)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--require-strict-resident-subset",
+        action="store_true",
+        help=(
+            "Fail qualification if the frozen plan contains any materialized "
+            "replacement tokens instead of only original resident K/V spans."
+        ),
+    )
     parser.add_argument(
         "--local-files-only", action=argparse.BooleanOptionalAction, default=False
     )

@@ -1,0 +1,40 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a deterministic coding agent. Inspect the repository, make the smallest correct edit, verify it, and report one shell command per turn."
+    },
+    {
+      "role": "user",
+      "content": "Fix the formatter so enum-like format names are converted to strings before lookup."
+    },
+    {
+      "role": "assistant",
+      "content": "Inspect the target formatter implementation."
+    },
+    {
+      "role": "user",
+      "content": "The lookup function accepts format_type and immediately uses it as a dictionary key."
+    },
+    {
+      "role": "assistant",
+      "content": "Locate existing string-conversion helpers and imports."
+    },
+    {
+      "role": "user",
+      "content": "The module already imports force_str from the encoding helpers."
+    },
+    {
+      "role": "assistant",
+      "content": "Apply the minimal conversion at the beginning of the lookup function."
+    },
+    {
+      "role": "user",
+      "content": "The edit now assigns format_type = force_str(format_type) before dictionary lookup."
+    },
+    {
+      "role": "assistant",
+      "content": "Run the focused formatter test."
+    }
+  ]
+}

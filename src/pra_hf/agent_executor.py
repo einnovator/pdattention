@@ -1133,14 +1133,7 @@ class HFAgentHistoryExecutor:
         mandatory = tuple(map(int, request.metadata.get("mandatory_message_indices", ())))
         selected = self._selected_message_indices(request) if live_projection else ()
         materialized_history: tuple[PositionedMaterializedHistory, ...] = ()
-        if source_bootstrap:
-            # Import the canonical session through the same complete-history
-            # path used by FULL. Sparse selection starts only after that
-            # source is resident, so the first visible action is not selected
-            # from a partially imported transcript.
-            effective_requested = 1.0
-            selected = tuple(range(len(messages)))
-        elif live_projection:
+        if live_projection:
             materialized_history = positioned_materialized_history(
                 self.tokenizer,
                 request,
@@ -1288,7 +1281,10 @@ class HFAgentHistoryExecutor:
         trace = {
             "stage": "native_attach",
             "engine": "huggingface",
-            "native_kv_used": not source_bootstrap,
+            # Source capture is a non-generating ownership operation. The
+            # first model-visible request consumes the requested resident
+            # selection just like every later request.
+            "native_kv_used": True,
             "consumption_mode": mode,
             "source_tokens": len(source),
             "selected_kv_tokens": plan.selected_tokens,
@@ -1325,7 +1321,8 @@ class HFAgentHistoryExecutor:
             "source_bootstrap_evaluated_tokens": (
                 len(prompt) if source_bootstrap else None
             ),
-            "selection_deferred_until_source_resident": source_bootstrap,
+            "source_bootstrap_generated_tokens": 0 if source_bootstrap else None,
+            "selection_deferred_until_source_resident": False,
             "selection_contract": selection_contract or "minimum-retention-floor",
             "selected_history_reencoded_tokens": reencoded,
             "new_history_encoded_tokens": newly_encoded,

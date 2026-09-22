@@ -1369,10 +1369,10 @@ class SGLangMLXAgentHistoryExecutor:
             and request.metadata.get("source_bootstrap_contract")
             == "full-logical-history-once-v1"
         )
-        if source_bootstrap:
-            newly_encoded, reencoded = 0, 0
-        else:
-            newly_encoded, reencoded = self._ensure_owner(state, source)
+        # Populate/extend the canonical owner before planning request-local
+        # consumption. Bootstrap is non-generating; request one must not be
+        # silently promoted to FULL context.
+        newly_encoded, reencoded = self._ensure_owner(state, source)
         requested = float(
             request.metadata.get(
                 "target_retention_fraction",
@@ -1390,10 +1390,7 @@ class SGLangMLXAgentHistoryExecutor:
         )
         materialized = ()
         effective_requested = requested
-        if source_bootstrap:
-            effective_requested = 1.0
-            selected_indices = tuple(range(len(messages)))
-        elif live_projection:
+        if live_projection:
             materialized = positioned_materialized_history(
                 self.tokenizer,
                 request,
@@ -1500,12 +1497,10 @@ class SGLangMLXAgentHistoryExecutor:
                     prompt=prompt,
                     wire=wire,
                     sampler_prompt=sampler_prompt,
-                    source_bootstrap=source_bootstrap,
+                    source_bootstrap=False,
                     direct_owner=direct_owner,
                 )
                 materialized_calls = 0
-            if source_bootstrap:
-                newly_encoded = start_encoded
             evaluations += materialized_calls + 1
             eos = self._eos_ids()
             max_tokens = request.resolved_max_new_tokens
@@ -1604,7 +1599,7 @@ class SGLangMLXAgentHistoryExecutor:
         trace = {
             "stage": "native_attach",
             "engine": "sglang-mlx",
-            "native_kv_used": not source_bootstrap,
+            "native_kv_used": True,
             "native_attached_resources": [
                 resource.resource_id for resource in request.resources
             ],
@@ -1624,7 +1619,8 @@ class SGLangMLXAgentHistoryExecutor:
             "source_bootstrap_evaluated_tokens": (
                 len(prompt) if source_bootstrap else None
             ),
-            "selection_deferred_until_source_resident": source_bootstrap,
+            "source_bootstrap_generated_tokens": 0 if source_bootstrap else None,
+            "selection_deferred_until_source_resident": False,
             "selection_contract": selection_contract or "minimum-retention-floor",
             "pra_100_semantic_noop": bool(plan.full_retention),
             "exact_trajectory_eligible": bool(plan.full_retention),
