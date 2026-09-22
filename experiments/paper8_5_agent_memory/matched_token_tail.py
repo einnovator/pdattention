@@ -23,16 +23,40 @@ class MatchedTokenTailConfig:
     """Configuration for the strict ordinary-text recency control."""
 
     tool_observation_threshold_tokens: int = 512
+    protected_head_turns: int = 0
+    protected_tail_turns: int = 0
 
     def __post_init__(self) -> None:
         if self.tool_observation_threshold_tokens <= 0:
             raise ValueError("tool_observation_threshold_tokens must be positive")
+        if self.protected_head_turns < 0:
+            raise ValueError("protected_head_turns cannot be negative")
+        if self.protected_tail_turns < 0:
+            raise ValueError("protected_tail_turns cannot be negative")
+
+
+def _protected_turn_record_ids(
+    history: CanonicalAgentHistory,
+    config: MatchedTokenTailConfig,
+) -> frozenset[str]:
+    """Return whole records belonging to the configured head/tail floors."""
+
+    complete = [turn for turn in history.turns if turn.complete]
+    protected = list(complete[: config.protected_head_turns])
+    if config.protected_tail_turns:
+        protected.extend(complete[-config.protected_tail_turns :])
+    return frozenset(
+        record_id
+        for turn in protected
+        for record_id in turn.record_ids
+    )
 
 
 def matched_token_tail_mandatory_record_ids(
     history: CanonicalAgentHistory,
+    config: MatchedTokenTailConfig = MatchedTokenTailConfig(),
 ) -> frozenset[str]:
-    """Return prompt records plus the complete current causal group.
+    """Return prompt, configured floor, and current causal-group records.
 
     Agent protocols can append a standalone format-error or rejected-action
     recovery record without a preceding assistant action. It is an incomplete
@@ -42,6 +66,7 @@ def matched_token_tail_mandatory_record_ids(
     """
 
     mandatory = set(immutable_instruction_record_ids(history))
+    mandatory.update(_protected_turn_record_ids(history, config))
     if history.records:
         current_group = history.records[-1].causal_group_id
         mandatory.update(
@@ -54,10 +79,12 @@ def matched_token_tail_mandatory_record_ids(
 
 def matched_token_tail_full_floor_record_ids(
     history: CanonicalAgentHistory,
+    config: MatchedTokenTailConfig = MatchedTokenTailConfig(),
 ) -> frozenset[str]:
     """Records that must remain whole when establishing the budget floor."""
 
     immutable = set(immutable_instruction_record_ids(history))
+    immutable.update(_protected_turn_record_ids(history, config))
     if not history.records:
         return frozenset(immutable)
     current_group = history.records[-1].causal_group_id
@@ -100,8 +127,8 @@ def materialize_matched_token_tail(
 
     records = history.record_by_id
     costs = {record.record_id: count_tokens(record.content) for record in history.records}
-    mandatory_ids = matched_token_tail_mandatory_record_ids(history)
-    full_floor_ids = matched_token_tail_full_floor_record_ids(history)
+    mandatory_ids = matched_token_tail_mandatory_record_ids(history, config)
+    full_floor_ids = matched_token_tail_full_floor_record_ids(history, config)
     mandatory_tokens = sum(costs[record_id] for record_id in full_floor_ids)
     if mandatory_tokens > max_materialized_tokens:
         raise ValueError(
@@ -110,10 +137,14 @@ def materialize_matched_token_tail(
         )
 
     selected_ids = set(full_floor_ids)
+    immutable_ids = immutable_instruction_record_ids(history)
+    protected_ids = _protected_turn_record_ids(history, config)
     reasons = {
         record_id: (
             "immutable_prompt"
-            if record_id in immutable_instruction_record_ids(history)
+            if record_id in immutable_ids
+            else "protected_head_or_tail_turn"
+            if record_id in protected_ids
             else "current_causal_group"
         )
         for record_id in full_floor_ids
@@ -247,7 +278,7 @@ def materialize_matched_token_tail(
         requested_budget_tokens=max_materialized_tokens,
         mandatory_tokens=mandatory_tokens,
         mandatory_overflow_tokens=max(0, mandatory_tokens - max_materialized_tokens),
-        head_turns=0,
+        head_turns=min(config.protected_head_turns, len(complete_turns)),
         tail_turns=selected_turns,
         middle_candidate_turns=max(0, len(complete_turns) - selected_turns),
         middle_selected_turns=0,

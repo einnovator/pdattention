@@ -791,6 +791,49 @@ def test_matched_token_tail_fails_closed_when_prompt_exceeds_ceiling():
         materialize_matched_token_tail(history, max_materialized_tokens=1)
 
 
+def test_matched_token_tail_honors_protected_head_and_tail_turns():
+    history = recordize_minisweagent_messages(_messages(4))
+    costs = {
+        record.record_id: whitespace_tokens(record.content)
+        for record in history.records
+    }
+    protected_ids = ("m0", "m1", "m2", "m3", "m4", "m5", "m8", "m9")
+    floor = sum(costs[record_id] for record_id in protected_ids)
+
+    result = materialize_matched_token_tail(
+        history,
+        max_materialized_tokens=floor,
+        config=MatchedTokenTailConfig(
+            protected_head_turns=2,
+            protected_tail_turns=1,
+        ),
+    )
+
+    assert result.logical_plan.selected_record_ids == protected_ids
+    assert "m6" not in result.logical_plan.selected_record_ids
+    assert "m7" not in result.logical_plan.selected_record_ids
+    assert result.logical_plan.head_turns == 2
+    assert all(
+        reason == "protected_head_or_tail_turn"
+        for record_id, reason in result.logical_plan.selection_reasons
+        if record_id not in {"m0", "m1"}
+    )
+    validate_minisweagent_chat(serialize_materialized_messages(history, result))
+
+
+def test_matched_token_tail_head_tail_floor_fails_closed_below_ceiling():
+    history = recordize_minisweagent_messages(_messages(3))
+    with pytest.raises(ValueError, match="mandatory system/task/current"):
+        materialize_matched_token_tail(
+            history,
+            max_materialized_tokens=1,
+            config=MatchedTokenTailConfig(
+                protected_head_turns=2,
+                protected_tail_turns=2,
+            ),
+        )
+
+
 def test_chat_validation_rejects_an_orphaned_assistant_action():
     try:
         validate_minisweagent_chat([
@@ -2398,6 +2441,8 @@ def test_frozen_replay_matched_token_tail_compacts_boundary_observation(monkeypa
             messages,
             progress_path=None,
             policy="matched_token_tail",
+            head=0,
+            tail=0,
             materialization_threshold_tokens=10,
             matched_budget_replay={"rows": [
                 {"decision": 1, "materialized_tokens": 20},

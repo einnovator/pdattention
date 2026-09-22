@@ -1,0 +1,103 @@
+{
+  "schema_version": "paper8.5.cross-agent-model-replication.v1",
+  "status": "frozen_before_execution",
+  "frozen_at_utc": "2026-09-22T20:00:00Z",
+  "purpose": "Revalidate the post-refactor mini-swe-agent result, repeat the same logical treatment across agents, and test model sensitivity without changing the selector.",
+  "task_cohort": {
+    "ordered_instance_ids": [
+      "django__django-15277",
+      "django__django-15368",
+      "scikit-learn__scikit-learn-13135"
+    ],
+    "rule": "No outcome-dependent task replacement. A selective arm is scored only when its contemporaneous FULL control resolves officially."
+  },
+  "logical_policy": {
+    "policy_id": "TAIL90_CAUSAL_H2T4_CORRECTED_V3",
+    "supersedes": "Legacy matched-tail runs whose labels recorded H2/T4 although the materializer did not consume those floors.",
+    "implementation": "matched_token_tail",
+    "budget_fraction": 0.9,
+    "protected_head_turns": 2,
+    "protected_tail_turns": 4,
+    "keep_all_genuine_user_prompts": true,
+    "causal_group_atomicity": true,
+    "negative_realization": "drop",
+    "materialization": "ordinary_text_whole_record_except_natural_boundary_split",
+    "agent_id_visible_to_policy": false,
+    "task_id_visible_to_policy": false
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "post_refactor_regression_gate": {
+    "reference_repository_revision": "86b36ab5880e8dd76508af9b98ab77199a759bd9",
+    "candidate_repository_revision": "recorded_from_git_at_execution",
+    "agent": "mini-swe-agent@2.4.6",
+    "model": "qwen3-coder:30b",
+    "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "full_repeats": 2,
+    "requirements": [
+      "Every FULL repeat resolves officially before treatment.",
+      "The treatment preserves every eligible official resolution.",
+      "Aggregate treatment calls do not exceed the paired FULL-A calls.",
+      "Own-trajectory omission remains positive and is reported beside the historical 11.68 percent rather than forced to equal it.",
+      "Any configuration, tokenizer, model-digest, workspace, or submission-protocol mismatch fails the comparison before outcome analysis."
+    ]
+  },
+  "agent_replication": {
+    "agents": [
+      "mini-swe-agent@2.4.6",
+      "openhands@1.49.2",
+      "pi@0.75.3",
+      "kilo@7.7.5",
+      "pra-agent@locked-revision",
+      "opencode@1.18.31"
+    ],
+    "repeats_per_admitted_arm": 2,
+    "comparison_rule": "Keep the model, tokenizer, task, policy, generation controls, and official grader fixed. Normalize only native events into the common record contract.",
+    "accounting_rule": "Token totals and savings are paired within agent. Compare official resolution, normalized actions, calls to solution, own-trajectory saving, and paired saving across agents; never pool raw prompt-token totals across different agent schemas.",
+    "admission_rule": "Run FULL first for every agent/task identity. Do not launch or score the selective arm after a failed FULL control."
+  },
+  "model_replication": {
+    "models": [
+      {
+        "id": "qwen3-coder:30b",
+        "revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+        "role": "primary autonomous cohort"
+      },
+      {
+        "id": "mlx-community/Qwen3-14B-4bit",
+        "revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+        "role": "second-size/model replication"
+      },
+      {
+        "id": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+        "revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+        "role": "second-generation coding-family replication"
+      }
+    ],
+    "stage_1": "At identical frozen successful decision points, compare FULL and the frozen selected history for valid action, target resource, semantic action equivalence, and first divergence.",
+    "stage_2": "For each model, run autonomous FULL admission on the locked tasks. Run the frozen selective policy only on that model's FULL-success identities.",
+    "interpretation": "Frozen replay tests selector sensitivity to model choice; autonomous paired runs test realized task quality. Neither substitutes for the other."
+  },
+  "primary_metrics": [
+    "official_resolution",
+    "calls_or_normalized_actions_to_solution",
+    "own_trajectory_input_saving",
+    "paired_input_saving",
+    "first_treatment_induced_action_divergence",
+    "reacquisition_calls",
+    "submission_or_protocol_failure"
+  ],
+  "stop_conditions": [
+    "FULL qualification failure",
+    "model or tokenizer identity mismatch",
+    "workspace or task-image mismatch",
+    "incomplete native event trace",
+    "agent-native hidden compaction",
+    "lost paired official success",
+    "trajectory inflation erases paired saving"
+  ]
+}

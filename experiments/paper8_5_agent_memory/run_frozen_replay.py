@@ -25,6 +25,7 @@ from .materialization import (
 )
 from .matched_token_tail import (
     MatchedTokenTailConfig,
+    matched_token_tail_full_floor_record_ids,
     materialize_matched_token_tail,
 )
 from .model import AgentMemoryBudget
@@ -778,15 +779,31 @@ def replay(
                 raise ValueError(
                     f"matched budget artifact has no ceiling for decision {decision}"
                 )
+            matched_config = MatchedTokenTailConfig(
+                tool_observation_threshold_tokens=materialization_threshold_tokens,
+                protected_head_turns=head,
+                protected_tail_turns=tail,
+            )
+            floor_ids = matched_token_tail_full_floor_record_ids(
+                history,
+                matched_config,
+            )
+            floor_tokens = sum(
+                count_tokens(history.record_by_id[record_id].content)
+                for record_id in floor_ids
+            )
             materialized = materialize_matched_token_tail(
                 history,
-                max_materialized_tokens=requested_budget,
-                config=MatchedTokenTailConfig(
-                    tool_observation_threshold_tokens=materialization_threshold_tokens
-                ),
+                max_materialized_tokens=max(requested_budget, floor_tokens),
+                config=matched_config,
                 count_tokens=count_tokens,
             )
-            plan = materialized.logical_plan
+            plan = replace(
+                materialized.logical_plan,
+                requested_budget_tokens=requested_budget,
+                mandatory_overflow_tokens=max(0, floor_tokens - requested_budget),
+            )
+            materialized = replace(materialized, logical_plan=plan)
         else:
             assert selector is not None
             plan = selector.select(

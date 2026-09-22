@@ -757,8 +757,12 @@ def transform_autonomous_payload(
         sidecar_dependent and config.require_exact_sidecars and not sidecar_exact
     )
     matched_tail = config.policy == "matched_token_tail" and not selection_abstained
+    matched_tail_config = MatchedTokenTailConfig(
+        protected_head_turns=config.protected_head_turns,
+        protected_tail_turns=config.protected_tail_turns,
+    )
     mandatory_ids = (
-        matched_token_tail_full_floor_record_ids(history)
+        matched_token_tail_full_floor_record_ids(history, matched_tail_config)
         if matched_tail
             else immutable_instruction_record_ids(history)
         )
@@ -772,7 +776,7 @@ def transform_autonomous_payload(
         materialized = materialize_matched_token_tail(
             history,
             max_materialized_tokens=max(budget_tokens, mandatory_tokens),
-            config=MatchedTokenTailConfig(),
+            config=matched_tail_config,
             count_tokens=count_tokens,
         )
         mandatory_tokens = materialized.logical_plan.mandatory_tokens
