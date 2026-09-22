@@ -43,7 +43,11 @@ boundary-free Recent Frontier policy preserves 3/3 qualified discovery
 successes, uses 22 versus 30 calls, and omits 40.53\% of its own full-history
 counterfactual.  A distinct Prompt Pinned policy preserves 3/3 cold identities,
 uses 33 versus 34 calls, and saves 39.45\% within trajectory and 41.71\%
-against paired Full executions.  In a frozen eight-identity persistent order,
+against paired Full executions.  Two repeat-exact strict selection-only E2
+runs resolve 2/2 on one identity while omitting 40.56\% of their own
+full-history counterfactual and materializing no synthetic receipt tokens;
+this is one task-clustered observation, not a population estimate.  In a frozen
+eight-identity persistent order,
 Full resolves only 3/8; conditioned on those eligible identities, Recent
 Frontier preserves 3/3 outcomes and 37 versus 37 calls at 40.05\% paired input
 saving.  Unconditional whole-session saving is 15.59\%.  A reversed order
@@ -608,9 +612,12 @@ confound and yields one task-clustered observation per identity.
 
 Prompt Pinned is conceptually distinct from Recent Frontier and reaches the
 30--50\% target band on this small cohort.  Its closure receipts are
-model-visible post-cache transformations in the current transfer experiments;
-selection-only E2 must be qualified separately before recommending a strict
-native-PRA default.
+model-visible post-cache transformations in the current transfer experiments.
+Two direct-host selection-only E2 executions, including one cold model reload,
+repeat exactly and preserve 2/2 official solves on one identity at 40.56\%
+own-trajectory saving without synthetic receipts.  This qualifies strict
+repeatability for one task; additional identities remain necessary before
+recommendation as a native-PRA default.
 
 \subsection{Task-clustered headline comparison}
 
@@ -1750,6 +1757,23 @@ Prompt-pinned E2+F1C (repeat 2) & 1/1 & 8 & 125,643 & 40.39\% & 65.26\% / 65.26\
 \end{tabular}
 \end{table}
 
+A post-cutoff direct-host diagnostic applies selection-only E2 to the same
+frozen prefix and issue.  It keeps original records only: completed
+finalization turns are zero, closure compaction is disabled, and selected and
+materialized input are therefore identical.  Two executions resolve 2/2 in
+nine calls each, selecting 141,264 of each 237,645-token realized full-history
+counterfactual, or 40.56\% own-trajectory saving.  They exclude 342 causal
+groups (96,381 tokens), record no reacquisition event, and introduce zero
+synthetic receipt tokens.  Before repeat~2 the model is unloaded, reloaded, and
+given an exact two-token warm-up.  All 9/9 selected-message, selection-plan,
+command, and assistant-content digests match across repeats, as does the
+submitted patch.  This is repeat-qualified strict evidence, but still only one
+task-clustered observation.  Relative to the two eight-call E2+F1C repeats it
+spends one extra call, while removing the post-cache receipt-encoding path
+entirely.  The compact audits are archived in the two strict-E2 subdirectories
+of
+\path{shared/results/paper8_5_agent_memory/heldout_prefix5_cold_cache_v1/django15741}.
+
 M2/P1 shows why per-request retention is not the endpoint: eight additional
 calls erase almost all paired saving and the submitted patch fails.  E2+F1C is
 repeat-exact internally---including selected-message sequence, actions,
@@ -1976,7 +2000,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Strict Task-3--5 pairs preserve 3/3 with 40.53\% aggregate own-trajectory saving and 22 vs 30 calls. Leading candidate; expand identities. \\
-Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Three cold exact-prefix identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. Hybrid native transfers omit 40.23\% and 40.04\% of steady-state original K/V without re-encoding retained intervals, but newly encode post-cache closure receipts; they are not strict resident-subset results. MLX adds three calls and retains only 15.23\% paired workload saving. Expand identities and test selection-only E2; not yet a default. \\
+Agent-PromptPinned & E2+F1C; strict E2 diagnostic & all prompts + last 2 full epochs; optional older closure receipts & Three cold hybrid identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. Hybrid native transfers omit 40.23\% and 40.04\% of steady-state original K/V but newly encode closure receipts. Two repeat-exact direct-host selection-only E2 runs preserve 2/2 on one identity at 40.56\% own saving with zero synthetic receipts and one additional call. Expand strict E2 across identities; not yet a default. \\
 Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Exploratory 2/3 for each; exact-prefix FULL prequalification missing. Do not promote. \\
 \bottomrule
 \end{tabular}
@@ -2011,6 +2035,14 @@ own realized full-history counterfactual.  It also shows why cache-state
 matching and enforcement of the all-user-prompt floor are prerequisites.  The
 three-identity gate qualifies frozen replication and Paper~4.5 mechanism
 transfer, but not a greater-than-90\% population claim or production default.
+A strict selection-only E2 follow-up on the first identity repeats exactly and
+resolves 2/2 in nine calls at 40.56\% own-trajectory saving and zero synthetic
+receipt tokens; repeat~2 includes a model unload and exact warm-up.  It removes
+the logical need for compact receipts on this trajectory but does not replace
+the three-identity hybrid estimate.  A fresh
+Qwen2.5-Coder-14B/MLX \textsc{Full} retry on Django-15277 fails in seven calls
+after an over-broad edit, so its selective arm is correctly withheld; this is
+additional evidence that temperature zero is not an admission guarantee.
 The first corrected hybrid native-plus-receipt transfer then preserves the Scikit-learn solve and
 eight-call count while realizing 39.88\% materialized-token saving and 40.23\%
 steady-state resident-K/V omission.  Direct MLX independently realizes 40.04\%

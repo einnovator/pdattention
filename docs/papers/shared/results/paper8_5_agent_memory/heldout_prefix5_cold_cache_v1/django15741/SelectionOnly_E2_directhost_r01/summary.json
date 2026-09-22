@@ -1,0 +1,100 @@
+{
+  "schema_version": "paper8.5.selection-only-e2-directhost.v1",
+  "created_at": "2026-09-22T15:34:00.671824+00:00",
+  "classification": "single-identity strict-selection mechanism qualification, repeat 1",
+  "repository_revision": "97d38a13820f222c6d8aadf1ab90c8124048c1a6",
+  "host": "48 GB Apple M4 Pro",
+  "instance_id": "django__django-15741",
+  "persistent_prefix": {
+    "episode_count": 5,
+    "sha256": "c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283",
+    "instance_ids": [
+      "sympy__sympy-16886",
+      "django__django-15277",
+      "scikit-learn__scikit-learn-12585",
+      "pytest-dev__pytest-7982",
+      "django__django-16145"
+    ]
+  },
+  "model": {
+    "name": "qwen3-coder:30b",
+    "observed_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "format": "gguf",
+    "family": "qwen3moe",
+    "parameter_size": "30.5B",
+    "quantization": "Q4_K_M",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "agent": {
+    "name": "mini-swe-agent",
+    "version": "2.4.6",
+    "maximum_calls": 40
+  },
+  "policy": {
+    "name": "persistent_instruction_epoch_retirement",
+    "profile": "selection-only E2",
+    "boundary_mode": "boundary_free",
+    "completed_instruction_epochs": 2,
+    "keep_completed_task_statements": true,
+    "completed_finalization_turns": 0,
+    "compact_completed_finalizations": false,
+    "retire_closed_instructions": false,
+    "negative_realization": "drop",
+    "materialization_mode": "whole_record",
+    "synthetic_receipt_tokens": 0
+  },
+  "result": {
+    "official_resolved": true,
+    "official_score": 1.0,
+    "calls": 9,
+    "actions": 9,
+    "cumulative_full_counterfactual_tokens": 237645,
+    "cumulative_selected_tokens": 141264,
+    "cumulative_materialized_tokens": 141264,
+    "own_trajectory_saving_fraction": 0.4055671274379852,
+    "excluded_causal_groups": 342,
+    "excluded_tokens": 96381,
+    "reacquisition_events": 0,
+    "upstream_error_calls": 0,
+    "completion_limit_violation_calls": 0,
+    "agent_wall_time_seconds": 132.46322341700215,
+    "grader_wall_time_seconds": 60.769877833001374
+  },
+  "comparison": {
+    "cold_full_controls": {
+      "official_resolved": "2/2",
+      "calls_each": 13,
+      "materialized_tokens_each": 361680
+    },
+    "hybrid_e2_f1c_controls": {
+      "official_resolved": "2/2",
+      "calls_each": 8,
+      "materialized_tokens_each": 125643,
+      "own_trajectory_saving_fraction_each": 0.4039,
+      "classification": "hybrid transformed context because closure receipts are model-visible post-cache text"
+    },
+    "strict_e2_cold_repeat": {
+      "official_resolved": true,
+      "calls": 9,
+      "own_trajectory_saving_fraction": 0.4055671274379852,
+      "selected_message_digest_matches": "9/9",
+      "command_digest_matches": "9/9",
+      "assistant_content_digest_matches": "9/9",
+      "plan_digest_matches": "9/9",
+      "patch_sha256_matches": true
+    },
+    "interpretation": "Selection-only E2 preserves official resolution and removes synthetic receipt encoding in two repeat-exact runs, at one additional call relative to the two hybrid repeats. Repeat 1 was direct-host warm; repeat 2 explicitly unloaded and reloaded the model before an exact two-token warm-up."
+  },
+  "raw_artifact_identity": {
+    "retained_path": "/Users/admin.jorge.simao/git/rd/paper85-runs/qwen30-selection-only-e2-local-20260922",
+    "run_manifest_sha256": "e0aa942ceb298261be3ef12ddbd222efd5da0db95b6a25ffd5e8f817ac4be738",
+    "request_selection_sha256": "ad817fc0960ffaecd4b25f33cbc4a2e9d959e79c460b4711a6f86906a4461b26",
+    "autonomous_metrics_sha256": "bb3b386213e46cb9ea9d5da2b6112e70e4911b8a1786b444b1ef4907b9a2cf51",
+    "official_result_sha256": "d8c050dfa25733d7d04a3fc8a8a72f5193b92d0927da4f7a0ea8438382ed26ff",
+    "predictions_sha256": "85a24e4944e69d089e26c375fccc62596f8e66d06ff4e857a3f54db12848a930"
+  },
+  "claim_boundary": "One model-task-prefix identity with two repeat-exact strict arms. This qualifies repeatability of the no-synthetic-receipt mechanism on that identity, not a population accuracy rate, native-K/V runtime result, or production default."
+}
