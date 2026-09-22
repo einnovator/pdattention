@@ -1,7 +1,15 @@
 # Exact-token OpenHands three-task tail-90 cohort
 
-This cohort applies one frozen policy to three locked SWE-bench Verified tasks:
-matched token-tail at a nominal 90% budget, protected head 2 and tail 4.  Every
+> **Post-refactor audit:** these immutable totals reproduce exactly, but the
+> historical materializer did not consume the recorded head/tail floors. This
+> bundle is evidence for the prompt-pinned pure-recency policy that actually
+> ran, not the corrected H2/T4 policy. Fresh corrected runs supersede it for
+> policy promotion.
+
+This cohort applies one frozen legacy policy to three locked SWE-bench Verified
+tasks: matched token-tail at a nominal 90% budget with immutable prompts and a
+causal recency tail. The manifests record protected head 2 and tail 4, but the
+historical materializer did not apply those floors. Every
 arm uses OpenHands SDK 1.49.2, `qwen3-coder:30b` at digest
 `06c1097e...90bca`, the exact corresponding tokenizer, temperature zero,
 disabled native condensation, zero semantic-request retries, and a fresh

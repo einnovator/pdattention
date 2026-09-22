@@ -9,6 +9,11 @@ CONTRACT = (
     ROOT
     / "experiments/paper8_5_agent_memory/configs/cross_agent_model_replication_v1.json"
 )
+CORRECTED_MINI_SPEC = (
+    ROOT
+    / "experiments/paper8_5_agent_memory/configs/"
+    / "transverse_mini_swe_tail90_v3_h2t4_corrected.json"
+)
 
 
 def test_cross_agent_model_replication_keeps_the_policy_transverse() -> None:
@@ -75,3 +80,13 @@ def test_cross_agent_model_replication_fails_closed() -> None:
     assert "model or tokenizer identity mismatch" in stop_conditions
     assert "incomplete native event trace" in stop_conditions
     assert "lost paired official success" in stop_conditions
+
+
+def test_corrected_mini_campaign_has_distinct_policy_identity() -> None:
+    payload = json.loads(CORRECTED_MINI_SPEC.read_text(encoding="utf-8"))
+
+    assert payload["campaign_id"].endswith("corrected-h2t4")
+    assert payload["history"]["head_turns"] == 2
+    assert payload["history"]["tail_turns"] == 4
+    assert payload["arms"][0]["arm_id"] == "matched_tail90_corrected_h2t4"
+    assert "consume both" in payload["qualification"]["implementation_gate"]

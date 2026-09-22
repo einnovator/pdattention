@@ -173,6 +173,8 @@ def test_agent_transfer_proxy_exposes_frozen_policy_parameters(tmp_path: Path):
         "--task-id", "task-1",
         "--policy", "frontier_dag_retirement",
         "--boundary-mode", "boundary_free",
+        "--protected-head-turns", "2",
+        "--protected-tail-turns", "4",
         "--frontier-recent-user-prompts", "2",
         "--frontier-protocol-exemplars", "1",
         "--frontier-allow-heuristic",
@@ -185,6 +187,8 @@ def test_agent_transfer_proxy_exposes_frozen_policy_parameters(tmp_path: Path):
     config = build_agent_transfer_config(args)
 
     assert config.frontier_recent_user_prompts == 2
+    assert config.protected_head_turns == 2
+    assert config.protected_tail_turns == 4
     assert config.frontier_protocol_exemplars == 1
     assert config.frontier_allow_heuristic is True
     assert config.max_completion_tokens == 2048

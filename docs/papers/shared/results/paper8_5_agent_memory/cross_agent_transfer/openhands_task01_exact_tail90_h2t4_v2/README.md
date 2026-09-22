@@ -1,12 +1,15 @@
 # OpenHands Task 1 exact-tokenizer tail-90 qualification
 
+> **Superseded policy label:** the immutable outcome and token totals remain
+> valid, but the historical materializer ignored the recorded H2/T4 floors.
+> This is a legacy pure-tail result, pending a corrected H2/T4 rerun.
+
 This pair corrects the historical transfer proxy's whitespace-token diagnostic.
 Both arms use OpenHands SDK 1.49.2, `qwen3-coder:30b` at observed digest
 `06c1097e...90bca`, its exact tokenizer revision, temperature zero, disabled
 native condensation, the same workspace image, and the ordinary OpenAI-tools
-protocol.  The selective arm uses the same matched token-tail parameters as
-the new mini-swe-agent bridge: protected head 2, protected tail 4, and a
-nominal 90% hard ceiling.
+protocol. The selective arm actually uses immutable prompts plus a causal
+recency tail at a nominal 90% hard ceiling.
 
 Both patches pass the official SWE-bench grader and have the identical
 689-byte SHA-256 `8512d6bc...44aae`.  FULL takes 33 actions and 509,381 exact

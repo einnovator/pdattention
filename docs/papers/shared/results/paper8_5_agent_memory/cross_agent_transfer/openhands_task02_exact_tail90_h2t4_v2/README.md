@@ -1,10 +1,14 @@
 # OpenHands Task 2 exact-tokenizer tail-90 qualification
 
+> **Superseded policy label:** the immutable outcome and token totals remain
+> valid, but the historical materializer ignored the recorded H2/T4 floors.
+> This is a legacy pure-tail result, pending a corrected H2/T4 rerun.
+
 Both arms use OpenHands SDK 1.49.2, `qwen3-coder:30b` at observed digest
 `06c1097e...90bca`, its exact tokenizer revision, temperature zero, disabled
 native condensation, the same task-derived image, and zero semantic-request
-retries.  The selective arm uses matched token-tail with protected head 2,
-protected tail 4, and a nominal 90% budget.
+retries. The selective arm actually uses immutable prompts plus a causal
+recency tail at a nominal 90% budget.
 
 FULL resolves officially in 38 actions with 353,392 exact message-content
 tokens.  Tail-90 also resolves officially, in 21 actions.  Its unmodified

@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-transverse-mini-swe-tail90-v3-corrected-h2t4",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "harness": {
+    "require_unified_diff_submission": true,
+    "malformed_terminal_behavior": "recoverable_nonzero_observation",
+    "workspace_patch_substitution": false
+  },
+  "history": {
+    "head_turns": 2,
+    "tail_turns": 4,
+    "search_delay_turns": 8,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 2,
+    "working_set_resources": 4
+  },
+  "controls": {
+    "full_repeats": 2,
+    "require_all_resolved_before_candidate": true
+  },
+  "arms": [
+    {
+      "arm_id": "matched_tail90_corrected_h2t4",
+      "policy": "matched_token_tail",
+      "negative_realization": "drop",
+      "negative_fallback": "none",
+      "budget_fraction": 0.90
+    }
+  ],
+  "adaptive_stopping": {
+    "minimum_tasks_before_yield_gate": 2,
+    "minimum_gross_saving_fraction": 0.02,
+    "stop_after_failures": 1,
+    "minimum_tasks_before_accuracy_gate": 1,
+    "minimum_task_resolution": 1.0
+  },
+  "qualification": {
+    "ordered_task_indices": [1, 2, 3],
+    "admission_order": "Task 1 FULL-A, FULL-B, then corrected tail-90 H2/T4. Admit Tasks 2 and 3 only after Task 1 passes.",
+    "identity_rule": "Every cell validates endpoint digest and repository revision; FULL and selective arms use the identical submission validator.",
+    "failure_rule": "Preserve malformed submissions as failed historical controls; never replace a primary submission with a workspace patch.",
+    "implementation_gate": "matched_token_tail must consume both configured protected-head and protected-tail floors"
+  }
+}

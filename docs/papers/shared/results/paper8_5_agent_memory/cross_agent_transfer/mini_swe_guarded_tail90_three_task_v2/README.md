@@ -1,10 +1,16 @@
 # Guarded mini-swe-agent three-task tail-90 cohort
 
+> **Post-refactor audit:** these immutable totals reproduce exactly, but the
+> historical materializer did not consume the recorded head/tail floors. This
+> bundle is evidence for the prompt-pinned pure-recency policy that actually
+> ran, not the corrected H2/T4 policy. Fresh corrected runs supersede it for
+> policy promotion.
+
 This cohort uses mini-swe-agent 2.4.6 and the same
 `qwen3-coder:30b` endpoint, model digest, tokenizer, temperature-zero settings,
 workspace images, and structural unified-diff submission guard in every arm.
-Each task has two independent FULL controls followed by matched token-tail at a
-nominal 90% budget ceiling.
+Each task has two independent FULL controls followed by the legacy matched
+token-tail implementation at a nominal 90% budget ceiling.
 
 | Task | FULL-A solve/calls/tokens | FULL-B solve/calls/tokens | tail-90 solve/calls | own saving | paired saving vs FULL-A |
 |---|---|---|---|---:|---:|

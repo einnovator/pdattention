@@ -169,6 +169,8 @@ def main() -> None:
         "input_protocol": "openai_tools",
         "policy_parameters": {
             "boundary_mode": config.boundary_mode.value,
+            "protected_head_turns": config.protected_head_turns,
+            "protected_tail_turns": config.protected_tail_turns,
             "completed_recent_turns": config.completed_recent_turns,
             "completed_mutation_turns": config.completed_mutation_turns,
             "completed_verification_turns": config.completed_verification_turns,
