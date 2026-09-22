@@ -55,6 +55,13 @@ resolves only 1/8 Full controls and contributes only an exact 0\%-saving
 abstention, demonstrating that the present cohorts do not estimate population
 accuracy.
 
+A post-refactor policy audit finds that historical matched-tail runs recorded
+H2/T4 parameters that their materializer did not consume.  After correcting
+the implementation, mini-swe-agent preserves 3/3 paired solves, but saves only
+8.17\% within trajectory and 6.28\% against pooled FULL-A input while adding
+three calls.  The old totals remain reproducible for the legacy pure-tail
+policy; they are not evidence for corrected H2/T4.
+
 Cross-agent transfer to OpenHands supplies a separate three-identity result.
 After 3/3 Full admission, the retrospectively audited legacy causal-tail
 implementation preserves 3/3 official
@@ -624,6 +631,28 @@ own-trajectory saving without synthetic receipts.  This qualifies strict
 repeatability for one task; additional identities remain necessary before
 recommendation as a native-PRA default.
 
+\subsection{Post-refactor matched-recency audit}
+
+An implementation audit found that the historical matched-tail manifests
+recorded two protected head and four protected tail turns although the
+materializer consumed neither parameter.  Re-reducing the immutable artifacts
+reproduces every archived total, and four fresh Task~2--3 \textsc{Full}
+controls reproduce their old official outcomes, calls, and cumulative tokens
+exactly.  The refactor therefore did not alter the baseline or reducer; the
+historical treatment is a valid prompt-pinned pure-recency policy with a
+superseded H2/T4 label.
+
+The corrected H2/T4 arm keeps the first two and latest four complete causal
+turns.  On the same three identities it preserves 3/3 official resolutions,
+but uses 64 calls versus 61/69 for FULL-A/FULL-B.  It saves 8.17\% against its
+own trajectory counterfactual and 6.28\% against pooled FULL-A input; the
+task-macro paired value is $-3.93$\% because Task~2 expands from 15 to 22
+calls.  Thus corrected H2/T4 passes the observed quality gate but fails the
+predeclared no-call-increase efficiency gate.  A second corrected Task~1 run
+also resolves, but uses 26 rather than 20 calls, exposing residual trajectory
+variance.  Neither corrected nor legacy matched recency is promoted as a
+default.
+
 \subsection{Task-clustered headline comparison}
 
 Table~\ref{tab:editorial-headline-policies} keeps discovery and confirmation
@@ -645,6 +674,7 @@ treatment.
 Policy & Cohort & IDs & Resolved F/P & Calls F/P & Input F/P & Save own/paired & Status \\
 \midrule
 Matched Recency & development & 3 (6 runs) & 5/6; 4/6 & 154/113 & not admitted & 6.35\%/n.a. & two losses; incomplete legacy identity \\
+Matched Recency H2/T4 & post-fix audit & 3 & 3/3; 3/3 & 61/64 & 364,457/341,556 & 8.17/6.28\% & $+3$ calls; not promoted \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
@@ -737,30 +767,20 @@ claim that all semantic selection is unsafe.
 
 Paper~8.5 freezes record identities, spans, original positions, replacements,
 and a plan digest.  It does not infer engine performance from logical tokens.
-The current transfer rows are compact diagnostics:
+For a selection-only plan, the cumulative selected original-token count is the
+engine-independent upper bound on reusable K/V demand.  Paper~4.5 must replay
+the identical ledger and report page rounding, resident references, physical
+copies, newly evaluated suffix tokens, and temporary bytes separately.  A
+logical saving difference across engines is a failed ledger comparison, not an
+engine result.
 
-\begin{table}[H]
-\centering
-\scriptsize
-\setlength{\tabcolsep}{3pt}
-\begin{tabularx}{\linewidth}{p{.12\linewidth}ccccp{.20\linewidth}Y}
-\toprule
-Consumer & Solved & $\Delta$ calls & K/V omitted & Workload effect & Qualification note \\
-\midrule
-llama.cpp & yes & 0 & 40.23\% & calls preserved & Receipt encoding was not separately aggregated; hybrid, not strict native. \\
-MLX & yes & +3 & 40.04\% & 15.23\% saving & 1,056 closure tokens are newly encoded. \\
-SGLang-MLX & yes & +8 & 37.21\% & 33.10\% increase & 1,344 closure tokens are newly encoded. \\
-\bottomrule
-\end{tabularx}
-\caption{Frozen Prompt Pinned handoff.  Logical omission survives, but workload
-economics depend on the realized trajectory.}
-\label{tab:editorial-runtime-handoff}
-\end{table}
-
-The engine details---same-subset correctness, K/V copying, positions,
-temporaries, and lifecycle---belong to Paper~4.5.  For this paper the lesson is
-that equal logical plans can produce different trajectories and that post-cache
-receipts must be charged as transformed context rather than native reuse.
+Earlier runtime-transfer diagnostics preceded the current engine fixes and are
+not used as post-fix evidence here.  They also mixed strict selection with
+model-visible closure receipts.  A receipt created after source K/V exists is
+transformed context: its tokens require evaluation and cannot be credited as
+native reuse.  The post-fix Paper~4.5 handoff will therefore map only frozen
+selection-only plans directly to K/V omission; ingest-time compaction and
+post-cache transformation remain separate treatments.
 
 \section{Discussion and Limitations}
 
@@ -4346,6 +4366,17 @@ cleanly to selection. We retain both the strict FULL-A pairing and the
 FULL-repeat envelope instead of choosing the more favorable control after the
 fact. Evidence and task-clustered curves are in
 \path{cross_agent_transfer/mini_swe_guarded_tail90_three_task_v2}.
+
+Fresh corrected H2/T4 execution resolves all three tasks.  Calls are
+23/15/23 for FULL-A, 27/21/21 for FULL-B, and 20/22/22 for the candidate.
+Candidate own savings are 9.35\%, 8.11\%, and 7.62\%; paired savings versus
+FULL-A are 22.88\%, $-48.93$\%, and 14.27\%.  The pooled 8.17\% own and 6.28\%
+paired savings come with three additional calls versus FULL-A, so the arm does
+not pass the efficiency gate.  A second corrected Task~1 execution resolves in
+26 calls at 11.28\% own saving.  Its first fork from FULL-A precedes the first
+selection change by six actions, preventing attribution of its longer
+trajectory to selection alone.  Evidence is in
+\path{cross_agent_transfer/mini_swe_corrected_h2t4_three_task_v3}.
 
 \section{Detailed Transfer Protocol}
 

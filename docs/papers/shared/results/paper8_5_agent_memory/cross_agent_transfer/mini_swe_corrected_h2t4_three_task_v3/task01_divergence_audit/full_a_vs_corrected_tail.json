@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_repeat_control_divergence",
+  "same_instance": true,
+  "instance_id": "django__django-15277",
+  "common_visible_message_prefix": 4,
+  "first_divergent_message_index_zero_based": 4,
+  "first_divergent_message_role": "assistant",
+  "first_divergent_action_index_one_based": 2,
+  "first_divergent_actions": {
+    "A": "grep -n \"class CharField\" /testbed/django/db/models/fields/__init__.py",
+    "B": "find /testbed -name \"*.py\" -type f | xargs grep -l \"class Value\" | head -5"
+  },
+  "runs": [
+    {
+      "label": "A",
+      "trajectory_label": "django__django-15277.traj.json",
+      "trajectory_sha256": "a49fb2959eef179df27f5e18a5910b13ed3a290eeab87b75681936ad2ee917f5",
+      "message_count": 48,
+      "action_count": 23,
+      "exit_status": "Submitted",
+      "submission_valid_git_diff": true,
+      "submission_validation_reason": "recognized Git patch"
+    },
+    {
+      "label": "B",
+      "trajectory_label": "django__django-15277.traj.json",
+      "trajectory_sha256": "0bbb82d44e8d965f704dff95203f51246343bac1ac6de7b88af6150d4127a84e",
+      "message_count": 54,
+      "action_count": 26,
+      "exit_status": "Submitted",
+      "submission_valid_git_diff": true,
+      "submission_validation_reason": "recognized Git patch"
+    }
+  ],
+  "interpretation": "Visible histories were identical before the first divergent assistant action; the fork is backend/model trajectory variability, not selection."
+}
