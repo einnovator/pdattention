@@ -653,6 +653,17 @@ also resolves, but uses 26 rather than 20 calls, exposing residual trajectory
 variance.  Neither corrected nor legacy matched recency is promoted as a
 default.
 
+The first corrected cross-agent execution supplies a useful contrast without
+changing the selector.  OpenHands 1.49.2 on Task~1 resolves officially, emits
+the same 689-byte patch digest as its paired successful \textsc{Full} control,
+and uses 31 rather than 33 actions.  It saves 35.35\% against its own logical
+history and 43.53\% against the predeclared \textsc{Full} workload; provider
+prompt accounting falls 33.27\%.  The larger opportunity arises because the
+OpenHands history contains one oversized early source-view observation that
+can retire once more specific reads supersede it.  This one-identity result is
+not an accuracy estimate, but it demonstrates that the corrected policy is
+transverse to the agent interface and that savings are workload-dependent.
+
 \subsection{Task-clustered headline comparison}
 
 Table~\ref{tab:editorial-headline-policies} keeps discovery and confirmation
@@ -675,6 +686,7 @@ Policy & Cohort & IDs & Resolved F/P & Calls F/P & Input F/P & Save own/paired &
 \midrule
 Matched Recency & development & 3 (6 runs) & 5/6; 4/6 & 154/113 & not admitted & 6.35\%/n.a. & two losses; incomplete legacy identity \\
 Matched Recency H2/T4 & post-fix audit & 3 & 3/3; 3/3 & 61/64 & 364,457/341,556 & 8.17/6.28\% & $+3$ calls; not promoted \\
+Matched Recency H2/T4 & OpenHands post-fix & 1 & 1/1; 1/1 & 33/31 & 509,381/287,641 & 35.35/43.53\% & $-2$ actions; repeat pending \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
@@ -4377,6 +4389,16 @@ not pass the efficiency gate.  A second corrected Task~1 execution resolves in
 selection change by six actions, preventing attribution of its longer
 trajectory to selection alone.  Evidence is in
 \path{cross_agent_transfer/mini_swe_corrected_h2t4_three_task_v3}.
+
+The first corrected OpenHands transfer uses the identical H2/T4 policy on
+Task~1.  It resolves officially with the exact successful 689-byte patch
+digest, reduces actions from 33 to 31, saves 35.35\% against its own trajectory,
+and saves 43.53\% against paired \textsc{Full}.  Unlike the mini-swe cohort,
+the richer history contains an oversized early source view, so whole-turn
+retirement produces material headroom.  This is evidence for portability of
+the logical abstraction, not yet for cross-agent accuracy: it is one identity
+and one selective execution.  The immutable decision record is in
+\path{cross_agent_transfer/openhands_corrected_h2t4_task01_v3}.
 
 \section{Detailed Transfer Protocol}
 
