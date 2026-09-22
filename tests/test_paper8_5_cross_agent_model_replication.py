@@ -86,6 +86,7 @@ def test_corrected_mini_campaign_has_distinct_policy_identity() -> None:
     payload = json.loads(CORRECTED_MINI_SPEC.read_text(encoding="utf-8"))
 
     assert payload["campaign_id"].endswith("corrected-h2t4")
+    assert payload["baseline_pair_campaign_id"].endswith("submission-guard")
     assert payload["history"]["head_turns"] == 2
     assert payload["history"]["tail_turns"] == 4
     assert payload["arms"][0]["arm_id"] == "matched_tail90_corrected_h2t4"
