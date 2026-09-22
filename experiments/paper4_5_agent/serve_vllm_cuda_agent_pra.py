@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import traceback
@@ -50,6 +51,7 @@ def _handler(
     model_id: str,
     max_model_len: int,
     runtime_identity: Mapping[str, Any] | None = None,
+    run_token: str | None = None,
 ):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
@@ -87,6 +89,11 @@ def _handler(
         def do_POST(self) -> None:  # noqa: N802
             if urllib.parse.urlsplit(self.path).path != "/v1/chat/completions":
                 self._json(404, {"error": "not_found"})
+                return
+            if run_token is not None and not hmac.compare_digest(
+                str(self.headers.get("X-PRA-Run-Lease") or ""), run_token
+            ):
+                self._json(409, {"error": "stale_run_lease"})
                 return
             try:
                 value = json.loads(
@@ -141,6 +148,7 @@ def main() -> None:
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18125)
+    parser.add_argument("--run-token")
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument(
         "--max-num-batched-tokens",
@@ -241,6 +249,7 @@ def main() -> None:
                 "engine": "vllm-cuda",
                 "observed_source_checkpoint_revision": observed_revision,
             },
+            args.run_token,
         ),
     ).serve_forever()
 

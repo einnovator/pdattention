@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import traceback
 import urllib.parse
@@ -43,6 +44,7 @@ def _direct_handler(
     executor: object,
     model_id: str,
     runtime_identity: Mapping[str, Any] | None = None,
+    run_token: str | None = None,
 ):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
@@ -88,6 +90,11 @@ def _direct_handler(
         def do_POST(self) -> None:  # noqa: N802
             if urllib.parse.urlsplit(self.path).path != "/v1/chat/completions":
                 self._json(404, {"error": "not_found"})
+                return
+            if run_token is not None and not hmac.compare_digest(
+                str(self.headers.get("X-PRA-Run-Lease") or ""), run_token
+            ):
+                self._json(409, {"error": "stale_run_lease"})
                 return
             request = None
             try:
@@ -142,6 +149,7 @@ def main() -> None:
     parser.add_argument("--revision", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18123)
+    parser.add_argument("--run-token")
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument(
@@ -239,6 +247,7 @@ def main() -> None:
                     "engine": "huggingface",
                     "observed_source_checkpoint_revision": observed_revision,
                 },
+                args.run_token,
             ),
         ).serve_forever()
     finally:

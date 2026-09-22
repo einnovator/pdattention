@@ -9,6 +9,7 @@ session lifecycle.
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import traceback
 import urllib.parse
@@ -90,7 +91,7 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
     return response
 
 
-def _direct_handler(adapter: object, model: str):
+def _direct_handler(adapter: object, model: str, run_token: str | None = None):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
             encoded = json.dumps(payload, default=str).encode("utf-8")
@@ -159,6 +160,11 @@ def _direct_handler(adapter: object, model: str):
         def do_POST(self) -> None:  # noqa: N802
             if urllib.parse.urlsplit(self.path).path != "/v1/chat/completions":
                 self._json(404, {"error": "not_found"})
+                return
+            if run_token is not None and not hmac.compare_digest(
+                str(self.headers.get("X-PRA-Run-Lease") or ""), run_token
+            ):
+                self._json(409, {"error": "stale_run_lease"})
                 return
             try:
                 payload = json.loads(
@@ -258,6 +264,7 @@ def main() -> None:
     parser.add_argument("--revision", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18121)
+    parser.add_argument("--run-token")
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--pool-size", type=int, default=32768)
     parser.add_argument("--mem-fraction-static", type=float, default=0.25)
@@ -337,7 +344,8 @@ def main() -> None:
     )
     try:
         DIRECT_SERVER_CLASS(
-            (args.host, args.port), _direct_handler(adapter, served_model)
+            (args.host, args.port),
+            _direct_handler(adapter, served_model, args.run_token),
         ).serve_forever()
     finally:
         executor.close()

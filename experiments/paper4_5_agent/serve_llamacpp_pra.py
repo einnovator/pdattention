@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import re
 import threading
@@ -1816,7 +1817,11 @@ def _completion(
     return response
 
 
-def _direct_handler(adapter: HybridLlamaCppAdapter, model: str):
+def _direct_handler(
+    adapter: HybridLlamaCppAdapter,
+    model: str,
+    run_token: str | None = None,
+):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
             encoded = json.dumps(payload, default=str).encode("utf-8")
@@ -1880,6 +1885,11 @@ def _direct_handler(adapter: HybridLlamaCppAdapter, model: str):
                     self._json(500, {
                         "error": "engine_internal_error", "message": str(error),
                     })
+                return
+            if run_token is not None and not hmac.compare_digest(
+                str(self.headers.get("X-PRA-Run-Lease") or ""), run_token
+            ):
+                self._json(409, {"error": "stale_run_lease"})
                 return
             if path != "/v1/chat/completions":
                 self._json(404, {"error": "not_found"})
@@ -2003,7 +2013,8 @@ def serve(args: argparse.Namespace) -> None:
         )
         return
     ThreadingHTTPServer(
-        (args.host, args.port), _direct_handler(adapter, args.model)
+        (args.host, args.port),
+        _direct_handler(adapter, args.model, args.run_token),
     ).serve_forever()
 
 
@@ -2012,6 +2023,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llama-url", default="http://127.0.0.1:18082")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--run-token")
     parser.add_argument("--mode", choices=("direct", "g00", "g11"), default="direct")
     parser.add_argument("--model", required=True)
     parser.add_argument("--model-fingerprint", required=True)
