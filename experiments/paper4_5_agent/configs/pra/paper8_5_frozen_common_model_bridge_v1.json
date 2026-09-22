@@ -1,0 +1,122 @@
+{
+  "schema_version": "paper8.5.frozen-common-model-bridge.v1",
+  "status": "frozen_before_execution",
+  "frozen_at_utc": "2026-09-22T00:00:00Z",
+  "purpose": "Hold model, tasks, generation, logical policies, and agent-neutral record semantics fixed before the Paper 8.5 to Paper 4.5 bridge.",
+  "model": {
+    "id": "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "tokenizer_revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "precision": "BF16",
+    "chat_template_profile": "native",
+    "context_limit": 32768
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "task_cohort": {
+    "cohort_id": "paper85-common-django3-v1",
+    "ordered_instance_ids": [
+      "django__django-15277",
+      "django__django-15368",
+      "django__django-15741"
+    ],
+    "canonical_ids_sha256": "e9fd45a6c12f67a423917a7af27cb1fca93070cc42e56028a67a1c2ff0b87659",
+    "selection_rule": "The three already-used cross-agent Django identities, frozen without outcome-dependent replacement for this model."
+  },
+  "canonical_record_contract": {
+    "agent_id_visible_to_policy": false,
+    "task_id_visible_to_policy": false,
+    "required_fields": [
+      "record_id",
+      "causal_group_id",
+      "role",
+      "semantic_roles",
+      "resource_ids",
+      "effect",
+      "version",
+      "protocol_state"
+    ],
+    "immutable_floor": [
+      "system records",
+      "all genuine user instructions",
+      "the current incomplete causal group"
+    ],
+    "atomicity": [
+      "assistant action plus observation",
+      "failed action plus error plus recovery",
+      "submission or finalization protocol group"
+    ]
+  },
+  "policies": [
+    {
+      "policy_id": "TAIL90_CAUSAL_V1",
+      "implementation": "matched_token_tail",
+      "session_mode": "single_or_persistent",
+      "budget_fraction": 0.90,
+      "admission_order": "newest complete causal groups first",
+      "tool_observation_threshold_tokens": 512,
+      "boundary_rule": "An oversized oldest admitted tool observation may be shortened only in ordinary-text logical evaluation.",
+      "native_engine_rule": "Keep the same selected record ID but round up to its complete original resident K/V span; never encode the shortened replacement after source-cache creation.",
+      "native_materialization_class": "strict_resident_subset_when_no_replacement; otherwise hybrid_transformed_context_or_round_up",
+      "claim_role": "conservative recency reference"
+    },
+    {
+      "policy_id": "E0_BOUNDARY_FREE_ACTIVE_EPOCH_V1",
+      "implementation": "persistent_instruction_epoch_retirement",
+      "session_mode": "persistent",
+      "prior_recent_turns": 0,
+      "prior_mutation_turns": 0,
+      "prior_verification_turns": 0,
+      "prior_protocol_turns": 0,
+      "prior_finalization_turns": 0,
+      "prior_full_epochs": 0,
+      "retire_closed_instructions": false,
+      "keep_completed_task_statements": true,
+      "boundary_rule": "Use genuine user-instruction provenance only; consume no task ID, episode marker, evaluator boundary, workspace status, or agent ID.",
+      "native_engine_rule": "Select or omit complete original-position resident record spans only.",
+      "native_materialization_class": "strict_resident_subset",
+      "claim_role": "boundary-free persistent-session candidate"
+    }
+  ],
+  "agents": {
+    "primary": [
+      "mini-swe-agent@2.4.6",
+      "openhands@1.49.2"
+    ],
+    "admission_queue": [
+      "pi@0.75.3",
+      "kilo@7.7.5",
+      "pra-agent@locked-revision",
+      "opencode@1.18.31"
+    ],
+    "rule": "An agent enters a selective arm only on identities its matched FULL arm resolves officially."
+  },
+  "engines": {
+    "primary_order": [
+      "mlx",
+      "huggingface",
+      "vllm-cuda"
+    ],
+    "secondary_order": [
+      "sglang",
+      "llama.cpp"
+    ],
+    "logical_ledger_rule": "Every engine consumes the exact exported plan digest and selected record IDs. The selector is not rerun per engine."
+  },
+  "execution_order": [
+    "plain",
+    "pra100",
+    "TAIL90_CAUSAL_V1",
+    "E0_BOUNDARY_FREE_ACTIVE_EPOCH_V1"
+  ],
+  "gates": {
+    "plain": "Official task resolution is required before a treatment is interpreted.",
+    "pra100": "Matched-consumer semantic parity, original-position parity, zero selected-history re-encoding, and complete physical telemetry are required.",
+    "reduced": "Compare against a matched fresh consumer of the identical selected subset; do not require equality to FULL.",
+    "persistent": "Require zero lost paired FULL successes and no aggregate action or call increase before promotion."
+  }
+}

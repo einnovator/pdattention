@@ -1,0 +1,638 @@
+{
+  "schema_version": "paper4.5.common-model-bridge-matrix.v1",
+  "contract_path": "experiments\\paper4_5_agent\\configs\\pra\\paper8_5_frozen_common_model_bridge_v1.json",
+  "contract_sha256": "11d0b7209a2f4739e619aac6ce69f20eb46ad4026c67f4af4a37fea2ec0c6955",
+  "benchmark_path": "experiments\\paper4_5_agent\\benchmarks\\swebench_verified_common_django3.json",
+  "benchmark_sha256": "b87d9f2f1785a8129020305ee87a92de99499b373018052798e07871a1c04a41",
+  "model": {
+    "id": "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "tokenizer_revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "precision": "BF16",
+    "chat_template_profile": "native",
+    "context_limit": 32768
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "logical_ledger_rule": "Every engine consumes the exact exported plan digest and selected record IDs. The selector is not rerun per engine.",
+  "required_engine_metrics": [
+    "selected_history_reencoded_tokens",
+    "selected_kv_reference_bytes",
+    "selected_kv_copy_bytes",
+    "total_kv_copy_bytes",
+    "consumer_temporary_bytes",
+    "consumer_temporary_peak_bytes",
+    "new_suffix_encoded_tokens",
+    "resident_kv_bytes",
+    "ttft_ms",
+    "total_latency_ms",
+    "calls_to_solution",
+    "official_resolution"
+  ],
+  "cells": [
+    {
+      "cell_id": "mlx:1:django__django-15277:plain",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "mlx:1:django__django-15277:pra100",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "pra100",
+      "requires": [
+        "mlx:1:django__django-15277:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "mlx:1:django__django-15277:tail90",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "mlx:1:django__django-15277:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "mlx:2:django__django-15368:plain",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "mlx:2:django__django-15368:pra100",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "pra100",
+      "requires": [
+        "mlx:2:django__django-15368:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "mlx:2:django__django-15368:tail90",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "mlx:2:django__django-15368:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "mlx:3:django__django-15741:plain",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "mlx:3:django__django-15741:pra100",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "pra100",
+      "requires": [
+        "mlx:3:django__django-15741:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "mlx:3:django__django-15741:tail90",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "mlx:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "mlx:persistent-n3:e0",
+      "engine": "mlx",
+      "agent": "mini-swe-agent@2.4.6",
+      "instance_ids": [
+        "django__django-15277",
+        "django__django-15368",
+        "django__django-15741"
+      ],
+      "session_mode": "persistent",
+      "arm": "E0_BOUNDARY_FREE_ACTIVE_EPOCH_V1",
+      "requires": [
+        "mlx:1:django__django-15277:pra100",
+        "mlx:2:django__django-15368:pra100",
+        "mlx:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "all_three_pra100_gates"
+    },
+    {
+      "cell_id": "huggingface:1:django__django-15277:plain",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "huggingface:1:django__django-15277:pra100",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "pra100",
+      "requires": [
+        "huggingface:1:django__django-15277:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "huggingface:1:django__django-15277:tail90",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "huggingface:1:django__django-15277:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "huggingface:2:django__django-15368:plain",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "huggingface:2:django__django-15368:pra100",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "pra100",
+      "requires": [
+        "huggingface:2:django__django-15368:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "huggingface:2:django__django-15368:tail90",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "huggingface:2:django__django-15368:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "huggingface:3:django__django-15741:plain",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "huggingface:3:django__django-15741:pra100",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "pra100",
+      "requires": [
+        "huggingface:3:django__django-15741:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "huggingface:3:django__django-15741:tail90",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "huggingface:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "huggingface:persistent-n3:e0",
+      "engine": "huggingface",
+      "agent": "mini-swe-agent@2.4.6",
+      "instance_ids": [
+        "django__django-15277",
+        "django__django-15368",
+        "django__django-15741"
+      ],
+      "session_mode": "persistent",
+      "arm": "E0_BOUNDARY_FREE_ACTIVE_EPOCH_V1",
+      "requires": [
+        "huggingface:1:django__django-15277:pra100",
+        "huggingface:2:django__django-15368:pra100",
+        "huggingface:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "all_three_pra100_gates"
+    },
+    {
+      "cell_id": "vllm-cuda:1:django__django-15277:plain",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "vllm-cuda:1:django__django-15277:pra100",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "pra100",
+      "requires": [
+        "vllm-cuda:1:django__django-15277:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "vllm-cuda:1:django__django-15277:tail90",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "vllm-cuda:1:django__django-15277:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "vllm-cuda:2:django__django-15368:plain",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "vllm-cuda:2:django__django-15368:pra100",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "pra100",
+      "requires": [
+        "vllm-cuda:2:django__django-15368:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "vllm-cuda:2:django__django-15368:tail90",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "vllm-cuda:2:django__django-15368:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "vllm-cuda:3:django__django-15741:plain",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "vllm-cuda:3:django__django-15741:pra100",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "pra100",
+      "requires": [
+        "vllm-cuda:3:django__django-15741:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "vllm-cuda:3:django__django-15741:tail90",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "vllm-cuda:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "vllm-cuda:persistent-n3:e0",
+      "engine": "vllm-cuda",
+      "agent": "mini-swe-agent@2.4.6",
+      "instance_ids": [
+        "django__django-15277",
+        "django__django-15368",
+        "django__django-15741"
+      ],
+      "session_mode": "persistent",
+      "arm": "E0_BOUNDARY_FREE_ACTIVE_EPOCH_V1",
+      "requires": [
+        "vllm-cuda:1:django__django-15277:pra100",
+        "vllm-cuda:2:django__django-15368:pra100",
+        "vllm-cuda:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "all_three_pra100_gates"
+    },
+    {
+      "cell_id": "sglang:1:django__django-15277:plain",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "sglang:1:django__django-15277:pra100",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "pra100",
+      "requires": [
+        "sglang:1:django__django-15277:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "sglang:1:django__django-15277:tail90",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "sglang:1:django__django-15277:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "sglang:2:django__django-15368:plain",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "sglang:2:django__django-15368:pra100",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "pra100",
+      "requires": [
+        "sglang:2:django__django-15368:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "sglang:2:django__django-15368:tail90",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "sglang:2:django__django-15368:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "sglang:3:django__django-15741:plain",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "sglang:3:django__django-15741:pra100",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "pra100",
+      "requires": [
+        "sglang:3:django__django-15741:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "sglang:3:django__django-15741:tail90",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "sglang:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "sglang:persistent-n3:e0",
+      "engine": "sglang",
+      "agent": "mini-swe-agent@2.4.6",
+      "instance_ids": [
+        "django__django-15277",
+        "django__django-15368",
+        "django__django-15741"
+      ],
+      "session_mode": "persistent",
+      "arm": "E0_BOUNDARY_FREE_ACTIVE_EPOCH_V1",
+      "requires": [
+        "sglang:1:django__django-15277:pra100",
+        "sglang:2:django__django-15368:pra100",
+        "sglang:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "all_three_pra100_gates"
+    },
+    {
+      "cell_id": "llama.cpp:1:django__django-15277:plain",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "llama.cpp:1:django__django-15277:pra100",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "pra100",
+      "requires": [
+        "llama.cpp:1:django__django-15277:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "llama.cpp:1:django__django-15277:tail90",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 1,
+      "instance_id": "django__django-15277",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "llama.cpp:1:django__django-15277:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "llama.cpp:2:django__django-15368:plain",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "llama.cpp:2:django__django-15368:pra100",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "pra100",
+      "requires": [
+        "llama.cpp:2:django__django-15368:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "llama.cpp:2:django__django-15368:tail90",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 2,
+      "instance_id": "django__django-15368",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "llama.cpp:2:django__django-15368:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "llama.cpp:3:django__django-15741:plain",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "plain",
+      "requires": [],
+      "admission_gate": "official_resolution"
+    },
+    {
+      "cell_id": "llama.cpp:3:django__django-15741:pra100",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "pra100",
+      "requires": [
+        "llama.cpp:3:django__django-15741:plain"
+      ],
+      "admission_gate": "plain_official_resolution"
+    },
+    {
+      "cell_id": "llama.cpp:3:django__django-15741:tail90",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "task_index": 3,
+      "instance_id": "django__django-15741",
+      "arm": "TAIL90_CAUSAL_V1",
+      "requires": [
+        "llama.cpp:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "pra100_semantic_position_physical_lifecycle"
+    },
+    {
+      "cell_id": "llama.cpp:persistent-n3:e0",
+      "engine": "llama.cpp",
+      "agent": "mini-swe-agent@2.4.6",
+      "instance_ids": [
+        "django__django-15277",
+        "django__django-15368",
+        "django__django-15741"
+      ],
+      "session_mode": "persistent",
+      "arm": "E0_BOUNDARY_FREE_ACTIVE_EPOCH_V1",
+      "requires": [
+        "llama.cpp:1:django__django-15277:pra100",
+        "llama.cpp:2:django__django-15368:pra100",
+        "llama.cpp:3:django__django-15741:pra100"
+      ],
+      "admission_gate": "all_three_pra100_gates"
+    }
+  ]
+}
