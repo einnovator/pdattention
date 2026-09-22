@@ -1,0 +1,77 @@
+{
+  "schema_version": "paper4.5.common-bridge-admission-diagnostic.v1",
+  "timestamp_utc": "2026-09-22T10:15:00Z",
+  "scientific_status": "diagnostic_only_excluded_from_outcome_tables",
+  "model": {
+    "id": "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "dtype": "bfloat16",
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_completion_tokens_primary": 1024
+  },
+  "agent": "mini-swe-agent@2.4.6",
+  "engine": "mlx-lm@0.31.3",
+  "tasks": [
+    {
+      "instance_id": "django__django-15277",
+      "observed_plain_calls": 18,
+      "workspace_mutations": 0,
+      "termination": "diagnostic_early_stop",
+      "official_resolution": null,
+      "admitted_for_pra": false
+    },
+    {
+      "instance_id": "django__django-15368",
+      "observed_plain_calls": 15,
+      "workspace_mutations": 0,
+      "termination": "diagnostic_early_stop",
+      "official_resolution": null,
+      "admitted_for_pra": false
+    },
+    {
+      "instance_id": "django__django-15741",
+      "observed_plain_calls": 12,
+      "workspace_mutations": 0,
+      "termination": "diagnostic_early_stop",
+      "official_resolution": null,
+      "admitted_for_pra": false
+    }
+  ],
+  "task2_trajectory_diagnosis": {
+    "pattern": "deterministic no-progress cycle",
+    "cycle": [
+      "malformed quoted sed command",
+      "syntactically valid but nonmatching no-op sed command",
+      "grep verification showing unchanged source",
+      "forbidden unavailable interactive editor (nano then vim)"
+    ],
+    "interpretation": "plain model-agent capability failure, not PRA selection or engine sparse-KV failure"
+  },
+  "infrastructure_findings": [
+    {
+      "finding": "provider token-ceiling responses were mislabeled as stop",
+      "fix_commit": "dc9138b7"
+    },
+    {
+      "finding": "a disconnected client could leave generation running and block the executor lock",
+      "status": "contained_but_generation_cancellation_still_pending"
+    },
+    {
+      "finding": "an orphaned mini-swe process could reconnect after endpoint restart and contaminate the next task",
+      "fix_commit": "e4dae2f9",
+      "mitigation": "per-run X-PRA-Run-Lease enforced fail-closed"
+    },
+    {
+      "finding": "plain direct-engine trajectories lacked an economical human-audit ledger",
+      "fix_commit": "52a424e7"
+    },
+    {
+      "finding": "stale-run lease enforcement was MLX-only",
+      "fix_commit": "457dfda4",
+      "mitigation": "HF, vLLM, SGLang-MLX and llama.cpp direct endpoints now share the lease gate"
+    }
+  ],
+  "gate_consequence": "Do not run PRA-100, tail-90 or E0 for these diagnostic executions. A task enters treatment only after official plain resolution."
+}
