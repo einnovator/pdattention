@@ -348,6 +348,21 @@ endpoint emit byte-identical first actions (matching SHA-256
 \texttt{66fa54fe83b3}).  The manifests and reduction are archived in
 \path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_qwen25coder7b_bf16_admission_v2_20260921/}.
 
+A subsequent common-agent/common-engine bridge froze three different Django
+identities and the same Qwen2.5-Coder-7B BF16 checkpoint before execution.
+Its direct-MLX plain diagnostics likewise produced zero workspace mutations in
+18, 15, and 12 calls.  An economical 35-call Task~2 ledger identifies a
+repeated malformed-edit/no-op-edit/grep/interactive-editor cycle, rather than
+a cache or selector error.  Those executions are excluded from outcome tables
+and block PRA-100 and reduced-policy arms under the declared admission rule.
+They also exposed a lifecycle hazard: after a client was stopped, an orphaned
+agent could reconnect to a restarted endpoint and contaminate the next task.
+All five direct endpoints now accept a per-run lease and reject stale callers;
+privacy-safe request-shape receipts and an economical action/observation ledger
+make the failure auditable.  True in-flight generation cancellation remains an
+open lifecycle gate.  The diagnostic artifact is
+\path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/common_qwen25_7b_bf16_bridge/admission_diagnostic_20260922.json}.
+
 The ordinary prefix cache remains available beside addressable resources.
 Local request deltas should continue through the engine's normal incremental
 path; persistent source records remain separately addressable.  PRA is useful
