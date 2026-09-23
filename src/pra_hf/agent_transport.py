@@ -487,6 +487,26 @@ class NegotiatedRemoteBackend:
 
     name = "negotiated-remote"
 
+    @staticmethod
+    def _endpoint_origin(endpoint: str) -> str:
+        """Normalize common OpenAI base and completion URLs to one origin.
+
+        The backend owns both the PRA capability route and the Chat
+        Completions route.  Accepting the three conventional spellings avoids
+        silently producing ``/v1/v1/...`` or
+        ``/v1/chat/completions/v1/...`` when an SDK caller supplies an OpenAI
+        ``base_url`` or a complete completion URL.
+        """
+
+        normalized = endpoint.rstrip("/")
+        for suffix in ("/v1/chat/completions", "/v1"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)].rstrip("/")
+                break
+        if not normalized:
+            raise ValueError("NegotiatedRemoteBackend endpoint cannot be empty")
+        return normalized
+
     def __init__(
         self,
         endpoint: str,
@@ -501,7 +521,7 @@ class NegotiatedRemoteBackend:
         curl_executable: str | None = None,
         openai_fields: Mapping[str, Any] | None = None,
     ) -> None:
-        self.endpoint = endpoint.rstrip("/")
+        self.endpoint = self._endpoint_origin(endpoint)
         self.model = model
         self.transport = ContextTransportMode(transport)
         self.allow_text_fallback = bool(allow_text_fallback)

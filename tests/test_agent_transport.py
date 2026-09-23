@@ -161,6 +161,27 @@ def test_text_fallback_interleaves_typed_history_in_causal_order() -> None:
     assert all("legacy detached placeholder" not in row["content"] for row in rendered)
 
 
+@pytest.mark.parametrize(
+    ("declared", "expected"),
+    (
+        ("http://model-host:11435", "http://model-host:11435"),
+        ("http://model-host:11435/", "http://model-host:11435"),
+        ("http://model-host:11435/v1", "http://model-host:11435"),
+        (
+            "http://model-host:11435/v1/chat/completions",
+            "http://model-host:11435",
+        ),
+    ),
+)
+def test_negotiated_backend_normalizes_openai_endpoint_spellings(
+    declared: str, expected: str,
+) -> None:
+    backend = NegotiatedRemoteBackend(declared, "model", transport="text")
+
+    assert backend.endpoint == expected
+    assert backend.negotiator.endpoint == expected
+
+
 def test_wire_resource_identity_changes_with_selected_view() -> None:
     compact = context_record_to_wire_resource(
         _record(), selected_view=RecordViewName.COMPACT
