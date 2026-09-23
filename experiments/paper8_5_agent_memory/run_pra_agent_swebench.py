@@ -42,6 +42,8 @@ from .run_pi_swebench import (
     swebench_image,
     task_prompt,
 )
+from .pra_agent_policy import PRAAgentMatchedTailSelector
+from .run_autonomous_swebench import _exact_token_counter
 
 
 def _run(
@@ -277,6 +279,23 @@ def run(args: argparse.Namespace) -> Path:
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
     trajectory = Path(args.reference_trajectory).resolve()
     model_identity = observed_model_identity(args)
+    count_tokens, tokenizer_identity = _exact_token_counter(
+        args.tokenizer,
+        args.tokenizer_revision,
+        allow_whitespace=(
+            args.allow_whitespace_tokenizer or args.tokenizer == "whitespace"
+        ),
+    )
+    retention_fraction = (
+        1.0 if args.history_policy == "full" else args.retention_fraction
+    )
+    history_selector = PRAAgentMatchedTailSelector(
+        retention_fraction=retention_fraction,
+        count_tokens=count_tokens,
+        tokenizer_identity=tokenizer_identity,
+        protected_head_turns=args.protected_head_turns,
+        protected_tail_turns=args.protected_tail_turns,
+    )
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     prompt = task_prompt(trajectory, instance_id)
@@ -333,6 +352,7 @@ def run(args: argparse.Namespace) -> Path:
             max_new_tokens=args.max_completion_tokens,
         ),
         toolset=tools,
+        history_selector=history_selector,
     )
 
     started = datetime.now(timezone.utc)
@@ -385,9 +405,23 @@ def run(args: argparse.Namespace) -> Path:
         "".join(json.dumps(row, default=str) + "\n" for row in events),
         encoding="utf-8",
     )
+    _write_json(output / "selection_trace.json", history_selector.traces)
+    cumulative_full_tokens = sum(
+        int(row["full_history_tokens"]) for row in history_selector.traces
+    )
+    cumulative_selected_tokens = sum(
+        int(row["selected_history_tokens"]) for row in history_selector.traces
+    )
+    cumulative_materialized_tokens = sum(
+        int(row["materialized_history_tokens"]) for row in history_selector.traces
+    )
+    policy_label = (
+        "full" if args.history_policy == "full"
+        else f"matched-tail-h{args.protected_head_turns}-t{args.protected_tail_turns}"
+    )
     predictions = {
         instance_id: {
-            "model_name_or_path": f"pra-agent-{args.model}-full",
+            "model_name_or_path": f"pra-agent-{args.model}-{policy_label}",
             "model_patch": patch.stdout.decode("utf-8", errors="replace"),
             "instance_id": instance_id,
         }
@@ -398,7 +432,7 @@ def run(args: argparse.Namespace) -> Path:
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "study": "paper8_5_cross_agent_transfer",
-        "arm": "FULL",
+        "arm": "FULL" if args.history_policy == "full" else "MATCHED_RECENCY",
         "agent": "pra-agent",
         "agent_protocol": "typed_records_with_openai_text_fallback",
         "instance_id": instance_id,
@@ -419,6 +453,22 @@ def run(args: argparse.Namespace) -> Path:
         "elapsed_seconds": (finished - started).total_seconds(),
         "max_tool_rounds": args.max_tool_rounds,
         "context_records": args.context_records,
+        "history_selection": {
+            "policy": args.history_policy,
+            "retention_fraction": retention_fraction,
+            "protected_head_turns": args.protected_head_turns,
+            "protected_tail_turns": args.protected_tail_turns,
+            "tokenizer": tokenizer_identity,
+            "tokenizer_revision": args.tokenizer_revision,
+            "request_count": len(history_selector.traces),
+            "cumulative_full_history_tokens": cumulative_full_tokens,
+            "cumulative_selected_history_tokens": cumulative_selected_tokens,
+            "cumulative_materialized_history_tokens": cumulative_materialized_tokens,
+            "own_saving_fraction": (
+                0.0 if not cumulative_full_tokens else
+                1.0 - cumulative_materialized_tokens / cumulative_full_tokens
+            ),
+        },
         "generation": {
             "temperature": args.temperature,
             "top_p": args.top_p,
@@ -468,6 +518,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-timeout-seconds", type=int, default=3600)
     parser.add_argument("--image-timeout-seconds", type=int, default=900)
     parser.add_argument("--curl-executable")
+    parser.add_argument(
+        "--history-policy", choices=("full", "matched_token_tail"), default="full"
+    )
+    parser.add_argument("--retention-fraction", type=float, default=0.9)
+    parser.add_argument("--protected-head-turns", type=int, default=2)
+    parser.add_argument("--protected-tail-turns", type=int, default=4)
+    parser.add_argument("--tokenizer", default="whitespace")
+    parser.add_argument("--tokenizer-revision", default="diagnostic")
+    parser.add_argument("--allow-whitespace-tokenizer", action="store_true")
     return parser
 
 

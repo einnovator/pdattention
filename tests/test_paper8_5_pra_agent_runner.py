@@ -5,6 +5,11 @@ import pytest
 from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
     DockerWorkspaceTools,
 )
+from experiments.paper8_5_agent_memory.pra_agent_policy import (
+    PRAAgentMatchedTailSelector,
+    recordize_pra_agent_records,
+)
+from pra_hf.context_records import ContextRecord, RecordType
 
 
 def test_docker_workspace_rejects_absolute_and_parent_paths() -> None:
@@ -36,3 +41,66 @@ def test_docker_workspace_exposes_typed_portable_tools() -> None:
     by_name = {resource.name: resource for resource in toolset.resources}
     assert by_name["read_file"].side_effect_class.value == "read"
     assert by_name["replace_text"].side_effect_class.value == "write"
+
+
+def _message(record_id: str, role: str, text: str) -> ContextRecord:
+    return ContextRecord(
+        record_id,
+        RecordType.GENERIC_TEXT,
+        {"role": role, "text": text},
+    )
+
+
+def _observation(record_id: str, text: str) -> ContextRecord:
+    return ContextRecord(
+        record_id,
+        RecordType.TOOL_RESPONSE,
+        {"producer_tool_uri": "pra://tool/read_file", "compact": text},
+    )
+
+
+def test_recordize_pra_agent_records_preserves_typed_causal_pairs() -> None:
+    rows = (
+        _message("task", "user", "fix the issue"),
+        _message("a1", "assistant", "read file"),
+        _observation("o1", "source"),
+        _message("a2", "assistant", "verify"),
+        _observation("o2", "tests pass"),
+    )
+
+    history = recordize_pra_agent_records(rows)
+
+    assert history.records[0].primary_role.value == "task"
+    assert [turn.record_ids for turn in history.turns] == [
+        ("a1", "o1"),
+        ("a2", "o2"),
+    ]
+    assert all(turn.complete for turn in history.turns)
+
+
+def test_pra_agent_h2_t4_selector_drops_only_an_unprotected_whole_turn() -> None:
+    rows = [_message("task", "user", "fix the issue")]
+    for index in range(1, 8):
+        rows.extend((
+            _message(f"a{index}", "assistant", f"action {index}"),
+            _observation(
+                f"o{index}",
+                ("large middle evidence " * 300) if index == 3 else f"result {index}",
+            ),
+        ))
+    selector = PRAAgentMatchedTailSelector(
+        retention_fraction=0.9,
+        count_tokens=lambda text: len(text.split()),
+        tokenizer_identity="unit-whitespace",
+    )
+
+    selected = selector(tuple(rows), "ignored")
+    selected_ids = {row.record_id for row in selected}
+
+    assert "task" in selected_ids
+    assert {"a1", "o1", "a2", "o2"}.issubset(selected_ids)
+    assert {"a4", "o4", "a5", "o5", "a6", "o6", "a7", "o7"}.issubset(
+        selected_ids
+    )
+    assert {"a3", "o3"}.isdisjoint(selected_ids)
+    assert selector.traces[0]["excluded_record_ids"] == ["a3", "o3"]

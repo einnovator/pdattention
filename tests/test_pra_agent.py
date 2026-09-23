@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pra_hf import (
     AgentConfig,
     CapabilitySDK,
@@ -13,6 +15,7 @@ from pra_hf import (
     Tool,
     Toolset,
 )
+from pra_hf.context_records import ContextRecord, RecordType
 
 
 class _Backend:
@@ -50,7 +53,10 @@ class _MalformedRecoveryBackend(_Backend):
         return "The result is ALPHA."
 
 
-def _agent(tmp_path, *, backend=None, max_tool_rounds: int = 1) -> PRAAgent:
+def _agent(
+    tmp_path, *, backend=None, max_tool_rounds: int = 1,
+    history_selector=None,
+) -> PRAAgent:
     def lookup(value: str) -> dict[str, str]:
         """Uppercase one value."""
 
@@ -84,6 +90,7 @@ def _agent(tmp_path, *, backend=None, max_tool_rounds: int = 1) -> PRAAgent:
             max_tool_rounds=max_tool_rounds,
         ),
         toolset=toolset,
+        history_selector=history_selector,
     )
 
 
@@ -146,3 +153,33 @@ def test_agent_rejects_malformed_tool_intent_then_recovers(tmp_path) -> None:
     ]
     assert roles.count("assistant") == 3
     assert "user" in roles
+
+
+def test_agent_history_selector_controls_messages_and_reported_identities(tmp_path) -> None:
+    calls = []
+
+    def select(records, query):
+        calls.append((tuple(row.record_id for row in records), query))
+        return records
+
+    agent = _agent(tmp_path, history_selector=select)
+    agent.start_session("session-a", task_description="Inspect alpha")
+
+    turn = agent.run_turn("Look up alpha")
+
+    assert calls
+    assert turn.selected_record_ids == calls[-1][0]
+    assert set(turn.selected_record_ids) == {
+        row.record_id for row in turn.session.records[:-1]
+    }
+
+
+def test_agent_history_selector_rejects_out_of_scope_identity(tmp_path) -> None:
+    foreign = ContextRecord(
+        "foreign", RecordType.GENERIC_TEXT, {"role": "user", "text": "bad"}
+    )
+    agent = _agent(tmp_path, history_selector=lambda records, query: (*records, foreign))
+    agent.start_session("session-a", task_description="Inspect alpha")
+
+    with pytest.raises(ValueError, match="outside task scope"):
+        agent.run_turn("Look up alpha")

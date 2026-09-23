@@ -109,11 +109,15 @@ class PRAAgent:
         config: PRAAgentConfig | None = None,
         toolset: Toolset | None = None,
         authorization_callback: Callable[[AgentResource, ToolCall], bool] | None = None,
+        history_selector: Callable[
+            [Sequence[ContextRecord], str], Sequence[ContextRecord]
+        ] | None = None,
         observability: Observability | None = None,
         settings: PRAAgentSettings | Mapping[str, Any] | None = None,
         config_file: str | Path | None = None,
     ) -> None:
         self.runtime = runtime
+        self.history_selector = history_selector
         base_settings = PRAAgentSettings.compose(config_file=config_file, config=settings)
         host = base_settings.agent
         self.config = config or PRAAgentConfig(
@@ -476,11 +480,37 @@ class PRAAgent:
     ) -> AgentTurnContext:
         """Build semantic turn state without choosing its wire representation."""
 
-        selected = (
+        scope_selected = (
             scope.selected_records
             if scope is not None
             else self.state.records[-self.config.context_records :]
         )
+        if self.history_selector is None:
+            selected = tuple(scope_selected)
+            conversation_source = self.state.records
+        else:
+            scoped_ids = {record.record_id for record in scope_selected}
+            ordered_scope = tuple(
+                record for record in self.state.records
+                if record.record_id in scoped_ids
+            )
+            proposed = tuple(self.history_selector(ordered_scope, query))
+            proposed_ids = [record.record_id for record in proposed]
+            if len(proposed_ids) != len(set(proposed_ids)):
+                raise ValueError("History selector returned duplicate record identities.")
+            unknown = set(proposed_ids).difference(scoped_ids)
+            if unknown:
+                raise ValueError(
+                    "History selector returned records outside task scope: "
+                    + ", ".join(sorted(unknown))
+                )
+            selected_ids = set(proposed_ids)
+            selected = tuple(
+                record for record in ordered_scope
+                if record.record_id in selected_ids
+            )
+            conversation_source = selected
+        actual_selected_record_ids = tuple(record.record_id for record in selected)
         records = tuple(
             record for record in selected if not self._is_conversational_record(record)
         )
@@ -489,7 +519,7 @@ class PRAAgent:
                 "role": str(record.payload["role"]),
                 "content": str(record.payload["text"]),
             }
-            for record in self.state.records
+            for record in conversation_source
             if self._is_conversational_record(record)
         )
         system = {
@@ -535,8 +565,7 @@ class PRAAgent:
             task_id=self.state.active_task_id,
             task_metadata={} if task is None else task.to_dict(),
             selected_record_ids=(
-                scope.selected_record_ids if scope is not None
-                else tuple(record.record_id for record in records)
+                actual_selected_record_ids
             ),
             metadata={
                 "user_id": self.config.user_id,
@@ -611,6 +640,7 @@ class PRAAgent:
         scope = self._context(query)
         tool_uris, skill_uris = self._disclosed_capabilities(query)
         turn_context = self._turn_context(query, scope, tool_uris, skill_uris)
+        last_turn_context = turn_context
         text = self._generate_turn(turn_context)
         executions = []
         for _ in range(self.config.max_tool_rounds):
@@ -629,14 +659,13 @@ class PRAAgent:
                         "provider-neutral tool envelope.]"
                     )
                     self._append_message("user", rejection)
-                    text = self._generate_turn(
-                        self._turn_context(
-                            query,
-                            self._context(query),
-                            tool_uris,
-                            skill_uris,
-                        )
+                    last_turn_context = self._turn_context(
+                        query,
+                        self._context(query),
+                        tool_uris,
+                        skill_uris,
                     )
+                    text = self._generate_turn(last_turn_context)
                     continue
                 break
             # Intermediate actions are part of the causal trajectory.  Before
@@ -696,12 +725,13 @@ class PRAAgent:
                 skill_uris,
                 extra_messages=(tool_message,),
             )
+            last_turn_context = follow_up
             text = self._generate_turn(follow_up)
         self._append_message("assistant", text)
         return AgentTurn(
             text=text,
             session=self.state,
-            selected_record_ids=scope.selected_record_ids if scope else (),
+            selected_record_ids=last_turn_context.selected_record_ids,
             disclosed_tool_uris=tool_uris,
             disclosed_skill_uris=skill_uris,
             tool_executions=tuple(executions),
