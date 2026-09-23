@@ -99,6 +99,8 @@ def _ollama_forward_target(value: str) -> tuple[str, int]:
 
 
 def run(args: argparse.Namespace) -> Path:
+    if args.model_context_window <= 0:
+        raise ValueError("--model-context-window must be positive")
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
     trajectory = Path(args.reference_trajectory).resolve()
@@ -167,6 +169,11 @@ def run(args: argparse.Namespace) -> Path:
             "--env", f"PRA_OLLAMA_FORWARD_PORT={forward_port}",
         )
         provider_args = ("--oss", "--local-provider", "ollama")
+    provider_args = (
+        *provider_args,
+        "--config",
+        f"model_context_window={args.model_context_window}",
+    )
     entrypoint = (
         "codex"
         if args.provider_mode == "responses_audit"
@@ -242,6 +249,7 @@ def run(args: argparse.Namespace) -> Path:
         "observed_model_identity": observed_model_identity,
         "provider_mode": args.provider_mode,
         "upstream_base_url": args.upstream_base_url,
+        "declared_model_context_window": args.model_context_window,
         "source_image": source_image,
         "derived_image": image,
         "container": container,
@@ -317,6 +325,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
+    parser.add_argument("--model-context-window", type=int, default=65536)
     parser.add_argument("--upstream-timeout-seconds", type=int, default=3600)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")

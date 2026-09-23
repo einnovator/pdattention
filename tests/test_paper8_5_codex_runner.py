@@ -32,6 +32,7 @@ def test_codex_runner_accepts_native_ollama_provider_mode() -> None:
         "--model-revision", "revision",
     ])
     assert args.provider_mode == "ollama_oss"
+    assert args.model_context_window == 65536
 
 
 def test_native_codex_parses_remote_ollama_forward_target() -> None:
