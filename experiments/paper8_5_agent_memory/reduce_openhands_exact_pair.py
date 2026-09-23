@@ -26,6 +26,29 @@ def _rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _action_signatures(path: Path) -> list[str] | None:
+    source = path / "canonical_tool_events.jsonl"
+    if not source.exists():
+        return None
+    signatures = []
+    for line in source.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        signatures.append(json.dumps({
+            "tool": row.get("native_tool"),
+            "input": row.get("input"),
+        }, sort_keys=True, separators=(",", ":")))
+    return signatures
+
+
+def _first_divergence(left: list[str], right: list[str]) -> int | None:
+    for index in range(max(len(left), len(right))):
+        if index >= len(left) or index >= len(right) or left[index] != right[index]:
+            return index + 1
+    return None
+
+
 def _arm(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     manifest = _json(path / "run_manifest.json")
     summary = _json(path / "event_summary.json")
@@ -112,7 +135,7 @@ def reduce_pair(
     protected_tail_turns: int,
 ) -> dict[str, Any]:
     full, _ = _arm(full_path)
-    candidate, _ = _arm(candidate_path)
+    candidate, candidate_rows = _arm(candidate_path)
     identity_keys = (
         "agent", "agent_version", "instance_id", "model", "model_revision",
         "tokenizer", "tokenizer_revision",
@@ -127,6 +150,25 @@ def reduce_pair(
     candidate_materialized = int(candidate["materialized_tokens"])
     full_materialized = int(full["materialized_tokens"])
     candidate_selected = int(candidate["selected_tokens"])
+    full_actions = _action_signatures(full_path)
+    candidate_actions = _action_signatures(candidate_path)
+    first_action_divergence = (
+        _first_divergence(full_actions, candidate_actions)
+        if full_actions is not None and candidate_actions is not None else None
+    )
+    first_selection_request = next((
+        int(row["request_index"])
+        for row in candidate_rows
+        if not bool(row.get("exact_request_passthrough", False))
+        or int(row.get("selected_tokens") or 0) < int(row.get("full_tokens") or 0)
+    ), None)
+    identical_input_preselection_divergence = bool(
+        first_action_divergence is not None
+        and (
+            first_selection_request is None
+            or first_action_divergence < first_selection_request
+        )
+    )
     candidate["own_logical_saving"] = (
         1 - candidate_selected / candidate_full if candidate_full else 0.0
     )
@@ -139,6 +181,7 @@ def reduce_pair(
         and bool(candidate["initial_exact_request_passthrough"])
         and bool(full["official_resolved"])
         and bool(candidate["official_resolved"])
+        and not identical_input_preselection_divergence
         and not full["completion_limit_violation_request_indices"]
         and not candidate["completion_limit_violation_request_indices"]
         else "fail"
@@ -166,6 +209,12 @@ def reduce_pair(
             if int(full["provider_prompt_tokens"]) else 0.0
         ),
         "action_delta": int(candidate["actions"]) - int(full["actions"]),
+        "first_action_divergence": first_action_divergence,
+        "first_selection_request": first_selection_request,
+        "identical_input_preselection_divergence": (
+            identical_input_preselection_divergence
+        ),
+        "causal_attribution_qualified": not identical_input_preselection_divergence,
         "qualification": qualification,
     }
 

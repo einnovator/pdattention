@@ -10,6 +10,7 @@ def _arm(
     path: Path, *, resolved: bool, materialized: int,
     instance: str = "x__y-1", agent: str | None = None,
     summary_key: str = "action_count", initial_request: str = "request-1",
+    actions: list[tuple[str, dict]] | None = None,
 ):
     path.mkdir()
     manifest = {
@@ -43,6 +44,11 @@ def _arm(
     (path / "proxy_trace.jsonl").write_text(
         "\n".join(json.dumps(row) for row in rows) + "\n"
     )
+    if actions is not None:
+        (path / "canonical_tool_events.jsonl").write_text(
+            "\n".join(json.dumps({"native_tool": tool, "input": inputs})
+                       for tool, inputs in actions) + "\n"
+        )
 
 
 def test_exact_pair_reducer_separates_own_and_paired_saving(tmp_path: Path):
@@ -117,3 +123,38 @@ def test_exact_pair_reducer_rejects_different_initial_model_input(tmp_path: Path
 
     assert result["qualification"] == "fail"
     assert "initial_request_sha256" in result["identity_mismatches"]
+
+
+def test_exact_pair_reducer_rejects_action_divergence_before_selection(
+    tmp_path: Path,
+):
+    full = tmp_path / "full"
+    candidate = tmp_path / "candidate"
+    _arm(full, resolved=True, materialized=100, actions=[("read", {"path": "a"})])
+    _arm(
+        candidate, resolved=True, materialized=75,
+        actions=[("grep", {"path": "a"})],
+    )
+    candidate_rows = [
+        json.loads(line)
+        for line in (candidate / "proxy_trace.jsonl").read_text().splitlines()
+    ]
+    candidate_rows[0].update({
+        "selected_tokens": 100,
+        "materialized_tokens": 100,
+        "logical_retention_fraction": 1.0,
+    })
+    (candidate / "proxy_trace.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in candidate_rows) + "\n"
+    )
+
+    result = reduce_pair(
+        full, candidate, policy="matched_token_tail", budget_fraction=0.9,
+        protected_head_turns=2, protected_tail_turns=4,
+    )
+
+    assert result["first_action_divergence"] == 1
+    assert result["first_selection_request"] == 2
+    assert result["identical_input_preselection_divergence"] is True
+    assert result["causal_attribution_qualified"] is False
+    assert result["qualification"] == "fail"
