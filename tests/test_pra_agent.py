@@ -64,6 +64,25 @@ class _PrematureCompletionBackend(_Backend):
         return "The result is ALPHA."
 
 
+class _LengthStoppedBackend(_Backend):
+    def generate(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        self.calls += 1
+        if self.calls == 1:
+            return "I found the issue and need to continue implementing"
+        if self.calls == 2:
+            return '<tool_call>{"name":"lookup","arguments":{"value":"alpha"}}</tool_call>'
+        return "The result is ALPHA."
+
+    def inspect(self):
+        return {
+            "backend": self.name,
+            "transport": {
+                "finish_reason": "length" if self.calls == 1 else "stop"
+            },
+        }
+
+
 def _agent(
     tmp_path, *, backend=None, max_tool_rounds: int = 1,
     history_selector=None, completion_guard=None,
@@ -215,3 +234,15 @@ def test_agent_completion_guard_recovers_from_premature_prose_stop(tmp_path) -> 
     assert backend.calls == 3
     assert "Completion rejected: No durable task effect" in backend.prompts[1]
     assert len(turn.tool_executions) == 1
+
+
+def test_agent_continues_after_provider_length_stop(tmp_path) -> None:
+    backend = _LengthStoppedBackend()
+    agent = _agent(tmp_path, backend=backend, max_tool_rounds=2)
+    agent.start_session("session-a", task_description="Inspect alpha")
+
+    turn = agent.run_turn("Look up alpha")
+
+    assert backend.calls == 3
+    assert len(turn.tool_executions) == 1
+    assert "provider stopped at its output-token limit" in backend.prompts[1]

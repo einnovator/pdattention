@@ -596,6 +596,30 @@ class PRAAgent:
             )
         )
 
+    def _incomplete_generation_reason(self) -> str | None:
+        """Return a portable continuation reason for provider length stops."""
+
+        inspection = self.runtime.backend.inspect()
+        transport = inspection.get("transport", {})
+        finish_reason = (
+            transport.get("finish_reason")
+            if isinstance(transport, Mapping)
+            else None
+        )
+        if finish_reason is None:
+            finish_reason = inspection.get("finish_reason")
+        if str(finish_reason or "").lower() in {
+            "length",
+            "max_tokens",
+            "max_output_tokens",
+        }:
+            return (
+                "The provider stopped at its output-token limit. Continue the "
+                "same reasoning/action; this transport stop is not semantic "
+                "task completion."
+            )
+        return None
+
     def run_turn(self, query: str) -> AgentTurn:
         """Run one instrumented turn without capturing user content by default."""
 
@@ -664,6 +688,20 @@ class PRAAgent:
                         "provider-neutral tool envelope.]"
                     )
                     self._append_message("user", rejection)
+                    last_turn_context = self._turn_context(
+                        query,
+                        self._context(query),
+                        tool_uris,
+                        skill_uris,
+                    )
+                    text = self._generate_turn(last_turn_context)
+                    continue
+                incomplete = self._incomplete_generation_reason()
+                if incomplete:
+                    self._append_message("assistant", text)
+                    self._append_message(
+                        "user", f"[Completion rejected: {incomplete}]"
+                    )
                     last_turn_context = self._turn_context(
                         query,
                         self._context(query),

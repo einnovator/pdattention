@@ -705,7 +705,9 @@ class NegotiatedRemoteBackend:
                 cached = details.get("cached_tokens", 0)
                 if isinstance(cached, int) and not isinstance(cached, bool):
                     self._usage_totals["cached_prompt_tokens"] += cached
-        output_text = self._message_text(value["choices"][0]["message"])
+        choice = value["choices"][0]
+        output_text = self._message_text(choice["message"])
+        finish_reason = choice.get("finish_reason")
         if wire_mode == AgentWireMode.PRA_DELTA:
             self._resource_versions[session_key] = {
                 resource.resource_id: self._resource_identity(resource)
@@ -731,6 +733,7 @@ class NegotiatedRemoteBackend:
             ),
             "request_count": self._request_count,
             "reported_usage": dict(usage) if isinstance(usage, Mapping) else None,
+            "finish_reason": finish_reason,
             "cumulative_reported_usage": dict(self._usage_totals),
             "resource_body_bytes": sum(
                 len((resource.text or "").encode("utf-8")) for resource in resources

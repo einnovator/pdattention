@@ -418,7 +418,7 @@ def test_ordinary_openai_native_tool_call_is_projected_for_pra_agent() -> None:
             size = int(self.headers.get("Content-Length", "0"))
             captured.append(json.loads(self.rfile.read(size)))
             body = json.dumps({
-                "choices": [{"message": {
+                "choices": [{"finish_reason": "tool_calls", "message": {
                     "role": "assistant",
                     "content": None,
                     "tool_calls": [{
@@ -465,6 +465,7 @@ def test_ordinary_openai_native_tool_call_is_projected_for_pra_agent() -> None:
             "total_tokens": 112,
             "cached_prompt_tokens": 80,
         }
+        assert backend.inspect()["transport"]["finish_reason"] == "tool_calls"
     finally:
         server.shutdown()
         server.server_close()
