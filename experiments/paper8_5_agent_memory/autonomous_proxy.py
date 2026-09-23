@@ -1499,6 +1499,13 @@ class AutonomousSelectionProxy:
             str(self.upstream_curl_executable),
             "--silent", "--show-error",
             "--max-time", str(self.timeout_seconds),
+            # A refused TCP connection proves that the HTTP request was not
+            # delivered, so retrying it cannot duplicate a model generation.
+            # Do not use ``--retry-all-errors`` here: a timeout after upload is
+            # ambiguous and must remain fail-closed rather than replay a POST.
+            "--retry", str(max(0, self.upstream_connect_attempts - 1)),
+            "--retry-connrefused",
+            "--retry-delay", str(self.upstream_connect_retry_seconds),
             "--request", request.get_method(),
         ]
         for key, value in request.header_items():

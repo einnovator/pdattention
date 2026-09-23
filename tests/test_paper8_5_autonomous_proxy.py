@@ -2231,6 +2231,8 @@ def test_proxy_curl_transport_sends_each_model_request_once(tmp_path):
         ),
         trace_path=trace,
         upstream_curl_executable="/usr/bin/curl",
+        upstream_connect_attempts=4,
+        upstream_connect_retry_seconds=2,
         curl_runner=runner,
     )
     url = proxy.start()
@@ -2239,6 +2241,10 @@ def test_proxy_curl_transport_sends_each_model_request_once(tmp_path):
         assert len(calls) == 1
         command, kwargs = calls[0]
         assert command.count("--data-binary") == 1
+        assert command[command.index("--retry") + 1] == "3"
+        assert "--retry-connrefused" in command
+        assert command[command.index("--retry-delay") + 1] == "2"
+        assert "--retry-all-errors" not in command
         assert command[-1] == "http://engine.test:11435/v1/chat/completions"
         assert json.loads(kwargs["input"])["model"] == "locked-model"
         assert kwargs["check"] is False
