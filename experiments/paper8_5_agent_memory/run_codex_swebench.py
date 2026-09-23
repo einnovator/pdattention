@@ -24,6 +24,49 @@ from .run_pi_swebench import (
 )
 
 
+CODEX_HOME_PATH = "/root/.codex"
+
+
+def _native_thread_id(payload: bytes) -> str | None:
+    """Return the unique Codex thread identity emitted by a JSONL run."""
+
+    values: set[str] = set()
+    for line in payload.decode("utf-8", errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, Mapping) or row.get("type") != "thread.started":
+            continue
+        value = row.get("thread_id")
+        if isinstance(value, str) and value:
+            values.add(value)
+    if len(values) > 1:
+        raise ValueError(
+            "Codex event trace contains multiple thread IDs: "
+            + ", ".join(sorted(values))
+        )
+    return next(iter(values), None)
+
+
+def _thread_arguments(
+    session_store: str | None,
+    thread_id: str | None,
+) -> tuple[tuple[str, ...], Path | None]:
+    """Build the Docker mount used to carry one native Codex thread."""
+
+    if thread_id and not session_store:
+        raise ValueError("--thread-id requires --session-store")
+    if not session_store:
+        return (), None
+    store = Path(session_store).expanduser().resolve()
+    store.mkdir(parents=True, exist_ok=True)
+    return (
+        "--mount",
+        f"type=bind,source={store},target={CODEX_HOME_PATH}",
+    ), store
+
+
 def _event_summary(path: Path) -> dict[str, Any]:
     types: dict[str, int] = {}
     item_types: dict[str, int] = {}
@@ -106,6 +149,9 @@ def run(args: argparse.Namespace) -> Path:
     trajectory = Path(args.reference_trajectory).resolve()
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
+    thread_docker_args, session_store = _thread_arguments(
+        args.session_store, args.thread_id
+    )
     prompt = task_prompt(trajectory, instance_id)
     prompt_path = output / "task_prompt.txt"
     prompt_path.write_text(prompt + "\n", encoding="utf-8")
@@ -179,17 +225,23 @@ def run(args: argparse.Namespace) -> Path:
         if args.provider_mode == "responses_audit"
         else "/usr/local/bin/codex-ollama-remote"
     )
+    persistent = session_store is not None
+    exec_mode = ("exec", "resume") if args.thread_id else ("exec",)
+    ephemeral_args = () if persistent else ("--ephemeral",)
     command = (
         args.docker, "run", "--name", container, "--platform", "linux/amd64",
+        *thread_docker_args,
         "--env", "OPENAI_API_KEY=paper85-local",
         "--env", "OTEL_SDK_DISABLED=true",
         "--env", "DO_NOT_TRACK=1",
         *provider_environment,
         "--entrypoint", entrypoint, image,
-        "exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules",
+        *exec_mode, "--json", *ephemeral_args,
+        "--ignore-user-config", "--ignore-rules",
         "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox",
         "--model", args.model,
         *provider_args,
+        *((args.thread_id,) if args.thread_id else ()),
         prompt,
     )
     started = datetime.now(timezone.utc)
@@ -208,6 +260,14 @@ def run(args: argparse.Namespace) -> Path:
     finished = datetime.now(timezone.utc)
     events = output / "codex_events.jsonl"
     events.write_bytes(execution.stdout)
+    observed_thread_id = _native_thread_id(execution.stdout)
+    if persistent and observed_thread_id is None:
+        raise RuntimeError("persistent Codex run emitted no native thread identity")
+    if args.thread_id and observed_thread_id != args.thread_id:
+        raise RuntimeError(
+            "Codex thread continuity failed: requested "
+            f"{args.thread_id!r}, observed {observed_thread_id!r}"
+        )
     (output / "codex_stderr.log").write_bytes(execution.stderr)
 
     snapshot = f"{image.rsplit(':', 1)[0]}-snapshot:{int(time.time())}"
@@ -237,7 +297,20 @@ def run(args: argparse.Namespace) -> Path:
             "openai_responses"
             if args.provider_mode == "responses_audit" else "ollama_native"
         ),
-        "native_context_management": "ephemeral_session_no_compaction_claim",
+        "native_context_management": (
+            "persistent_native_thread_no_compaction_claim"
+            if persistent else "ephemeral_session_no_compaction_claim"
+        ),
+        "native_thread": {
+            "home_path": CODEX_HOME_PATH,
+            "host_store": None if session_store is None else str(session_store),
+            "requested_thread_id": args.thread_id,
+            "observed_thread_id": observed_thread_id,
+            "continuity_validated": bool(
+                observed_thread_id
+                and (args.thread_id is None or observed_thread_id == args.thread_id)
+            ),
+        },
         "instance_id": instance_id,
         "task_index": task_index,
         "benchmark_card": str(benchmark),
@@ -333,6 +406,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--container")
     parser.add_argument("--build-timeout-seconds", type=int, default=1200)
     parser.add_argument("--agent-timeout-seconds", type=int, default=7200)
+    parser.add_argument(
+        "--session-store",
+        help=(
+            "Dedicated host directory mounted as CODEX_HOME. Reuse it across "
+            "fresh task containers to preserve a native Codex thread."
+        ),
+    )
+    parser.add_argument(
+        "--thread-id",
+        help="Native Codex thread ID emitted by the preceding task.",
+    )
     parser.add_argument("--keep-container", action="store_true")
     parser.add_argument("--keep-snapshot", action="store_true")
     return parser

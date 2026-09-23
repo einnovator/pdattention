@@ -13,10 +13,13 @@ from experiments.paper8_5_agent_memory.responses_audit_proxy import (
     ResponsesAuditProxy,
 )
 from experiments.paper8_5_agent_memory.run_codex_swebench import (
+    CODEX_HOME_PATH,
     build_parser,
     _event_summary,
+    _native_thread_id,
     _ollama_forward_target,
     _observed_model_identity,
+    _thread_arguments,
     _trace_summary,
 )
 
@@ -46,6 +49,33 @@ def test_native_codex_parses_remote_ollama_forward_target() -> None:
     )
     with pytest.raises(ValueError, match="must not contain a path"):
         _ollama_forward_target("http://model.example:11434/v1")
+
+
+def test_native_thread_identity_is_unique_and_explicit() -> None:
+    assert _native_thread_id(
+        b'{"type":"thread.started","thread_id":"thread-1"}\n'
+        b'{"type":"turn.started"}\n'
+    ) == "thread-1"
+    assert _native_thread_id(b'{"type":"turn.started"}\n') is None
+    with pytest.raises(ValueError, match="multiple thread IDs"):
+        _native_thread_id(
+            b'{"type":"thread.started","thread_id":"thread-1"}\n'
+            b'{"type":"thread.started","thread_id":"thread-2"}\n'
+        )
+
+
+def test_native_thread_store_is_required_for_resume(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="session-store"):
+        _thread_arguments(None, "thread-1")
+
+    docker_args, store = _thread_arguments(
+        str(tmp_path / "codex-home"), "thread-1"
+    )
+    assert store is not None and store.is_dir()
+    assert docker_args == (
+        "--mount",
+        f"type=bind,source={store},target={CODEX_HOME_PATH}",
+    )
 
 
 def test_native_codex_fails_closed_without_observed_model_identity() -> None:
