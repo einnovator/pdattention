@@ -1194,6 +1194,7 @@ class AutonomousSelectionProxy:
         upstream_curl_executable: str | None = None,
         curl_runner: Callable[..., Any] = subprocess.run,
         native_request_builder: Callable[..., Mapping[str, Any]] | None = None,
+        first_request_capture_path: Path | None = None,
     ) -> None:
         if upstream_connect_attempts < 1:
             raise ValueError("upstream connect attempts must be positive")
@@ -1217,6 +1218,10 @@ class AutonomousSelectionProxy:
         self.upstream_curl_executable = upstream_curl_executable
         self._curl_runner = curl_runner
         self.native_request_builder = native_request_builder
+        self.first_request_capture_path = (
+            Path(first_request_capture_path)
+            if first_request_capture_path is not None else None
+        )
         self._lock = threading.Lock()
         self._upstream_io_lock = threading.Lock()
         self._persistent_upstream: http.client.HTTPConnection | None = None
@@ -1528,6 +1533,16 @@ class AutonomousSelectionProxy:
         native_request_index: int | None = None
         if handler.command == "POST" and urlparse(handler.path).path == "/v1/chat/completions":
             payload = json.loads(body.decode("utf-8"))
+            if self.first_request_capture_path is not None:
+                with self._lock:
+                    if not self.first_request_capture_path.exists():
+                        self.first_request_capture_path.parent.mkdir(
+                            parents=True, exist_ok=True
+                        )
+                        self.first_request_capture_path.write_text(
+                            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                            encoding="utf-8",
+                        )
             payload, joined_execution_receipts = self._attach_execution_receipts(payload)
             if self.config.fill_missing_generation_parameters:
                 payload.setdefault("temperature", self.config.temperature)

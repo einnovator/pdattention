@@ -1951,6 +1951,28 @@ def test_proxy_normalizes_completion_limit_to_portable_wire_key(tmp_path):
     assert "max_completion_tokens" not in upstream.requests[0]
 
 
+def test_proxy_optionally_captures_unmodified_first_request(tmp_path):
+    upstream = _Upstream()
+    capture = tmp_path / "first-request.json"
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="full", expected_model="locked-model", max_calls=1,
+        ),
+        trace_path=tmp_path / "trace.jsonl",
+        first_request_capture_path=capture,
+    )
+    payload = _payload()
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", payload)[0] == 200
+    finally:
+        proxy.close()
+        upstream.close()
+
+    assert json.loads(capture.read_text()) == payload
+
+
 def test_proxy_forwards_ordinary_selected_text_and_logs_reacquisition(tmp_path):
     upstream = _Upstream()
     trace = tmp_path / "trace.jsonl"

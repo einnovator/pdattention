@@ -39,6 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--upstream-curl-executable")
     parser.add_argument("--tool-semantics-json", type=Path)
+    parser.add_argument(
+        "--capture-first-request",
+        type=Path,
+        help=(
+            "Diagnostic-only path for the unmodified first chat request. "
+            "Use only with non-sensitive evaluation prompts."
+        ),
+    )
     parser.add_argument("--boundary-mode", default="boundary_free")
     parser.add_argument("--protected-head-turns", type=int, default=1)
     parser.add_argument("--protected-tail-turns", type=int, default=1)
@@ -157,6 +165,7 @@ def main() -> None:
         upstream_connect_attempts=args.upstream_connect_attempts,
         upstream_connect_retry_seconds=args.upstream_connect_retry_seconds,
         upstream_curl_executable=args.upstream_curl_executable,
+        first_request_capture_path=args.capture_first_request,
     )
     endpoint = proxy.start(args.host, args.port)
     print(json.dumps({
