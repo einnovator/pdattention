@@ -156,6 +156,22 @@ def test_agent_persists_task_messages_and_compact_tool_result(tmp_path) -> None:
     assert agent.runtime.inspect()["logical_sessions"]["session-a"]["records"] == 4
 
 
+def test_agent_appends_auditable_behavior_contract_to_system_prompt(tmp_path) -> None:
+    agent = _agent(tmp_path)
+    agent.config = PRAAgentConfig(
+        user_id="user-a",
+        tenant_id="tenant-a",
+        max_tool_rounds=1,
+        behavior_instructions="Do not repeat successful calls.",
+    )
+    agent.start_session("session-a", task_description="Inspect alpha")
+
+    agent.run_turn("Look up alpha")
+
+    assert "Behavior contract:" in agent.runtime.backend.prompts[0]
+    assert "Do not repeat successful calls." in agent.runtime.backend.prompts[0]
+
+
 def test_agent_releases_physical_state_and_resumes_logical_session(tmp_path) -> None:
     agent = _agent(tmp_path)
     agent.start_session("session-a", task_description="First task")

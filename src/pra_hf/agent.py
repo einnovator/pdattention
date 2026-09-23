@@ -53,6 +53,7 @@ class PRAAgentConfig:
     allow_writes: bool = False
     allow_destructive: bool = False
     max_new_tokens: int = 256
+    behavior_instructions: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "task_scope", TaskScopePolicy(self.task_scope))
@@ -60,6 +61,8 @@ class PRAAgentConfig:
             raise ValueError("Context, tool, and generation budgets must be positive.")
         if self.max_tool_rounds < 0:
             raise ValueError("max_tool_rounds cannot be negative.")
+        if not isinstance(self.behavior_instructions, str):
+            raise TypeError("behavior_instructions must be a string")
 
 
 @dataclass(frozen=True)
@@ -539,13 +542,17 @@ class PRAAgent:
             for record in conversation_source
             if self._is_conversational_record(record)
         )
+        behavior = self.config.behavior_instructions.strip()
+        system_content = (
+            "You are a task-aware PRA agent. Use only disclosed tools. "
+            "Emit a tool request as <tool_call>{\"name\":...,\"arguments\":{...}}</tool_call>. "
+            f"Active task: {self.state.active_task_id or 'none'}."
+        )
+        if behavior:
+            system_content += "\n\nBehavior contract:\n" + behavior
         system = {
             "role": "system",
-            "content": (
-                "You are a task-aware PRA agent. Use only disclosed tools. "
-                "Emit a tool request as <tool_call>{\"name\":...,\"arguments\":{...}}</tool_call>. "
-                f"Active task: {self.state.active_task_id or 'none'}."
-            ),
+            "content": system_content,
         }
         by_uri = {
             resource.uri: resource

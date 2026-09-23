@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
     DockerWorkspaceTools,
+    PRA_SWE_AGENT_BEHAVIOR,
     _durable_tool_events,
     build_parser,
 )
@@ -53,6 +56,25 @@ def test_docker_workspace_exposes_typed_portable_tools() -> None:
     assert by_name["replace_text"].side_effect_class.value == "write"
     workspace.bind_container("next-task-container")
     assert workspace.container == "next-task-container"
+    assert "Do not repeat an identical tool call" in PRA_SWE_AGENT_BEHAVIOR
+
+
+def test_workspace_file_listing_prunes_git_and_caps_payload(monkeypatch) -> None:
+    workspace = DockerWorkspaceTools("docker", "task-container")
+    observed: list[str] = []
+
+    def fake_shell(command: str, **_kwargs):
+        observed.append(command)
+        payload = "".join(f"file-{index}\n" for index in range(501)).encode()
+        return subprocess.CompletedProcess(("bash",), 0, payload, b"")
+
+    monkeypatch.setattr(workspace, "_shell", fake_shell)
+
+    result = workspace.list_files(".")
+
+    assert "-path '*/.git' -prune" in observed[0]
+    assert len(result["files"]) == 500
+    assert result["truncated"] is True
 
 
 def test_durable_tool_events_survive_a_later_turn_failure() -> None:

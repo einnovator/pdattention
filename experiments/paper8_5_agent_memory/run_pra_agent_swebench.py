@@ -47,6 +47,17 @@ from .pra_agent_policy import PRAAgentMatchedTailSelector
 from .run_autonomous_swebench import _exact_token_counter
 
 
+PRA_SWE_AGENT_BEHAVIOR = (
+    "Treat each successful tool observation as authoritative. Do not repeat an "
+    "identical tool call unless its observation was incomplete, failed, or the "
+    "workspace changed. Prefer targeted search and bounded reads over broad "
+    "repository enumeration. Take the requested concrete action rather than "
+    "only describing or promising it. Make the smallest general source change, "
+    "inspect the resulting diff, run focused verification when feasible, and "
+    "only then finish."
+)
+
+
 def _run(
     command: Sequence[str], *, input_bytes: bytes | None = None,
     timeout: int | None = None, check: bool = False,
@@ -107,19 +118,20 @@ class DockerWorkspaceTools:
         return value.decode("utf-8", errors="replace")
 
     def list_files(self, path: str = ".", pattern: str = "*") -> dict[str, object]:
-        """List at most 1000 files below one workspace-relative path."""
+        """List at most 500 non-Git files below a workspace-relative path."""
 
         root = self._relative_path(path)
         command = (
-            f"find {shlex.quote(root)} -type f -name {shlex.quote(pattern)} "
-            "-print | LC_ALL=C sort | head -1001"
+            f"find {shlex.quote(root)} -path '*/.git' -prune -o "
+            f"-type f -name {shlex.quote(pattern)} "
+            "-print | LC_ALL=C sort | head -501"
         )
         result = self._shell(command)
         rows = self._text(result.stdout).splitlines()
         return {
             "path": root,
-            "files": rows[:1000],
-            "truncated": len(rows) > 1000,
+            "files": rows[:500],
+            "truncated": len(rows) > 500,
             "exit_code": result.returncode,
             "stderr": self._text(result.stderr)[-4000:],
         }
@@ -401,6 +413,7 @@ def run(args: argparse.Namespace) -> Path:
             max_tool_rounds=args.max_tool_rounds,
             allow_writes=True,
             max_new_tokens=args.max_completion_tokens,
+            behavior_instructions=PRA_SWE_AGENT_BEHAVIOR,
         ),
         toolset=tools,
         history_selector=history_selector,
@@ -499,6 +512,10 @@ def run(args: argparse.Namespace) -> Path:
         "arm": "FULL" if args.history_policy == "full" else "MATCHED_RECENCY",
         "agent": "pra-agent",
         "agent_protocol": "typed_records_with_openai_text_fallback",
+        "behavior_instructions": PRA_SWE_AGENT_BEHAVIOR,
+        "behavior_instructions_sha256": _sha256(
+            PRA_SWE_AGENT_BEHAVIOR.encode("utf-8")
+        ),
         "instance_id": instance_id,
         "task_index": task_index,
         "benchmark_card": str(benchmark),

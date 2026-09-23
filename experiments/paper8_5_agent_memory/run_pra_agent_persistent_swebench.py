@@ -42,6 +42,7 @@ from .run_pi_swebench import (
 )
 from .run_pra_agent_swebench import (
     DockerWorkspaceTools,
+    PRA_SWE_AGENT_BEHAVIOR,
     _durable_tool_events,
     _run,
 )
@@ -268,6 +269,7 @@ def run(args: argparse.Namespace) -> Path:
             max_tool_rounds=args.max_tool_rounds,
             allow_writes=True,
             max_new_tokens=args.max_completion_tokens,
+            behavior_instructions=PRA_SWE_AGENT_BEHAVIOR,
         ),
         toolset=tools,
         history_selector=history_selector,
@@ -450,6 +452,10 @@ def run(args: argparse.Namespace) -> Path:
         "schema_version": 1,
         "study": "paper8_5_persistent_cross_agent_transfer",
         "agent": "pra-agent",
+        "behavior_instructions": PRA_SWE_AGENT_BEHAVIOR,
+        "behavior_instructions_sha256": _sha256(
+            PRA_SWE_AGENT_BEHAVIOR.encode("utf-8")
+        ),
         "session_id": args.session_id,
         "task_count_declared": len(tasks),
         "task_count_completed": len(episode_manifests),
