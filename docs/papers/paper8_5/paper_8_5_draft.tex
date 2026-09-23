@@ -2179,6 +2179,22 @@ points; no selection occurred.  They show that cross-model claims must first
 qualify action encoding and termination semantics, and that a correct final
 workspace cannot replace the primary submission metric.  The compact evidence
 is in \path{cross_model_admission_diagnostics_v1}.
+A subsequent Task~1 diagnostic tests the corrected positive progress-spine
+implementation.  It protects the latest source, mutation, verification,
+progress, and error turns and no longer mistakes redirected patch capture for
+a source mutation.  At a nominal 90\% retention floor it reproduces all 14
+assistant actions and the identical officially successful patch from an
+earlier \textsc{Full} execution, while materializing 38,424 rather than
+39,043 cumulative tokens (1.59\% own saving).  Selection first changes at
+request~12; the affected request retentions are 95.36\%, 92.85\%, and 93.53\%.
+This is a positive implementation-parity result but a low-yield point on a
+short task.  A fresh same-revision \textsc{Full} stability control fails after
+seven calls: its request~4 input is byte-identical, fully retained, and has the
+same 2,470-token count, yet its response diverges eight requests before
+selection begins in the candidate.  We therefore do not treat the selective
+solve as a paired policy-quality estimate.  The three executions and exact
+input/trajectory audit are in
+\path{cross_agent_transfer/mini_swe_qwen25_14b_progress_spine_task01_v1}.
 PRA Agent also required a sampling-control repair: its earlier transport
 silently omitted temperature, top-$p$, and seed.  The corrected Task~1 Full
 control resolves in 15 requests with the exact minimal patch under explicit
