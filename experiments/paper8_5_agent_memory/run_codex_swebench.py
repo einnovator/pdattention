@@ -10,6 +10,7 @@ import re
 import subprocess
 import time
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from .model_identity import fetch_ollama_model_identity
 from .responses_audit_proxy import ResponsesAuditConfig, ResponsesAuditProxy
@@ -88,6 +89,15 @@ def _observed_model_identity(args: argparse.Namespace) -> dict[str, Any] | None:
     )
 
 
+def _ollama_forward_target(value: str) -> tuple[str, int]:
+    parsed = urlparse(value)
+    if parsed.scheme != "http" or not parsed.hostname:
+        raise ValueError("native Ollama upstream must be an http URL with a host")
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise ValueError("native Ollama upstream must not contain a path or query")
+    return parsed.hostname, parsed.port or 11434
+
+
 def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
@@ -148,17 +158,27 @@ def run(args: argparse.Namespace) -> Path:
     else:
         # Let Codex own the open-model adaptation. This avoids attributing a
         # Responses-to-Chat translation layer to the PRA memory policy.
+        forward_host, forward_port = _ollama_forward_target(
+            args.upstream_base_url
+        )
         provider_environment = (
-            "--env", f"OLLAMA_HOST={args.upstream_base_url.rstrip('/')}",
+            "--env", "OLLAMA_HOST=http://127.0.0.1:11434",
+            "--env", f"PRA_OLLAMA_FORWARD_HOST={forward_host}",
+            "--env", f"PRA_OLLAMA_FORWARD_PORT={forward_port}",
         )
         provider_args = ("--oss", "--local-provider", "ollama")
+    entrypoint = (
+        "codex"
+        if args.provider_mode == "responses_audit"
+        else "/usr/local/bin/codex-ollama-remote"
+    )
     command = (
         args.docker, "run", "--name", container, "--platform", "linux/amd64",
         "--env", "OPENAI_API_KEY=paper85-local",
         "--env", "OTEL_SDK_DISABLED=true",
         "--env", "DO_NOT_TRACK=1",
         *provider_environment,
-        "--entrypoint", "codex", image,
+        "--entrypoint", entrypoint, image,
         "exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules",
         "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox",
         "--model", args.model,

@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+python3 /usr/local/bin/codex_ollama_forward.py &
+forward_pid=$!
+trap 'kill "$forward_pid" 2>/dev/null || true' EXIT INT TERM
+
+attempt=0
+until curl --fail --silent --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 30 ]; then
+    echo "remote Ollama loopback bridge failed readiness" >&2
+    exit 70
+  fi
+  sleep 1
+done
+
+exec codex "$@"
+

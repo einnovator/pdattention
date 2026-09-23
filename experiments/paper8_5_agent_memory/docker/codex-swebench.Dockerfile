@@ -9,5 +9,7 @@ RUN curl --fail --silent --show-error --location \
     && rm /tmp/node.tar.xz
 RUN npm install --global --no-audit --no-fund "@openai/codex@${CODEX_VERSION}" \
     && codex --version
+COPY experiments/paper8_5_agent_memory/docker/codex_ollama_forward.py /usr/local/bin/
+COPY experiments/paper8_5_agent_memory/docker/codex-ollama-remote /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/codex-ollama-remote
 WORKDIR /testbed
-

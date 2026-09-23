@@ -15,6 +15,7 @@ from experiments.paper8_5_agent_memory.responses_audit_proxy import (
 from experiments.paper8_5_agent_memory.run_codex_swebench import (
     build_parser,
     _event_summary,
+    _ollama_forward_target,
     _observed_model_identity,
     _trace_summary,
 )
@@ -31,6 +32,19 @@ def test_codex_runner_accepts_native_ollama_provider_mode() -> None:
         "--model-revision", "revision",
     ])
     assert args.provider_mode == "ollama_oss"
+
+
+def test_native_codex_parses_remote_ollama_forward_target() -> None:
+    assert _ollama_forward_target("http://192.168.1.6:11435") == (
+        "192.168.1.6",
+        11435,
+    )
+    assert _ollama_forward_target("http://model.example") == (
+        "model.example",
+        11434,
+    )
+    with pytest.raises(ValueError, match="must not contain a path"):
+        _ollama_forward_target("http://model.example:11434/v1")
 
 
 def test_native_codex_fails_closed_without_observed_model_identity() -> None:
