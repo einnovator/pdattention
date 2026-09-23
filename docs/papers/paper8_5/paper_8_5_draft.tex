@@ -4589,6 +4589,17 @@ the CLI reports version 1.18.31 and exposes only
 \path{cross_agent_transfer/opencode_admission_preflight_v1}; it is not a task
 or policy result.
 
+A later control audit found that model pinning alone was insufficient:
+OpenCode applies a model-specific sampling default, documented as typically
+0.55 for Qwen when the agent temperature is absent.\footnote{OpenCode agent
+configuration, \url{https://opencode.ai/docs/agents/}.} The admission config now
+freezes temperature 0, top-$p$ 1, and seed 0 inside the selected
+\texttt{build} agent, and the runner rejects a config that omits or changes any
+of those values.  Delegation is disabled for the first admission so the root
+event stream is complete; child-session joining remains a separate future
+qualification.  This repair invalidates no reported task result because the
+model-backed OpenCode control had not yet run.
+
 \subsection{First Pi admission outcome}
 
 The first exact-parameter control uses Pi 0.75.3 on
@@ -4952,6 +4963,13 @@ records whether later turns carry complete input or provider-managed
 until this inventory is complete: applying the Chat-Completions recordizer to
 a Responses session without proving state ownership would conflate agent
 transfer with a transport rewrite.  The first Task-1 control remains pending.
+
+For the open-model cohort we additionally enable Codex's native
+\texttt{--oss --local-provider ollama} mode.  Codex therefore owns the Ollama
+adaptation, and no external Responses-to-Chat translation is attributed to
+PRA.  The Responses audit mode remains available as a separately labelled
+transport study; its state semantics cannot be pooled with the native Ollama
+admission.
 
 \subsection{PRA Agent}
 
