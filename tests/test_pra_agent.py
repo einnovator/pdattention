@@ -83,9 +83,18 @@ class _LengthStoppedBackend(_Backend):
         }
 
 
+class _GuardRecoveryBackend(_Backend):
+    def generate(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        self.calls += 1
+        if self.calls == 1:
+            return '<tool_call>{"name":"lookup","arguments":{"value":"alpha"}}</tool_call>'
+        return "I cannot continue without an authorized action."
+
+
 def _agent(
     tmp_path, *, backend=None, max_tool_rounds: int = 1,
-    history_selector=None, completion_guard=None,
+    history_selector=None, completion_guard=None, tool_call_guard=None,
 ) -> PRAAgent:
     def lookup(value: str) -> dict[str, str]:
         """Uppercase one value."""
@@ -122,6 +131,7 @@ def _agent(
         toolset=toolset,
         history_selector=history_selector,
         completion_guard=completion_guard,
+        tool_call_guard=tool_call_guard,
     )
 
 
@@ -266,3 +276,22 @@ def test_agent_continues_after_provider_length_stop(tmp_path) -> None:
     assert backend.calls == 3
     assert len(turn.tool_executions) == 1
     assert "provider stopped at its output-token limit" in backend.prompts[1]
+
+
+def test_agent_preserves_and_recovers_from_host_tool_guard_rejection(tmp_path) -> None:
+    backend = _GuardRecoveryBackend()
+    agent = _agent(
+        tmp_path,
+        backend=backend,
+        max_tool_rounds=2,
+        tool_call_guard=lambda _state, _call, _resource, _executions: (
+            "inspection_budget_exhausted"
+        ),
+    )
+    agent.start_session("session-a", task_description="Inspect alpha")
+
+    turn = agent.run_turn("Look up alpha")
+
+    assert backend.calls == 2
+    assert not turn.tool_executions
+    assert "inspection_budget_exhausted" in backend.prompts[1]

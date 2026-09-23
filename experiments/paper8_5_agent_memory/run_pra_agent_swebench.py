@@ -46,6 +46,8 @@ from .run_pi_swebench import (
 )
 from .pra_agent_policy import PRAAgentMatchedTailSelector
 from .run_autonomous_swebench import _exact_token_counter
+from .miniswe_semantics import classify_bash_operation
+from pra_hf.tool_semantics import OperationKind
 
 
 PRA_SWE_AGENT_BEHAVIOR = (
@@ -63,6 +65,36 @@ PRA_SWE_AGENT_BEHAVIOR = (
     "resulting diff, run focused verification when feasible, and only then "
     "finish."
 )
+
+
+class SWEInspectionBudgetGuard:
+    """Require progress after bounded pre-mutation repository inspection."""
+
+    def __init__(
+        self, workspace: "DockerWorkspaceTools", *, max_inspections: int = 8
+    ) -> None:
+        if max_inspections < 1:
+            raise ValueError("max_inspections must be positive")
+        self.workspace = workspace
+        self.max_inspections = max_inspections
+
+    def __call__(self, _state, call, _resource, executions) -> str | None:
+        if len(executions) < self.max_inspections:
+            return None
+        if self.workspace.has_tracked_source_patch():
+            return None
+        if call.name in {"write_file", "replace_text"}:
+            return None
+        if call.name == "run_command":
+            command = str(call.arguments.get("command") or "")
+            if classify_bash_operation(command) == OperationKind.WRITE:
+                return None
+        return (
+            "inspection_budget_exhausted. No tracked source patch exists after "
+            f"{self.max_inspections} executed tools. The next tool must mutate "
+            "the source using write_file, replace_text, or a clearly mutating "
+            "run_command; otherwise report a concrete blocker."
+        )
 
 
 def _run(
@@ -297,6 +329,11 @@ class DockerWorkspaceTools:
             "before finishing."
         )
 
+    def has_tracked_source_patch(self) -> bool:
+        """Return whether tracked workspace content differs from the base."""
+
+        return self._shell("git diff --quiet --").returncode == 1
+
     def toolset(self, tenant_id: str) -> Toolset:
         definitions = (
             (self.list_files, SideEffectClass.READ, ("files", "workspace")),
@@ -424,6 +461,7 @@ def run(args: argparse.Namespace) -> Path:
         ),
         toolset=tools,
         history_selector=history_selector,
+        tool_call_guard=SWEInspectionBudgetGuard(workspace),
         completion_guard=lambda _state, _text, _executions: (
             workspace.completion_rejection()
         ),
@@ -520,6 +558,7 @@ def run(args: argparse.Namespace) -> Path:
         "agent": "pra-agent",
         "agent_protocol": "typed_records_with_openai_text_fallback",
         "text_tool_observation_projection": TEXT_TOOL_OBSERVATION_PROJECTION,
+        "pre_mutation_inspection_budget": 8,
         "session_persistence": "atomic_local_json_per_record",
         "behavior_instructions": PRA_SWE_AGENT_BEHAVIOR,
         "behavior_instructions_sha256": _sha256(

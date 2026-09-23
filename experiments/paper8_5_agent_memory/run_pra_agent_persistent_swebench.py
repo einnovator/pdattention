@@ -44,6 +44,7 @@ from .run_pi_swebench import (
 from .run_pra_agent_swebench import (
     DockerWorkspaceTools,
     PRA_SWE_AGENT_BEHAVIOR,
+    SWEInspectionBudgetGuard,
     _durable_tool_events,
     _run,
 )
@@ -274,6 +275,7 @@ def run(args: argparse.Namespace) -> Path:
         ),
         toolset=tools,
         history_selector=history_selector,
+        tool_call_guard=SWEInspectionBudgetGuard(workspace),
         completion_guard=lambda _state, _text, _executions: (
             workspace.completion_rejection()
         ),
@@ -454,6 +456,7 @@ def run(args: argparse.Namespace) -> Path:
         "study": "paper8_5_persistent_cross_agent_transfer",
         "agent": "pra-agent",
         "text_tool_observation_projection": TEXT_TOOL_OBSERVATION_PROJECTION,
+        "pre_mutation_inspection_budget": 8,
         "session_persistence": "atomic_local_json_per_record",
         "behavior_instructions": PRA_SWE_AGENT_BEHAVIOR,
         "behavior_instructions_sha256": _sha256(

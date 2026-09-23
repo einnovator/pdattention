@@ -120,6 +120,15 @@ class PRAAgent:
         completion_guard: Callable[
             [AgentSessionState, str, Sequence[RuntimeToolExecution]], str | None
         ] | None = None,
+        tool_call_guard: Callable[
+            [
+                AgentSessionState,
+                ToolCall,
+                AgentResource | None,
+                Sequence[RuntimeToolExecution],
+            ],
+            str | None,
+        ] | None = None,
         observability: Observability | None = None,
         settings: PRAAgentSettings | Mapping[str, Any] | None = None,
         config_file: str | Path | None = None,
@@ -127,6 +136,7 @@ class PRAAgent:
         self.runtime = runtime
         self.history_selector = history_selector
         self.completion_guard = completion_guard
+        self.tool_call_guard = tool_call_guard
         base_settings = PRAAgentSettings.compose(config_file=config_file, config=settings)
         host = base_settings.agent
         self.config = config or PRAAgentConfig(
@@ -775,6 +785,26 @@ class PRAAgent:
             resource = None
             if self.runtime.executor is not None:
                 resource = self.runtime.executor.by_name.get(call.name)
+            guard_rejection = (
+                self.tool_call_guard(
+                    self.state, call, resource, tuple(executions)
+                )
+                if self.tool_call_guard is not None else None
+            )
+            if guard_rejection:
+                self._append_message(
+                    "user",
+                    f"[Tool decision rejected: {guard_rejection}]",
+                    semantic_role="error_or_rejection",
+                )
+                last_turn_context = self._turn_context(
+                    query,
+                    self._context(query),
+                    tool_uris,
+                    skill_uris,
+                )
+                text = self._generate_turn(last_turn_context)
+                continue
             approved = False
             if resource is not None and self.authorization_callback is not None:
                 if resource.side_effect_class in {

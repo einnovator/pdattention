@@ -7,9 +7,11 @@ import subprocess
 
 import pytest
 
+from pra_hf.agent_execution import ToolCall
 from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
     DockerWorkspaceTools,
     PRA_SWE_AGENT_BEHAVIOR,
+    SWEInspectionBudgetGuard,
     _durable_tool_events,
     build_parser,
 )
@@ -78,6 +80,37 @@ def test_workspace_file_listing_prunes_git_and_caps_payload(monkeypatch) -> None
     assert "-path '*/.git' -prune" in observed[0]
     assert len(result["files"]) == 500
     assert result["truncated"] is True
+
+
+def test_inspection_budget_allows_mutation_and_rejects_more_discovery(
+    monkeypatch,
+) -> None:
+    workspace = DockerWorkspaceTools("docker", "task-container")
+    monkeypatch.setattr(workspace, "has_tracked_source_patch", lambda: False)
+    guard = SWEInspectionBudgetGuard(workspace, max_inspections=2)
+    executed = (object(), object())
+
+    assert "inspection_budget_exhausted" in guard(
+        None, ToolCall("read_file", {"path": "a.py"}), None, executed
+    )
+    assert "inspection_budget_exhausted" in guard(
+        None,
+        ToolCall("run_command", {"command": "git log --oneline"}),
+        None,
+        executed,
+    )
+    assert guard(
+        None,
+        ToolCall("replace_text", {"path": "a.py", "old": "x", "new": "y"}),
+        None,
+        executed,
+    ) is None
+    assert guard(
+        None,
+        ToolCall("run_command", {"command": "sed -i 's/x/y/' a.py"}),
+        None,
+        executed,
+    ) is None
 
 
 def test_durable_tool_events_survive_a_later_turn_failure() -> None:
