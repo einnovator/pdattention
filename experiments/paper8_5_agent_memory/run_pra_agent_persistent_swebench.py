@@ -40,7 +40,11 @@ from .run_pi_swebench import (
     swebench_image,
     task_prompt,
 )
-from .run_pra_agent_swebench import DockerWorkspaceTools, _run
+from .run_pra_agent_swebench import (
+    DockerWorkspaceTools,
+    _durable_tool_events,
+    _run,
+)
 
 
 def _task_spec(value: str) -> tuple[str, Path]:
@@ -301,10 +305,17 @@ def run(args: argparse.Namespace) -> Path:
                 )
 
             trace_start = len(history_selector.traces)
+            durable_record_start = len(agent.state.records)
             episode_started = datetime.now(timezone.utc)
-            turn = agent.run_turn(prompt)
+            turn = None
+            episode_error: Exception | None = None
+            try:
+                turn = agent.run_turn(prompt)
+            except Exception as observed:
+                episode_error = observed
             episode_finished = datetime.now(timezone.utc)
             traces = history_selector.traces[trace_start:]
+            durable_records = tuple(agent.state.records[durable_record_start:])
 
             status = _run((
                 args.docker, "exec", "-w", "/testbed", active_container,
@@ -316,12 +327,21 @@ def run(args: argparse.Namespace) -> Path:
             ))
             (episode / "workspace_status.txt").write_bytes(status.stdout)
             (episode / "model.patch").write_bytes(patch.stdout)
-            (episode / "final_response.txt").write_text(
-                turn.text, encoding="utf-8"
-            )
+            if turn is not None:
+                (episode / "final_response.txt").write_text(
+                    turn.text, encoding="utf-8"
+                )
             events = _tool_events(turn)
             (episode / "tool_events.jsonl").write_text(
                 "".join(json.dumps(row, default=str) + "\n" for row in events),
+                encoding="utf-8",
+            )
+            durable_events = _durable_tool_events(durable_records)
+            (episode / "durable_tool_events.jsonl").write_text(
+                "".join(
+                    json.dumps(row, default=str) + "\n"
+                    for row in durable_events
+                ),
                 encoding="utf-8",
             )
             _write_json(episode / "selection_trace.json", {
@@ -345,7 +365,8 @@ def run(args: argparse.Namespace) -> Path:
                     episode_finished - episode_started
                 ).total_seconds(),
                 "request_count": len(traces),
-                "tool_event_count": len(events),
+                "tool_event_count": len(durable_events),
+                "returned_turn_tool_event_count": len(events),
                 "patch_bytes": len(patch.stdout),
                 "patch_sha256": _sha256(patch.stdout),
                 "cumulative_full_history_tokens": full_tokens,
@@ -355,7 +376,13 @@ def run(args: argparse.Namespace) -> Path:
                     1.0 - materialized_tokens / full_tokens
                 ),
                 "official_resolution": None,
-                "error_type": None,
+                "error_type": (
+                    None if episode_error is None
+                    else type(episode_error).__name__
+                ),
+                "error_detail": (
+                    None if episode_error is None else str(episode_error)
+                ),
             }
             _write_json(episode / "run_manifest.json", episode_manifest)
             episode_manifests.append(episode_manifest)
@@ -376,6 +403,8 @@ def run(args: argparse.Namespace) -> Path:
                 )
             _run((args.docker, "rm", "-f", active_container))
             active_container = None
+            if episode_error is not None:
+                raise episode_error
     except Exception as observed:
         error = observed
         (output / "agent_error.txt").write_text(

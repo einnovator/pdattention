@@ -1,0 +1,17 @@
+diff --git a/django/utils/formats.py b/django/utils/formats.py
+index 3f38322d84..bf43149bd0 100644
+--- a/django/utils/formats.py
++++ b/django/utils/formats.py
+@@ -124,8 +124,11 @@ def get_format(format_type, lang=None, use_l10n=None):
+     # there or if l10n is disabled, fall back to the project settings.
+     val = None
+     if use_l10n:
++        # Convert lazy objects to strings for attribute access
++        from django.utils.functional import Promise
++        format_type_str = str(format_type) if isinstance(format_type, Promise) else format_type
+         for module in get_format_modules(lang):
+-            val = getattr(module, format_type, None)
++            val = getattr(module, format_type_str, None)
+             if val is not None:
+                 break
+     if val is None:

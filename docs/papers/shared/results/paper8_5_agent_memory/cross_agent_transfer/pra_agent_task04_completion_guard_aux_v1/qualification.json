@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "auxiliary_patch_resolves_after_transport_failure",
+  "primary_full_qualified": false,
+  "instance_id": "django__django-15741",
+  "agent": "pra-agent",
+  "model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "history_policy": "FULL",
+  "successful_model_requests": 20,
+  "durable_tool_responses": 20,
+  "elapsed_seconds": 1538.128319,
+  "patch_bytes": 793,
+  "patch_sha256": "2a65d75e513832d87c8afcfb0d42ab85769c87bd73b03a8eab98e2fae475e00e",
+  "official_resolution": {
+    "submitted": 1,
+    "completed": 1,
+    "resolved": 1,
+    "errors": 0
+  },
+  "terminal_failure": {
+    "request_index": 21,
+    "error_type": "AgentTransportError",
+    "http_status": 500,
+    "detail": "EOF"
+  },
+  "context_ceiling_evidence": {
+    "loaded_serving_context_tokens": 32768,
+    "last_successful_prompt_tokens": 32734,
+    "last_successful_completion_tokens": 97,
+    "last_successful_total_tokens": 32831,
+    "catalog_context_length_tokens": 262144,
+    "diagnosis": "active serving allocation exhausted; catalog capability was not the loaded context window"
+  },
+  "interpretation": "The completion guard removed the historical empty-patch stopping mode, but the run remains auxiliary because transport failed before semantic completion."
+}
+

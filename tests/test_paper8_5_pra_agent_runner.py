@@ -266,6 +266,17 @@ def test_persistent_runner_accepts_ordered_boundary_free_tasks() -> None:
     assert instruction.prior_full_epochs == 2
 
 
+def test_persistent_runner_keeps_large_record_capacity_for_multi_task_runs() -> None:
+    args = build_persistent_parser().parse_args([
+        "--task", "django__django-15277=task1.json",
+        "--output", "out",
+        "--endpoint", "http://127.0.0.1:8000",
+    ])
+
+    assert args.context_records == 4096
+    assert args.max_tool_rounds == 80
+
+
 def test_persistent_task_registry_supports_canonical_n_prefix(tmp_path) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()

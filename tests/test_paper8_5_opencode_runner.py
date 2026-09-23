@@ -77,3 +77,18 @@ def test_opencode_tool_semantics_are_canonical_not_agent_policy() -> None:
     assert semantics["edit"]["operation_kind"] == "write"
     assert semantics["bash"]["operation_kind"] == "unknown"
     assert "agent_id" not in json.dumps(semantics)
+
+
+def test_ctx131k_model_config_is_consistent_and_frozen() -> None:
+    path = (
+        Path(__file__).parents[1]
+        / "experiments" / "paper8_5_agent_memory" / "configs"
+        / "opencode_qwen3_coder_30b_ctx131k_medium_mac.json"
+    )
+    model = "pra/qwen3-coder:30b-ctx131k"
+
+    payload = _validate_model_config(path, model)
+
+    assert payload["provider"]["pra"]["models"][
+        "qwen3-coder:30b-ctx131k"
+    ]["limit"]["context"] == 131072
