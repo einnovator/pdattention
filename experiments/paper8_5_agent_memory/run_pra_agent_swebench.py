@@ -34,6 +34,7 @@ from pra_hf import (
     Toolset,
 )
 from pra_hf.context_records import ContextRecord, RecordType
+from pra_hf.agent_transport import TEXT_TOOL_OBSERVATION_PROJECTION
 
 from .run_pi_swebench import (
     _sha256,
@@ -518,6 +519,7 @@ def run(args: argparse.Namespace) -> Path:
         "arm": "FULL" if args.history_policy == "full" else "MATCHED_RECENCY",
         "agent": "pra-agent",
         "agent_protocol": "typed_records_with_openai_text_fallback",
+        "text_tool_observation_projection": TEXT_TOOL_OBSERVATION_PROJECTION,
         "session_persistence": "atomic_local_json_per_record",
         "behavior_instructions": PRA_SWE_AGENT_BEHAVIOR,
         "behavior_instructions_sha256": _sha256(

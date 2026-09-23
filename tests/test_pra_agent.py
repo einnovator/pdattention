@@ -145,9 +145,10 @@ def test_agent_persists_task_messages_and_compact_tool_result(tmp_path) -> None:
         if isinstance(row.payload, dict) and row.payload.get("role") == "assistant"
     ]
     assert len(assistant_messages) == 2
-    assert "I executed the tool decision named \"lookup\"" in (
+    assert "[PRA action executed] Tool \"lookup\"" in (
         assistant_messages[0].payload["text"]
     )
+    assert "authoritative result" in assistant_messages[0].payload["text"]
     assert "<tool_call>" not in assistant_messages[0].payload["text"]
     assert assistant_messages[-1].payload["pra_agent_semantic_role"] == (
         "finalization"

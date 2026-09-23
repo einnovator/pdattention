@@ -93,11 +93,13 @@ def _durable_assistant_action(text: str, call: ToolCall) -> str:
     """
 
     action = (
-        "I executed the tool decision named "
+        "[PRA action executed] Tool "
         + json.dumps(call.name)
-        + " with these arguments: "
+        + " ran with arguments "
         + json.dumps(dict(call.arguments), separators=(",", ":"))
-        + "."
+        + ". The immediately following PRA tool observation is its "
+        "authoritative result; do not repeat this call unless it failed, was "
+        "incomplete, or relevant state changed."
     )
     return text.replace(call.raw_text, action, 1)
 

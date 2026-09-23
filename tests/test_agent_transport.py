@@ -155,6 +155,8 @@ def test_text_fallback_interleaves_typed_history_in_causal_order() -> None:
     assert rendered[1]["content"] == "fix it"
     assert rendered[2]["content"] == "I will read the file."
     assert "Tool observation observation" in rendered[3]["content"]
+    assert "authoritative_result=true" in rendered[3]["content"]
+    assert "exact_backing" not in rendered[3]["content"]
     assert "source" in rendered[3]["content"]
     assert all("legacy detached placeholder" not in row["content"] for row in rendered)
 

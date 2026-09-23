@@ -26,6 +26,7 @@ from pra_hf import (
     PRARuntime,
     PRARuntimeConfig,
 )
+from pra_hf.agent_transport import TEXT_TOOL_OBSERVATION_PROJECTION
 
 from .pra_agent_policy import (
     PRAAgentInstructionEpochSelector,
@@ -452,6 +453,7 @@ def run(args: argparse.Namespace) -> Path:
         "schema_version": 1,
         "study": "paper8_5_persistent_cross_agent_transfer",
         "agent": "pra-agent",
+        "text_tool_observation_projection": TEXT_TOOL_OBSERVATION_PROJECTION,
         "session_persistence": "atomic_local_json_per_record",
         "behavior_instructions": PRA_SWE_AGENT_BEHAVIOR,
         "behavior_instructions_sha256": _sha256(

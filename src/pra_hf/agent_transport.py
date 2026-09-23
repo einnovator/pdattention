@@ -24,6 +24,9 @@ from .gateway_session import HistoryMode, ResourceDelta, ResourceOperation
 from .observability import DISABLED_OBSERVABILITY, Observability
 
 
+TEXT_TOOL_OBSERVATION_PROJECTION = "compact_authoritative_v2"
+
+
 class ContextTransportMode(str, Enum):
     """User policy for preserving or rendering detached context records."""
 
@@ -321,15 +324,29 @@ def render_text_messages(turn: AgentTurnContext) -> tuple[Mapping[str, Any], ...
                     "content": str(payload["text"]),
                 })
                 continue
-            label = (
-                "Tool observation"
-                if record.record_type.value == "tool_response"
-                else "PRA context record"
-            )
+            if record.record_type.value == "tool_response":
+                compact = payload.get("compact", payload)
+                producer = payload.get("producer_tool_uri") or "unknown"
+                call_id = payload.get("call_id") or "unknown"
+                body = json.dumps(
+                    compact,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    default=str,
+                )
+                causal_messages.append({
+                    "role": "user",
+                    "content": (
+                        f"[Tool observation {record.record_id}; "
+                        f"authoritative_result=true; producer={producer}; "
+                        f"call_id={call_id}]\n{body}"
+                    ),
+                })
+                continue
             causal_messages.append({
                 "role": "user",
                 "content": (
-                    f"[{label} {record.record_id}]\n"
+                    f"[PRA context record {record.record_id}]\n"
                     + serialize_record(record, view=RecordViewName.FULL)
                 ),
             })
