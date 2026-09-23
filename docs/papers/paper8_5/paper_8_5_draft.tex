@@ -2143,6 +2143,11 @@ the three-identity hybrid estimate.  A fresh
 Qwen2.5-Coder-14B/MLX \textsc{Full} retry on Django-15277 fails in seven calls
 after an over-broad edit, so its selective arm is correctly withheld; this is
 additional evidence that temperature zero is not an admission guarantee.
+PRA Agent also required a sampling-control repair: its earlier transport
+silently omitted temperature, top-$p$, and seed.  The corrected Task~1 Full
+control resolves in 15 requests with the exact minimal patch under explicit
+temperature zero, but its selective arm remains pending; older PRA-Agent
+admissions are not pooled with controlled cross-agent comparisons.
 The first corrected hybrid native-plus-receipt transfer then preserves the Scikit-learn solve and
 eight-call count while realizing 39.88\% materialized-token saving and 40.23\%
 steady-state resident-K/V omission.  Direct MLX independently realizes 40.04\%
@@ -4955,6 +4960,19 @@ passes 2/2 FAIL\_TO\_PASS and 158/158 PASS\_TO\_PASS tests.  It reports 125,952
 cumulative prompt tokens, including 27,362 cached tokens, and 1,725 completion
 tokens.  Evidence, including the quarantined empty-patch diagnostic, is in
 \path{cross_agent_transfer/pra_agent_task01_full_controlled_v1}.
+
+A later wire audit supersedes that execution for controlled comparisons.  The
+remote backend forwarded the completion ceiling but omitted temperature,
+top-$p$, and seed, so the server used temperature 1.0 despite the campaign's
+temperature-zero declaration.  The repaired transport carries these ordinary
+OpenAI fields losslessly and rejects attempts to override the request
+envelope.  A fresh Task~1 \textsc{Full} control with server-confirmed
+temperature 0, top-$p$ 1, and seed 0 again resolves officially with the same
+689-byte patch.  It uses 15 model requests and 14 typed tools, with 148,225
+cumulative prompt tokens, 30,731 cached prompt tokens, and 2,245 completion
+tokens.  This is the admissible Full baseline for a future selective pair;
+the earlier rows remain protocol-debugging evidence only.  The compact bundle
+is in \path{cross_agent_transfer/pra_agent_fixed_sampling_task01_v2}.
 
 This result separates compatibility from memory quality.  A tool decision may
 have several protocol encodings, but it crosses the execution boundary only
