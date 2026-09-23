@@ -123,6 +123,42 @@ def test_context_record_projection_preserves_portable_semantics() -> None:
     assert not hasattr(resource, "native_kv")
 
 
+def test_text_fallback_interleaves_typed_history_in_causal_order() -> None:
+    task = ContextRecord(
+        "task", RecordType.GENERIC_TEXT, {"role": "user", "text": "fix it"}
+    )
+    action = ContextRecord(
+        "action", RecordType.GENERIC_TEXT,
+        {"role": "assistant", "text": "I will read the file."},
+    )
+    observation = ContextRecord(
+        "observation", RecordType.TOOL_RESPONSE,
+        {"producer_tool_uri": "pra://tool/read_file", "compact": {"text": "source"}},
+    )
+    turn = AgentTurnContext(
+        messages=(
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "fix it"},
+            {"role": "assistant", "content": "I will read the file."},
+            {"role": "user", "content": "legacy detached placeholder"},
+        ),
+        history_records=(task, action, observation),
+        records=(observation,),
+        selected_record_ids=("task", "action", "observation"),
+    )
+
+    rendered = render_text_messages(turn)
+
+    assert [row["role"] for row in rendered] == [
+        "system", "user", "assistant", "user"
+    ]
+    assert rendered[1]["content"] == "fix it"
+    assert rendered[2]["content"] == "I will read the file."
+    assert "Tool observation observation" in rendered[3]["content"]
+    assert "source" in rendered[3]["content"]
+    assert all("legacy detached placeholder" not in row["content"] for row in rendered)
+
+
 def test_wire_resource_identity_changes_with_selected_view() -> None:
     compact = context_record_to_wire_resource(
         _record(), selected_view=RecordViewName.COMPACT

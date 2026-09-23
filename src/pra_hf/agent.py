@@ -112,12 +112,16 @@ class PRAAgent:
         history_selector: Callable[
             [Sequence[ContextRecord], str], Sequence[ContextRecord]
         ] | None = None,
+        completion_guard: Callable[
+            [AgentSessionState, str, Sequence[RuntimeToolExecution]], str | None
+        ] | None = None,
         observability: Observability | None = None,
         settings: PRAAgentSettings | Mapping[str, Any] | None = None,
         config_file: str | Path | None = None,
     ) -> None:
         self.runtime = runtime
         self.history_selector = history_selector
+        self.completion_guard = completion_guard
         base_settings = PRAAgentSettings.compose(config_file=config_file, config=settings)
         host = base_settings.agent
         self.config = config or PRAAgentConfig(
@@ -554,6 +558,7 @@ class PRAAgent:
         )
         return AgentTurnContext(
             messages=(system, *conversation, *tuple(dict(row) for row in extra_messages)),
+            history_records=tuple(selected),
             records=records,
             tool_records=tuple(
                 capability_records[uri] for uri in tool_uris if uri in capability_records
@@ -667,6 +672,23 @@ class PRAAgent:
                     )
                     text = self._generate_turn(last_turn_context)
                     continue
+                if self.completion_guard is not None:
+                    rejection = self.completion_guard(
+                        self.state, text, tuple(executions)
+                    )
+                    if rejection:
+                        self._append_message("assistant", text)
+                        self._append_message(
+                            "user", f"[Completion rejected: {rejection}]"
+                        )
+                        last_turn_context = self._turn_context(
+                            query,
+                            self._context(query),
+                            tool_uris,
+                            skill_uris,
+                        )
+                        text = self._generate_turn(last_turn_context)
+                        continue
                 break
             # Intermediate actions are part of the causal trajectory.  Before
             # this append, only the initial user message, detached tool result,

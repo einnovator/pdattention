@@ -57,6 +57,7 @@ class AgentTurnContext:
     """Provider-neutral conversational spine plus selected detached records."""
 
     messages: tuple[Mapping[str, Any], ...]
+    history_records: tuple[ContextRecord, ...] = ()
     records: tuple[ContextRecord, ...] = ()
     tool_records: tuple[ContextRecord, ...] = ()
     skill_records: tuple[ContextRecord, ...] = ()
@@ -71,6 +72,7 @@ class AgentTurnContext:
         if not self.messages:
             raise ValueError("An agent turn requires at least one conversational message.")
         object.__setattr__(self, "messages", tuple(dict(row) for row in self.messages))
+        object.__setattr__(self, "history_records", tuple(self.history_records))
         object.__setattr__(self, "records", tuple(self.records))
         object.__setattr__(self, "tool_records", tuple(self.tool_records))
         object.__setattr__(self, "skill_records", tuple(self.skill_records))
@@ -299,6 +301,48 @@ def render_wire_resources_as_text(
 def render_text_messages(turn: AgentTurnContext) -> tuple[Mapping[str, Any], ...]:
     """Render detached records once while preserving the chat message spine."""
 
+    if turn.history_records:
+        prefix = tuple(
+            dict(message)
+            for message in turn.messages
+            if message.get("role") == "system"
+        )
+        causal_messages: list[Mapping[str, Any]] = []
+        history_ids = {record.record_id for record in turn.history_records}
+        for record in turn.history_records:
+            payload = record.payload if isinstance(record.payload, Mapping) else {}
+            if (
+                record.record_type.value == "generic_text"
+                and payload.get("role") in {"system", "user", "assistant", "tool"}
+                and "text" in payload
+            ):
+                causal_messages.append({
+                    "role": str(payload["role"]),
+                    "content": str(payload["text"]),
+                })
+                continue
+            label = (
+                "Tool observation"
+                if record.record_type.value == "tool_response"
+                else "PRA context record"
+            )
+            causal_messages.append({
+                "role": "user",
+                "content": (
+                    f"[{label} {record.record_id}]\n"
+                    + serialize_record(record, view=RecordViewName.FULL)
+                ),
+            })
+        # Capability and skill records are not part of the chronological
+        # interaction history. Keep their established context projection, but
+        # never duplicate a selected history record in the detached block.
+        remaining = tuple(
+            context_record_to_wire_resource(record)
+            for record in turn.detached_records
+            if record.record_id not in history_ids
+        )
+        rendered = (*prefix, *causal_messages)
+        return render_wire_resources_as_text(rendered, remaining)
     if not turn.detached_records:
         return turn.messages
     resources = tuple(

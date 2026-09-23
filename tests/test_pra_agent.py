@@ -53,9 +53,20 @@ class _MalformedRecoveryBackend(_Backend):
         return "The result is ALPHA."
 
 
+class _PrematureCompletionBackend(_Backend):
+    def generate(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        self.calls += 1
+        if self.calls == 1:
+            return "I found the issue and will implement the fix now."
+        if self.calls == 2:
+            return '<tool_call>{"name":"lookup","arguments":{"value":"alpha"}}</tool_call>'
+        return "The result is ALPHA."
+
+
 def _agent(
     tmp_path, *, backend=None, max_tool_rounds: int = 1,
-    history_selector=None,
+    history_selector=None, completion_guard=None,
 ) -> PRAAgent:
     def lookup(value: str) -> dict[str, str]:
         """Uppercase one value."""
@@ -91,6 +102,7 @@ def _agent(
         ),
         toolset=toolset,
         history_selector=history_selector,
+        completion_guard=completion_guard,
     )
 
 
@@ -105,9 +117,8 @@ def test_agent_persists_task_messages_and_compact_tool_result(tmp_path) -> None:
     assert turn.tool_executions[0].execution.executed
     assert turn.disclosed_skill_uris
     assert "Verify the uppercase result" in agent.runtime.backend.prompts[0]
-    assert "[Tool observation attached as typed PRA record" in (
-        agent.runtime.backend.prompts[1]
-    )
+    assert "[Tool observation pra-record://" in agent.runtime.backend.prompts[1]
+    assert '"value": "ALPHA"' in agent.runtime.backend.prompts[1]
     assert "\nTool:" not in agent.runtime.backend.prompts[1]
     assert len(turn.session.records) == 4
     assistant_messages = [
@@ -183,3 +194,24 @@ def test_agent_history_selector_rejects_out_of_scope_identity(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="outside task scope"):
         agent.run_turn("Look up alpha")
+
+
+def test_agent_completion_guard_recovers_from_premature_prose_stop(tmp_path) -> None:
+    backend = _PrematureCompletionBackend()
+    agent = _agent(
+        tmp_path,
+        backend=backend,
+        max_tool_rounds=3,
+        completion_guard=lambda _state, _text, executions: (
+            "No durable task effect exists yet."
+            if not executions else None
+        ),
+    )
+    agent.start_session("session-a", task_description="Inspect alpha")
+
+    turn = agent.run_turn("Look up alpha")
+
+    assert turn.text == "The result is ALPHA."
+    assert backend.calls == 3
+    assert "Completion rejected: No durable task effect" in backend.prompts[1]
+    assert len(turn.tool_executions) == 1

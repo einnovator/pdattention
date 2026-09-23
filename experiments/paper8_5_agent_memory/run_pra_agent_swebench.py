@@ -248,6 +248,22 @@ class DockerWorkspaceTools:
             "stderr": self._text(result.stderr)[-4000:],
         }
 
+    def completion_rejection(self) -> str | None:
+        """Reject apparent completion until a tracked source patch exists."""
+
+        result = self._shell("git diff --quiet --")
+        if result.returncode == 0:
+            return (
+                "No tracked source patch exists. Continue working and use an "
+                "authorized tool to implement the fix before finishing."
+            )
+        if result.returncode == 1:
+            return None
+        return (
+            "Workspace mutation status could not be verified; inspect git diff "
+            "before finishing."
+        )
+
     def toolset(self, tenant_id: str) -> Toolset:
         definitions = (
             (self.list_files, SideEffectClass.READ, ("files", "workspace")),
@@ -314,7 +330,8 @@ def run(args: argparse.Namespace) -> Path:
         raise RuntimeError(f"task container failed to start: {start.returncode}")
 
     tenant_id = "paper8-5"
-    tools = DockerWorkspaceTools(args.docker, container).toolset(tenant_id)
+    workspace = DockerWorkspaceTools(args.docker, container)
+    tools = workspace.toolset(tenant_id)
     capabilities = CapabilitySDK(AgentConfig(
         tools=tools.records,
         namespace="pra-agent",
@@ -353,6 +370,9 @@ def run(args: argparse.Namespace) -> Path:
         ),
         toolset=tools,
         history_selector=history_selector,
+        completion_guard=lambda _state, _text, _executions: (
+            workspace.completion_rejection()
+        ),
     )
 
     started = datetime.now(timezone.utc)
