@@ -308,6 +308,11 @@ def run(args: argparse.Namespace) -> Path:
         transport="text",
         timeout_seconds=args.model_timeout_seconds,
         curl_executable=args.curl_executable,
+        openai_fields={
+            "temperature": args.temperature,
+            "top_p": args.top_p,
+            "seed": args.seed,
+        },
     )
     runtime = PRARuntime(
         config=PRARuntimeConfig(),
@@ -414,6 +419,12 @@ def run(args: argparse.Namespace) -> Path:
         "elapsed_seconds": (finished - started).total_seconds(),
         "max_tool_rounds": args.max_tool_rounds,
         "context_records": args.context_records,
+        "generation": {
+            "temperature": args.temperature,
+            "top_p": args.top_p,
+            "seed": args.seed,
+            "max_completion_tokens": args.max_completion_tokens,
+        },
         "tool_event_count": len(events),
         "patch_bytes": len(patch.stdout),
         "patch_sha256": _sha256(patch.stdout),
@@ -451,6 +462,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-tool-rounds", type=int, default=80)
     parser.add_argument("--context-records", type=int, default=512)
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--top-p", type=float, default=1.0)
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model-timeout-seconds", type=int, default=3600)
     parser.add_argument("--image-timeout-seconds", type=int, default=900)
     parser.add_argument("--curl-executable")

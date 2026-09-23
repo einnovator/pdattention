@@ -438,6 +438,7 @@ class NegotiatedRemoteBackend:
         timeout_seconds: float = 300.0,
         observability: Observability | None = None,
         curl_executable: str | None = None,
+        openai_fields: Mapping[str, Any] | None = None,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.model = model
@@ -453,6 +454,16 @@ class NegotiatedRemoteBackend:
             curl_executable=curl_executable,
         )
         self.curl_executable = curl_executable
+        self.openai_fields = dict(openai_fields or {})
+        reserved = {
+            "model", "messages", "tools", "pra", "stream", "max_tokens",
+        }
+        overlap = reserved.intersection(self.openai_fields)
+        if overlap:
+            raise ValueError(
+                "NegotiatedRemoteBackend openai_fields cannot override: "
+                + ", ".join(sorted(overlap))
+            )
         self._resource_versions: dict[str, dict[str, str]] = {}
         self._message_history: dict[str, tuple[Mapping[str, Any], ...]] = {}
         self._last_trace: dict[str, Any] = {}
@@ -578,6 +589,7 @@ class NegotiatedRemoteBackend:
             allow_text_fallback=self.allow_text_fallback,
             history_mode=history_mode,
             max_new_tokens=max_new_tokens,
+            openai_fields=self.openai_fields,
             metadata={
                 **turn.metadata,
                 "task_metadata": dict(turn.task_metadata),
@@ -765,6 +777,7 @@ class NegotiatedRemoteBackend:
             "endpoint": self.endpoint,
             "model": self.model,
             "http_transport": "curl" if self.curl_executable else "urllib",
+            "openai_fields": dict(self.openai_fields),
             "transport_requested": self.transport.value,
             "transport": dict(self._last_trace),
             "request_count": self._request_count,

@@ -318,6 +318,58 @@ def test_auto_uses_text_for_reachable_ordinary_openai_server() -> None:
         thread.join(timeout=5)
 
 
+def test_remote_backend_forwards_frozen_generation_controls() -> None:
+    captured = []
+
+    class OrdinaryHandler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):  # noqa: N802
+            size = int(self.headers.get("Content-Length", "0"))
+            captured.append(json.loads(self.rfile.read(size)))
+            body = json.dumps({
+                "choices": [{"message": {"role": "assistant", "content": "plain"}}]
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), OrdinaryHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_address[1]}"
+        backend = NegotiatedRemoteBackend(
+            endpoint,
+            "model",
+            transport="auto",
+            openai_fields={"temperature": 0.0, "top_p": 1.0, "seed": 0},
+        )
+        assert backend.generate_turn(_turn(), session_id="session-a") == "plain"
+        assert captured[0]["temperature"] == 0.0
+        assert captured[0]["top_p"] == 1.0
+        assert captured[0]["seed"] == 0
+        assert backend.inspect()["openai_fields"]["temperature"] == 0.0
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_remote_backend_rejects_generation_field_envelope_override() -> None:
+    with pytest.raises(ValueError, match="cannot override"):
+        NegotiatedRemoteBackend(
+            "http://endpoint", "model", openai_fields={"messages": []}
+        )
+
+
 def test_ordinary_openai_native_tool_call_is_projected_for_pra_agent() -> None:
     captured = []
 
