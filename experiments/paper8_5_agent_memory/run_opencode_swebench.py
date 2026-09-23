@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import threading
 import time
 from typing import Any, Mapping
 
@@ -24,6 +25,52 @@ from .run_pi_swebench import (
 
 
 PINNED_OPENCODE_VERSION = "1.18.31"
+
+
+def _has_native_stop_event(payload: bytes) -> bool:
+    """Return whether an OpenCode JSONL trace contains semantic completion."""
+
+    for line in payload.decode("utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, Mapping) or event.get("type") != "step_finish":
+            continue
+        part = event.get("part")
+        if isinstance(part, Mapping) and part.get("reason") == "stop":
+            return True
+    return False
+
+
+def _native_stop_watchdog(
+    docker: str,
+    container: str,
+    *,
+    done: threading.Event,
+    grace_seconds: float,
+    state: dict[str, bool],
+) -> None:
+    """Stop a CLI that remains alive after its native terminal event."""
+
+    while not done.wait(1.0):
+        logs = _run((docker, "logs", "--tail", "32", container), check=False)
+        if not _has_native_stop_event(logs.stdout):
+            continue
+        state["native_stop_observed"] = True
+        if done.wait(grace_seconds):
+            return
+        running = _run((
+            docker,
+            "inspect",
+            "--format",
+            "{{.State.Running}}",
+            container,
+        ), check=False)
+        if running.returncode == 0 and running.stdout.strip() == b"true":
+            _run((docker, "stop", "--timeout", "10", container), check=False)
+            state["forced_stop_after_native_stop"] = True
+        return
 
 
 def _event_inventory(path: Path) -> tuple[int, dict[str, int]]:
@@ -155,6 +202,22 @@ def run(args: argparse.Namespace) -> Path:
     )
     started = datetime.now(timezone.utc)
     timed_out = False
+    watchdog_done = threading.Event()
+    watchdog_state = {
+        "native_stop_observed": False,
+        "forced_stop_after_native_stop": False,
+    }
+    watchdog = threading.Thread(
+        target=_native_stop_watchdog,
+        args=(args.docker, container),
+        kwargs={
+            "done": watchdog_done,
+            "grace_seconds": args.native_stop_grace_seconds,
+            "state": watchdog_state,
+        },
+        daemon=True,
+    )
+    watchdog.start()
     try:
         execution = _run(command, timeout=args.agent_timeout_seconds, check=False)
     except subprocess.TimeoutExpired as error:
@@ -163,6 +226,9 @@ def run(args: argparse.Namespace) -> Path:
         execution = subprocess.CompletedProcess(
             command, 124, stdout=error.stdout or b"", stderr=error.stderr or b""
         )
+    finally:
+        watchdog_done.set()
+        watchdog.join(timeout=args.native_stop_grace_seconds + 2)
     finished = datetime.now(timezone.utc)
     events = output / "opencode_events.jsonl"
     events.write_bytes(execution.stdout)
@@ -227,6 +293,11 @@ def run(args: argparse.Namespace) -> Path:
         "elapsed_seconds": (finished - started).total_seconds(),
         "exit_code": execution.returncode,
         "timed_out": timed_out,
+        "native_stop_observed": watchdog_state["native_stop_observed"],
+        "forced_stop_after_native_stop": watchdog_state[
+            "forced_stop_after_native_stop"
+        ],
+        "native_stop_grace_seconds": args.native_stop_grace_seconds,
         "event_count": event_count,
         "event_types": event_types,
         "root_event_trace_complete": summary.get("root_event_trace_complete"),
@@ -273,6 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--container")
     parser.add_argument("--build-timeout-seconds", type=int, default=1800)
     parser.add_argument("--agent-timeout-seconds", type=int, default=3600)
+    parser.add_argument("--native-stop-grace-seconds", type=float, default=30.0)
     parser.add_argument("--keep-container", action="store_true")
     parser.add_argument("--keep-snapshot", action="store_true")
     return parser

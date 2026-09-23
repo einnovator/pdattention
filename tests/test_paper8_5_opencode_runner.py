@@ -5,6 +5,7 @@ import pytest
 
 from experiments.paper8_5_agent_memory.run_opencode_swebench import (
     PINNED_OPENCODE_VERSION,
+    _has_native_stop_event,
     _load_tool_semantics,
     _validate_model_config,
     build_parser,
@@ -27,6 +28,20 @@ def test_opencode_version_and_controlled_defaults_are_pinned() -> None:
     assert args.model == "pra/qwen3-coder:30b"
     assert args.served_model == "qwen3-coder:30b"
     assert args.agent == "build"
+    assert args.native_stop_grace_seconds == 30.0
+
+
+def test_native_stop_detection_requires_terminal_step_finish() -> None:
+    payload = b"\n".join((
+        b'{"type":"step_finish","part":{"reason":"tool-calls"}}',
+        b'{"type":"step_finish","part":{"reason":"stop"}}',
+    ))
+
+    assert _has_native_stop_event(payload)
+    assert not _has_native_stop_event(
+        b'{"type":"step_finish","part":{"reason":"tool-calls"}}'
+    )
+    assert not _has_native_stop_event(b"not-json")
 
 
 def test_model_config_requires_same_primary_and_small_model(tmp_path: Path) -> None:
