@@ -25,7 +25,11 @@ from pra_hf.context_records import (
     serialize_record,
 )
 
-from .matched_token_tail import MatchedTokenTailConfig, materialize_matched_token_tail
+from .matched_token_tail import (
+    MatchedTokenTailConfig,
+    matched_token_tail_full_floor_record_ids,
+    materialize_matched_token_tail,
+)
 
 
 TokenCounter = Callable[[str], int]
@@ -224,14 +228,27 @@ class PRAAgentMatchedTailSelector:
         history = recordize_pra_agent_records(records)
         full_tokens = sum(self.count_tokens(row.content) for row in history.records)
         requested = max(1, math.ceil(full_tokens * self.retention_fraction))
+        config = MatchedTokenTailConfig(
+            protected_head_turns=self.protected_head_turns,
+            protected_tail_turns=self.protected_tail_turns,
+            boundary_compaction="declared_safe",
+        )
+        mandatory_floor_ids = matched_token_tail_full_floor_record_ids(
+            history, config
+        )
+        mandatory_floor_tokens = sum(
+            self.count_tokens(row.content)
+            for row in history.records
+            if row.record_id in mandatory_floor_ids
+        )
+        # A percentage is a target ceiling, never permission to discard task
+        # instructions or configured causal floors.  Early short histories
+        # therefore realize 100% retention and report the nominal overflow.
+        effective_budget = max(requested, mandatory_floor_tokens)
         plan = materialize_matched_token_tail(
             history,
-            max_materialized_tokens=requested,
-            config=MatchedTokenTailConfig(
-                protected_head_turns=self.protected_head_turns,
-                protected_tail_turns=self.protected_tail_turns,
-                boundary_compaction="declared_safe",
-            ),
+            max_materialized_tokens=effective_budget,
+            config=config,
             count_tokens=self.count_tokens,
         )
         by_id = {row.record_id: row for row in history.records}
@@ -252,8 +269,9 @@ class PRAAgentMatchedTailSelector:
             "selected_history_tokens": plan.logical_plan.selected_tokens,
             "materialized_history_tokens": plan.materialized_tokens,
             "requested_budget_tokens": requested,
-            "mandatory_tokens": plan.logical_plan.mandatory_tokens,
-            "mandatory_overflow_tokens": plan.logical_plan.mandatory_overflow_tokens,
+            "effective_budget_tokens": effective_budget,
+            "mandatory_tokens": mandatory_floor_tokens,
+            "mandatory_overflow_tokens": max(0, mandatory_floor_tokens - requested),
             "full_record_ids": [row.record_id for row in records],
             "selected_record_ids": [row.record_id for row in selected],
             "excluded_record_ids": [

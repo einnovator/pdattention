@@ -104,3 +104,24 @@ def test_pra_agent_h2_t4_selector_drops_only_an_unprotected_whole_turn() -> None
     )
     assert {"a3", "o3"}.isdisjoint(selected_ids)
     assert selector.traces[0]["excluded_record_ids"] == ["a3", "o3"]
+
+
+def test_pra_agent_percentage_never_overrides_short_history_floor() -> None:
+    rows = (
+        _message("task", "user", "long immutable task definition " * 100),
+        _message("a1", "assistant", "action"),
+        _observation("o1", "result"),
+    )
+    selector = PRAAgentMatchedTailSelector(
+        retention_fraction=0.9,
+        count_tokens=lambda text: len(text.split()),
+        tokenizer_identity="unit-whitespace",
+    )
+
+    selected = selector(rows, "ignored")
+
+    assert tuple(row.record_id for row in selected) == ("task", "a1", "o1")
+    assert selector.traces[0]["mandatory_overflow_tokens"] > 0
+    assert selector.traces[0]["materialized_history_tokens"] == (
+        selector.traces[0]["full_history_tokens"]
+    )
