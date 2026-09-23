@@ -1,0 +1,10 @@
+{
+  "schema_version": "paper8.5.request-normalization.v1",
+  "purpose": "Remove Kilo's wall-clock-only environment field so repeated controls have identical model-visible initial input.",
+  "rules": [
+    {
+      "pattern": "Message time: [^\\n]+",
+      "replacement": "Message time: FROZEN-EVALUATION-TIME"
+    }
+  ]
+}

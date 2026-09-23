@@ -47,6 +47,14 @@ def build_parser() -> argparse.ArgumentParser:
             "Use only with non-sensitive evaluation prompts."
         ),
     )
+    parser.add_argument(
+        "--request-normalizations-json",
+        type=Path,
+        help=(
+            "Harness-declared regex replacements for volatile message-content "
+            "metadata. The raw first-request capture remains unmodified."
+        ),
+    )
     parser.add_argument("--boundary-mode", default="boundary_free")
     parser.add_argument("--protected-head-turns", type=int, default=1)
     parser.add_argument("--protected-tail-turns", type=int, default=1)
@@ -99,6 +107,24 @@ def _tool_semantics(path: Path | None) -> dict[str, dict[str, object]]:
                for name, value in payload.items()):
         raise ValueError("every tool semantics entry must be an object")
     return {name: dict(value) for name, value in payload.items()}
+
+
+def _request_normalizations(path: Path | None) -> tuple[tuple[str, str], ...]:
+    if path is None:
+        return ()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    rules = payload.get("rules") if isinstance(payload, dict) else None
+    if not isinstance(rules, list):
+        raise ValueError("request normalizations JSON must contain a rules list")
+    normalized = []
+    for rule in rules:
+        if not isinstance(rule, dict) or not isinstance(rule.get("pattern"), str):
+            raise ValueError("every normalization rule requires a string pattern")
+        replacement = rule.get("replacement", "")
+        if not isinstance(replacement, str):
+            raise ValueError("normalization replacement must be a string")
+        normalized.append((rule["pattern"], replacement))
+    return tuple(normalized)
 
 
 def build_config(
@@ -166,6 +192,9 @@ def main() -> None:
         upstream_connect_retry_seconds=args.upstream_connect_retry_seconds,
         upstream_curl_executable=args.upstream_curl_executable,
         first_request_capture_path=args.capture_first_request,
+        request_content_normalizations=(
+            _request_normalizations(args.request_normalizations_json)
+        ),
     )
     endpoint = proxy.start(args.host, args.port)
     print(json.dumps({

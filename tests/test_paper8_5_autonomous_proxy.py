@@ -1961,8 +1961,10 @@ def test_proxy_optionally_captures_unmodified_first_request(tmp_path):
         ),
         trace_path=tmp_path / "trace.jsonl",
         first_request_capture_path=capture,
+        request_content_normalizations=((r"Message time: [^\n]+", "Message time: FROZEN"),),
     )
     payload = _payload()
+    payload["messages"][-1]["content"] += "\nMessage time: 2026-09-23T00:46:17Z"
     url = proxy.start()
     try:
         assert _post(f"{url}/chat/completions", payload)[0] == 200
@@ -1971,6 +1973,9 @@ def test_proxy_optionally_captures_unmodified_first_request(tmp_path):
         upstream.close()
 
     assert json.loads(capture.read_text()) == payload
+    assert upstream.requests[0]["messages"][-1]["content"].endswith(
+        "Message time: FROZEN"
+    )
 
 
 def test_proxy_forwards_ordinary_selected_text_and_logs_reacquisition(tmp_path):

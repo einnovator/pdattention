@@ -1195,6 +1195,7 @@ class AutonomousSelectionProxy:
         curl_runner: Callable[..., Any] = subprocess.run,
         native_request_builder: Callable[..., Mapping[str, Any]] | None = None,
         first_request_capture_path: Path | None = None,
+        request_content_normalizations: Sequence[tuple[str, str]] = (),
     ) -> None:
         if upstream_connect_attempts < 1:
             raise ValueError("upstream connect attempts must be positive")
@@ -1221,6 +1222,10 @@ class AutonomousSelectionProxy:
         self.first_request_capture_path = (
             Path(first_request_capture_path)
             if first_request_capture_path is not None else None
+        )
+        self.request_content_normalizations = tuple(
+            (re.compile(pattern), replacement)
+            for pattern, replacement in request_content_normalizations
         )
         self._lock = threading.Lock()
         self._upstream_io_lock = threading.Lock()
@@ -1543,6 +1548,31 @@ class AutonomousSelectionProxy:
                             json.dumps(payload, indent=2, sort_keys=True) + "\n",
                             encoding="utf-8",
                         )
+            if self.request_content_normalizations:
+                normalized_messages = []
+                for message in payload.get("messages") or ():
+                    normalized = dict(message)
+                    content = normalized.get("content")
+                    if isinstance(content, str):
+                        for pattern, replacement in self.request_content_normalizations:
+                            content = pattern.sub(replacement, content)
+                        normalized["content"] = content
+                    elif isinstance(content, list):
+                        normalized_content = []
+                        for item in content:
+                            if not isinstance(item, Mapping):
+                                normalized_content.append(item)
+                                continue
+                            normalized_item = dict(item)
+                            text = normalized_item.get("text")
+                            if isinstance(text, str):
+                                for pattern, replacement in self.request_content_normalizations:
+                                    text = pattern.sub(replacement, text)
+                                normalized_item["text"] = text
+                            normalized_content.append(normalized_item)
+                        normalized["content"] = normalized_content
+                    normalized_messages.append(normalized)
+                payload["messages"] = normalized_messages
             payload, joined_execution_receipts = self._attach_execution_receipts(payload)
             if self.config.fill_missing_generation_parameters:
                 payload.setdefault("temperature", self.config.temperature)
