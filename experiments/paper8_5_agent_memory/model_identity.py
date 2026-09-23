@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import subprocess
 from typing import Any, Mapping
 import urllib.request
 
@@ -50,9 +51,32 @@ def fetch_ollama_model_identity(
     expected_model: str,
     expected_revision: str,
     timeout_seconds: float = 20,
+    curl_executable: str | None = None,
 ) -> dict[str, Any]:
-    with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    if curl_executable is None:
+        with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        transport = "urllib"
+    else:
+        completed = subprocess.run(
+            (
+                curl_executable,
+                "--fail-with-body",
+                "--silent",
+                "--show-error",
+                "--max-time",
+                str(timeout_seconds),
+                url,
+            ),
+            capture_output=True,
+            timeout=timeout_seconds + 5,
+            check=False,
+        )
+        if completed.returncode:
+            detail = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"model-identity curl failed: {detail}")
+        payload = json.loads(completed.stdout.decode("utf-8"))
+        transport = "curl"
     result = validate_ollama_tags(
         payload,
         expected_model=expected_model,
@@ -61,6 +85,6 @@ def fetch_ollama_model_identity(
     return {
         **result,
         "url": url,
+        "transport": transport,
         "observed_at": datetime.now(timezone.utc).isoformat(),
     }
-

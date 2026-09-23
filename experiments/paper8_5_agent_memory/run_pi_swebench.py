@@ -59,6 +59,7 @@ def observed_model_identity(args: argparse.Namespace) -> dict[str, Any] | None:
         url,
         expected_model=getattr(args, "served_model", None) or args.model,
         expected_revision=revision,
+        curl_executable=getattr(args, "curl_executable", None),
     )
 
 

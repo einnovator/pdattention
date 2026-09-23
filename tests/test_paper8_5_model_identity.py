@@ -1,8 +1,12 @@
 import argparse
+import json
 
 import pytest
 
-from experiments.paper8_5_agent_memory.model_identity import validate_ollama_tags
+from experiments.paper8_5_agent_memory.model_identity import (
+    fetch_ollama_model_identity,
+    validate_ollama_tags,
+)
 from experiments.paper8_5_agent_memory.run_pi_swebench import observed_model_identity
 
 
@@ -55,3 +59,30 @@ def test_typed_agent_identity_binding_is_opt_in_but_atomic() -> None:
             model="m", ollama_tags_url="http://endpoint/api/tags",
             model_revision=None,
         ))
+
+
+def test_model_identity_can_use_declared_curl_transport(monkeypatch) -> None:
+    observed = {}
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+        return argparse.Namespace(
+            returncode=0,
+            stdout=json.dumps(_tags()).encode("utf-8"),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(
+        "experiments.paper8_5_agent_memory.model_identity.subprocess.run",
+        fake_run,
+    )
+    result = fetch_ollama_model_identity(
+        "http://endpoint/api/tags",
+        expected_model="qwen3-coder:30b",
+        expected_revision=DIGEST,
+        curl_executable="/usr/bin/curl",
+    )
+    assert result["transport"] == "curl"
+    assert observed["command"][0] == "/usr/bin/curl"
+    assert observed["kwargs"]["check"] is False

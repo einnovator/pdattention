@@ -985,6 +985,7 @@ def run(args: argparse.Namespace) -> Path:
             args.ollama_tags_url,
             expected_model=args.served_model,
             expected_revision=args.model_revision,
+            curl_executable=args.upstream_curl_executable,
         )
         if args.ollama_tags_url else None
     )
