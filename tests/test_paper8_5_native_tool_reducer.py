@@ -4,6 +4,7 @@ from pathlib import Path
 from experiments.paper8_5_agent_memory.reduce_native_tool_events import (
     reduce_native_tool_events,
 )
+from experiments.paper8_5_agent_memory.reduce_kilo_events import reduce_events
 
 
 def test_native_tool_reducer_separates_transport_and_semantic_failure(
@@ -97,3 +98,26 @@ def test_nested_agent_use_marks_root_trace_incomplete(tmp_path: Path) -> None:
     )
     assert summary["nested_agent_tool_calls"] == 1
     assert summary["root_event_trace_complete"] is False
+
+
+def test_kilo_reducer_uses_shared_portable_tool_semantics(tmp_path: Path) -> None:
+    source = tmp_path / "events.jsonl"
+    source.write_text(json.dumps({
+        "type": "tool_use",
+        "part": {
+            "id": "read-1",
+            "tool": "read",
+            "state": {
+                "status": "completed",
+                "input": {"filePath": "/testbed/a.py"},
+                "output": "source",
+            },
+        },
+    }) + "\n", encoding="utf-8")
+    output = tmp_path / "reduced"
+    reduce_events(source, output)
+    row = json.loads(
+        (output / "canonical_tool_events.jsonl").read_text().splitlines()[0]
+    )
+    assert row["operation_kind"] == "read"
+    assert row["resource_ids"] == ["/testbed/a.py"]

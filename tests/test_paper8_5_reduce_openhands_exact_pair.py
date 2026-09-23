@@ -9,7 +9,7 @@ from experiments.paper8_5_agent_memory.reduce_openhands_exact_pair import reduce
 def _arm(
     path: Path, *, resolved: bool, materialized: int,
     instance: str = "x__y-1", agent: str | None = None,
-    summary_key: str = "action_count",
+    summary_key: str = "action_count", initial_request: str = "request-1",
 ):
     path.mkdir()
     manifest = {
@@ -35,6 +35,10 @@ def _arm(
             "logical_retention_fraction": materialized / 100,
             "requested_budget_tokens": 90,
             "materialized_budget_unused_tokens": max(0, 90 - materialized),
+            "request_input_sha256": (
+                initial_request if index == 1 else f"request-{index}"
+            ),
+            "exact_request_passthrough": index == 1,
         })
     (path / "proxy_trace.jsonl").write_text(
         "\n".join(json.dumps(row) for row in rows) + "\n"
@@ -95,3 +99,21 @@ def test_exact_pair_reducer_accepts_typed_agent_call_counter(tmp_path: Path):
     assert result["agent"] == "pi"
     assert result["agent_version"] == "1.0"
     assert result["full"]["actions"] == 2
+
+
+def test_exact_pair_reducer_rejects_different_initial_model_input(tmp_path: Path):
+    full = tmp_path / "full"
+    candidate = tmp_path / "candidate"
+    _arm(full, resolved=True, materialized=100, initial_request="full-request")
+    _arm(
+        candidate, resolved=True, materialized=75,
+        initial_request="candidate-request",
+    )
+
+    result = reduce_pair(
+        full, candidate, policy="matched_token_tail", budget_fraction=0.9,
+        protected_head_turns=2, protected_tail_turns=4,
+    )
+
+    assert result["qualification"] == "fail"
+    assert "initial_request_sha256" in result["identity_mismatches"]

@@ -44,6 +44,7 @@ def _arm(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         int(row.get("reported_completion_tokens") or 0) for row in rows
     )
     retentions = [float(row.get("logical_retention_fraction") or 0) for row in rows]
+    initial = rows[0] if rows else {}
     violations = []
     for row in rows:
         generation = row.get("generation")
@@ -93,6 +94,11 @@ def _arm(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         "tokenizer_revision": manifest.get("tokenizer_revision"),
         "reference_trajectory_sha256": manifest.get("reference_trajectory_sha256"),
         "source_image": manifest.get("source_image"),
+        "initial_request_sha256": initial.get("request_input_sha256"),
+        "initial_generation": initial.get("generation"),
+        "initial_exact_request_passthrough": bool(
+            initial.get("exact_request_passthrough", False)
+        ),
     }, rows)
 
 
@@ -111,6 +117,7 @@ def reduce_pair(
         "agent", "agent_version", "instance_id", "model", "model_revision",
         "tokenizer", "tokenizer_revision",
         "reference_trajectory_sha256", "source_image",
+        "initial_request_sha256", "initial_generation",
     )
     mismatches = {
         key: {"full": full.get(key), "candidate": candidate.get(key)}
@@ -128,6 +135,8 @@ def reduce_pair(
     )
     qualification = (
         "pass" if not mismatches
+        and bool(full["initial_exact_request_passthrough"])
+        and bool(candidate["initial_exact_request_passthrough"])
         and bool(full["official_resolved"])
         and bool(candidate["official_resolved"])
         and not full["completion_limit_violation_request_indices"]

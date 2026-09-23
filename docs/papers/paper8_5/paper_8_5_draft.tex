@@ -78,12 +78,16 @@ the row therefore describes pure prompt-pinned recency and is not evidence for
 the corrected H2/T4 policy.
 
 In corrected exact-token transfer on one shared identity, OpenHands preserves
-the official solve at 35.35\% own-trajectory whole-record saving, whereas Pi
-loses the solve: its 8.53\% materialized saving contains only 0.30\%
-whole-group retirement and is dominated by unsafe post-hoc rewriting of an
-oversized observation.  This contrast motivates a portable declared-safe
-contract: internal spans are selectable only when stable natural boundaries
-exist before K/V encoding; otherwise only whole records may retire.
+the official solve at 35.35\% own-trajectory whole-record saving.  Pi first
+loses the solve because its apparent 8.53\% materialized saving contains only
+0.30\% whole-group retirement and is dominated by unsafe post-hoc rewriting
+of an oversized observation.  Under the repaired declared-safe contract, Pi
+again resolves with the exact FULL patch at 41.53\% own whole-record saving,
+but uses 39 versus 28 calls and saves only 11.81\% against paired FULL work.
+This contrast motivates a portable rule: internal spans are selectable only
+when stable natural boundaries exist before K/V encoding; otherwise only whole
+records may retire.  Correctness repair alone does not guarantee favorable
+trajectory economics.
 
 Finally, per-request omission can reverse economically: one six-issue policy
 omits 55.34\% against its own trajectory and resolves 6/6, but expands from 60
@@ -690,6 +694,18 @@ before model-visible materialization and K/V encoding.  Otherwise the policy
 retires the whole causal group or leaves budget unused.  This negative result
 is a policy-transfer failure, not an inference-engine result.
 
+The repaired Pi reruns validate that distinction.  Declared-safe H2/T4 and
+H2/T8 both resolve officially and reproduce the FULL control's exact 689-byte
+patch digest.  H2/T4 saves 45.16\% against its own whole-record counterfactual
+but expands to 43 model calls and saves only 1.40\% against paired FULL input.
+The predeclared H2/T8 mitigation reduces the expansion to 39 calls, saves
+41.53\% within trajectory and 11.81\% against paired FULL, but still fails the
+no-call-increase and paired-economics gates.  Its first 13 actions match FULL;
+the first divergence follows selection at request~13 and a third schema-invalid
+edit result.  Thus the unsafe rewrite was a real correctness bug, while the
+remaining inefficiency is an agent recovery/conditioning result requiring
+causal add-back rather than a wider tail-size grid.
+
 \subsection{Task-clustered headline comparison}
 
 Table~\ref{tab:editorial-headline-policies} keeps discovery and confirmation
@@ -714,6 +730,7 @@ Matched Recency & development & 3 (6 runs) & 5/6; 4/6 & 154/113 & not admitted &
 Matched Recency H2/T4 & post-fix audit & 3 & 3/3; 3/3 & 61/64 & 364,457/341,556 & 6.03L/8.17M; 6.28P\% & $+3$ calls; not promoted \\
 Matched Recency H2/T4 & OpenHands post-fix & 1 & 1/1; 1/1 & 33/31 & 509,381/287,641 & 35.35/43.53\% & $-2$ actions; repeat pending \\
 Matched Recency H2/T4 & Pi post-fix & 1 & 1/1; 0/1 & 28/28 & 464,135/424,805 & 0.30L/8.53M; 8.47P\% & lost success; superseded \\
+Declared-safe H2/T8 & Pi repair audit & 1 & 1/1; 1/1 & 28/39 & 464,135/409,335 & 41.53L/11.81P\% & exact patch; $+11$ calls \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
@@ -4451,6 +4468,14 @@ original K/V was encoded.  Otherwise only whole-record retirement is eligible.
 Evidence and the first-divergence audit are in
 \path{cross_agent_transfer/pi_exact_h2t4_task01_v3}; the replacement contract
 is \path{configs/cross_agent_model_replication_v2.json}.
+
+Two declared-safe repeats then isolate the repair from policy utility.  Both
+H2/T4 and H2/T8 preserve the official solve and exact minimal patch without
+rewriting any selected record.  H2/T8 is the less costly arm: 39 versus 28
+FULL calls, 41.53\% own whole-record saving, and 11.81\% paired saving.  It
+still fails promotion because the extra recovery calls consume most of the
+omission benefit.  The compact evidence bundle is
+\path{cross_agent_transfer/pi_declared_safe_task01_v4}.
 
 \section{Detailed Transfer Protocol}
 

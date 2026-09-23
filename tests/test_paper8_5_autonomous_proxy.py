@@ -37,9 +37,11 @@ from experiments.paper8_5_agent_memory.auxiliary_workspace_state import (
     create_auxiliary_workspace_state_prediction,
 )
 from experiments.paper8_5_agent_memory.serve_agent_transfer_proxy import (
-    DEFAULT_TOOL_SEMANTICS,
     build_config as build_agent_transfer_config,
     build_parser as build_agent_transfer_parser,
+)
+from experiments.paper8_5_agent_memory.typed_tool_semantics import (
+    DEFAULT_TOOL_SEMANTICS,
 )
 from experiments.paper8_5_agent_memory.negative_receipts import NegativeRealizationMode
 from experiments.paper8_5_agent_memory.materialization import MaterializationMode

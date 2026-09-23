@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .reduce_native_tool_events import reduce_native_tool_events
+from .typed_tool_semantics import DEFAULT_TOOL_SEMANTICS
 
 
 def reduce_events(source: Path, output: Path) -> dict[str, Any]:
@@ -15,7 +16,7 @@ def reduce_events(source: Path, output: Path) -> dict[str, Any]:
         source,
         output,
         agent="kilo",
-        tool_semantics={},
+        tool_semantics=DEFAULT_TOOL_SEMANTICS,
         token_note=(
             "Kilo usage includes the agent system prompt and tool schemas. "
             "Compare policy savings within Kilo; do not pool these totals "

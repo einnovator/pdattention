@@ -10,56 +10,7 @@ import threading
 
 from .autonomous_proxy import AutonomousSelectionConfig, AutonomousSelectionProxy
 from .run_autonomous_swebench import _exact_token_counter
-
-
-DEFAULT_TOOL_SEMANTICS = {
-    "read": {
-        "category": "filesystem",
-        "operation_kind": "read",
-        "resource_arguments": ["path", "file_path", "filePath"],
-    },
-    "read_file": {
-        "category": "filesystem",
-        "operation_kind": "read",
-        "resource_arguments": ["path", "file_path", "filePath"],
-    },
-    "grep": {
-        "category": "filesystem",
-        "operation_kind": "read",
-        "resource_arguments": ["path"],
-    },
-    "search_text": {
-        "category": "filesystem",
-        "operation_kind": "read",
-        "resource_arguments": ["path"],
-    },
-    "find": {"category": "filesystem", "operation_kind": "search_discovery"},
-    "glob": {"category": "filesystem", "operation_kind": "search_discovery"},
-    "ls": {"category": "filesystem", "operation_kind": "search_discovery"},
-    "edit": {
-        "category": "filesystem",
-        "operation_kind": "write",
-        "resource_arguments": ["path", "file_path", "filePath"],
-    },
-    "write": {
-        "category": "filesystem",
-        "operation_kind": "write",
-        "resource_arguments": ["path", "file_path", "filePath"],
-    },
-    "apply_patch": {
-        "category": "filesystem",
-        "operation_kind": "write",
-        "resource_arguments": ["path", "file_path", "filePath"],
-    },
-    "replace_text": {
-        "category": "filesystem",
-        "operation_kind": "write",
-        "resource_arguments": ["path", "file_path", "filePath"],
-    },
-    # Arbitrary shell is deliberately an unknown barrier unless execution
-    # middleware supplies complete resource/effect evidence.
-    "bash": {"category": "shell", "operation_kind": "unknown"},
-}
+from .typed_tool_semantics import DEFAULT_TOOL_SEMANTICS
 
 
 def build_parser() -> argparse.ArgumentParser:
