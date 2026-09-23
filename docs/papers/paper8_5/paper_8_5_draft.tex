@@ -4974,7 +4974,7 @@ records whether later turns carry complete input or provider-managed
 \texttt{previous\_response\_id} state.  No memory-policy result is claimed
 until this inventory is complete: applying the Chat-Completions recordizer to
 a Responses session without proving state ownership would conflate agent
-transfer with a transport rewrite.  The first Task-1 control remains pending.
+transfer with a transport rewrite.
 
 For the open-model cohort we additionally enable Codex's native
 \texttt{--oss --local-provider ollama} mode.  Codex therefore owns the Ollama
@@ -4988,6 +4988,20 @@ sampling as agent-native and unverified rather than falsely labeling it a
 temperature-zero comparison.  It may establish capability and protocol shape;
 it cannot enter the strict frozen-sampling agent comparison until request-side
 sampling is observed or controlled.
+
+The first native-Ollama control now establishes that capability on
+\texttt{django\_\_django-15277}.  Codex completes normally in 399.6 seconds,
+exports the same minimal 689-byte guarded \texttt{MaxLengthValidator} patch as
+the other successful Task-1 agents, and resolves the official instance.  Its
+complete 80-event stream contains 24 agent messages and 52 command-execution
+start/completion events; native usage reports 397,455 cumulative input tokens,
+including 380,392 cache-read tokens, and 4,045 output tokens.  A transparent
+container-local TCP bridge lets the built-in Ollama provider reach the frozen
+remote model host without introducing a Responses-to-Chat adapter.  This row
+is therefore a clean transport/capability admission, but remains excluded from
+frozen-sampling accuracy comparisons and supplies no PRA saving claim.
+Evidence is in
+\path{cross_agent_transfer/codex_task01_full_qwen3_30b_native_v1}.
 
 \subsection{PRA Agent}
 
