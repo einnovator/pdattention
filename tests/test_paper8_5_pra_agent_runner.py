@@ -9,6 +9,7 @@ from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
 )
 from experiments.paper8_5_agent_memory.run_pra_agent_persistent_swebench import (
     _load_task_registry,
+    _saving_fraction,
     _task_spec,
     build_parser as build_persistent_parser,
 )
@@ -275,6 +276,13 @@ def test_persistent_runner_keeps_large_record_capacity_for_multi_task_runs() -> 
 
     assert args.context_records == 4096
     assert args.max_tool_rounds == 80
+
+
+def test_persistent_prefix_saving_uses_cumulative_token_sums() -> None:
+    assert _saving_fraction(1000 + 3000, 1000 + 1800) == pytest.approx(0.3)
+    assert _saving_fraction(0, 0) == 0.0
+    with pytest.raises(ValueError, match="negative"):
+        _saving_fraction(-1, 0)
 
 
 def test_persistent_task_registry_supports_canonical_n_prefix(tmp_path) -> None:

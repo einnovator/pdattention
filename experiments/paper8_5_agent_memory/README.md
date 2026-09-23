@@ -147,6 +147,12 @@ session axis; the current frozen confirmation mechanism cohort extends one
 continuous persistent session through all fourteen Easy-14 identities. Each
 sequence is run in both `fresh_per_issue` and `persistent` modes where the
 comparison requires both controls.
+For PRA Agent, one immutable fourteen-issue execution records cumulative
+prefix counters after every episode.  It therefore supplies the logical
+N=1,...,14 curve without launching 105 task episodes across fourteen separate
+prefix runs.  A paired policy still requires its own run with the identical
+order, model identity, generation controls, task sources, and fresh
+workspaces.
 Independent cross-repository sequences are a hygiene/control stratum; related
 same-repository and dependent same-workspace sequences are the strata in which
 retained prior state can legitimately outperform deliberate fresh sessions.

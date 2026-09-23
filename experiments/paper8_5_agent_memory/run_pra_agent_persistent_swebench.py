@@ -62,6 +62,12 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
+def _saving_fraction(full_tokens: int, materialized_tokens: int) -> float:
+    if full_tokens < 0 or materialized_tokens < 0:
+        raise ValueError("token counts cannot be negative")
+    return 0.0 if not full_tokens else 1.0 - materialized_tokens / full_tokens
+
+
 def _load_task_registry(
     path: Path,
     *,
@@ -273,6 +279,8 @@ def run(args: argparse.Namespace) -> Path:
     session_started = datetime.now(timezone.utc)
     predictions: dict[str, dict[str, str]] = {}
     episode_manifests: list[dict[str, object]] = []
+    prefix_full_tokens = 0
+    prefix_materialized_tokens = 0
     error: Exception | None = None
     active_container: str | None = None
     try:
@@ -352,6 +360,8 @@ def run(args: argparse.Namespace) -> Path:
             materialized_tokens = sum(
                 int(row["materialized_history_tokens"]) for row in traces
             )
+            prefix_full_tokens += full_tokens
+            prefix_materialized_tokens += materialized_tokens
             episode_manifest: dict[str, object] = {
                 "schema_version": 1,
                 "ordinal": ordinal,
@@ -371,9 +381,15 @@ def run(args: argparse.Namespace) -> Path:
                 "patch_sha256": _sha256(patch.stdout),
                 "cumulative_full_history_tokens": full_tokens,
                 "cumulative_materialized_history_tokens": materialized_tokens,
-                "own_saving_fraction": (
-                    0.0 if not full_tokens else
-                    1.0 - materialized_tokens / full_tokens
+                "own_saving_fraction": _saving_fraction(
+                    full_tokens, materialized_tokens
+                ),
+                "cumulative_prefix_full_history_tokens": prefix_full_tokens,
+                "cumulative_prefix_materialized_history_tokens": (
+                    prefix_materialized_tokens
+                ),
+                "cumulative_prefix_own_saving_fraction": _saving_fraction(
+                    prefix_full_tokens, prefix_materialized_tokens
                 ),
                 "official_resolution": None,
                 "error_type": (
@@ -469,9 +485,7 @@ def run(args: argparse.Namespace) -> Path:
         ),
         "cumulative_full_history_tokens": total_full,
         "cumulative_materialized_history_tokens": total_materialized,
-        "own_saving_fraction": (
-            0.0 if not total_full else 1.0 - total_materialized / total_full
-        ),
+        "own_saving_fraction": _saving_fraction(total_full, total_materialized),
         "episodes": episode_manifests,
         "transport": backend.inspect(),
         "generation": {
