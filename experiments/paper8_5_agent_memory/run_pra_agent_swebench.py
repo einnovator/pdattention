@@ -63,6 +63,20 @@ class DockerWorkspaceTools:
         self.docker = docker
         self.container = container
 
+    def bind_container(self, container: str) -> None:
+        """Retarget stable tool identities to another isolated workspace.
+
+        Persistent agent sessions keep one capability/tool schema while each
+        SWE-bench issue executes in its own official container.  The bound
+        methods held by :class:`Toolset` resolve ``self.container`` at call
+        time, so switching this pointer does not rewrite tool identities or
+        the model-visible protocol.
+        """
+
+        if not container.strip():
+            raise ValueError("container cannot be empty")
+        self.container = container
+
     @staticmethod
     def _relative_path(value: str) -> str:
         path = PurePosixPath(value or ".")

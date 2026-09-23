@@ -6,6 +6,10 @@ from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
     DockerWorkspaceTools,
     build_parser,
 )
+from experiments.paper8_5_agent_memory.run_pra_agent_persistent_swebench import (
+    _task_spec,
+    build_parser as build_persistent_parser,
+)
 from experiments.paper8_5_agent_memory.pra_agent_policy import (
     PRAAgentMatchedTailSelector,
     recordize_pra_agent_records,
@@ -28,7 +32,8 @@ def test_docker_workspace_rejects_absolute_and_parent_paths() -> None:
 
 
 def test_docker_workspace_exposes_typed_portable_tools() -> None:
-    toolset = DockerWorkspaceTools("docker", "task-container").toolset("paper8-5")
+    workspace = DockerWorkspaceTools("docker", "task-container")
+    toolset = workspace.toolset("paper8-5")
 
     assert {resource.name for resource in toolset.resources} == {
         "list_files",
@@ -42,6 +47,8 @@ def test_docker_workspace_exposes_typed_portable_tools() -> None:
     by_name = {resource.name: resource for resource in toolset.resources}
     assert by_name["read_file"].side_effect_class.value == "read"
     assert by_name["replace_text"].side_effect_class.value == "write"
+    workspace.bind_container("next-task-container")
+    assert workspace.container == "next-task-container"
 
 
 def _message(record_id: str, role: str, text: str) -> ContextRecord:
@@ -77,6 +84,24 @@ def test_recordize_pra_agent_records_preserves_typed_causal_pairs() -> None:
         ("a2", "o2"),
     ]
     assert all(turn.complete for turn in history.turns)
+
+
+def test_recordize_completion_recovery_is_not_an_immutable_user_prompt() -> None:
+    rows = (
+        _message("task", "user", "fix the issue"),
+        _message("premature", "assistant", "I will implement the fix."),
+        _message(
+            "guard",
+            "user",
+            "[Completion rejected: No tracked source patch exists.]",
+        ),
+    )
+
+    history = recordize_pra_agent_records(rows)
+
+    assert history.turns[0].record_ids == ("premature", "guard")
+    assert history.turns[0].complete is True
+    assert history.records[-1].primary_role.value == "error_or_rejection"
 
 
 def test_pra_agent_h2_t4_selector_drops_only_an_unprotected_whole_turn() -> None:
@@ -146,3 +171,22 @@ def test_pra_agent_runner_exposes_auditable_history_policy_controls() -> None:
     assert args.retention_fraction == 0.9
     assert (args.protected_head_turns, args.protected_tail_turns) == (2, 4)
     assert args.tokenizer_revision == "frozen-revision"
+
+
+def test_persistent_runner_accepts_ordered_boundary_free_tasks() -> None:
+    args = build_persistent_parser().parse_args([
+        "--task", "django__django-15277=task1.json",
+        "--task", "scikit-learn__scikit-learn-14087=task2.json",
+        "--output", "out",
+        "--endpoint", "http://127.0.0.1:8000",
+        "--history-policy", "matched_token_tail",
+    ])
+
+    assert [row[0] for row in args.task] == [
+        "django__django-15277",
+        "scikit-learn__scikit-learn-14087",
+    ]
+    assert args.context_records == 4096
+    assert _task_spec("django__django-15277=task.json")[0] == (
+        "django__django-15277"
+    )

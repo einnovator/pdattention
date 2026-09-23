@@ -152,7 +152,11 @@ def recordize_pra_agent_records(
             continue
 
         if record.record_type == RecordType.GENERIC_TEXT and role == "user":
-            if pending is not None and content.startswith("[Tool decision rejected:"):
+            product_recovery = content.startswith((
+                "[Tool decision rejected:",
+                "[Completion rejected:",
+            ))
+            if pending is not None and product_recovery:
                 pending["record_ids"].append(record.record_id)
                 logical.append(AgentRecord(
                     record.record_id,
