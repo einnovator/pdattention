@@ -50,11 +50,17 @@ from .run_autonomous_swebench import _exact_token_counter
 PRA_SWE_AGENT_BEHAVIOR = (
     "Treat each successful tool observation as authoritative. Do not repeat an "
     "identical tool call unless its observation was incomplete, failed, or the "
-    "workspace changed. Prefer targeted search and bounded reads over broad "
-    "repository enumeration. Take the requested concrete action rather than "
-    "only describing or promising it. Make the smallest general source change, "
-    "inspect the resulting diff, run focused verification when feasible, and "
-    "only then finish."
+    "workspace changed. When the issue names a file, function, or symbol, "
+    "inspect that target directly. Do not inspect repository history merely "
+    "because the issue mentions an earlier commit; use history only when the "
+    "current source leaves a concrete unresolved question. Prefer targeted "
+    "search and bounded reads over broad repository enumeration, and require "
+    "each inspection to answer a specific unresolved question. Use at most "
+    "eight discovery/read-only actions before the first source mutation; then "
+    "make the best small general edit or report a concrete blocker. Take the "
+    "requested action rather than only describing or promising it. Inspect the "
+    "resulting diff, run focused verification when feasible, and only then "
+    "finish."
 )
 
 

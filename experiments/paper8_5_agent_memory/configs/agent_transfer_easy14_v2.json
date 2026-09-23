@@ -1,0 +1,130 @@
+{
+  "schema_version": 2,
+  "campaign_id": "paper85-cross-agent-easy14-v2",
+  "status": "active staged admission and boundary-free persistent-session campaign",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "benchmark_denominator": 14,
+  "task_source_registry": "easy14_task_sources_v1.json",
+  "task_source_registry_sha256": "dd1118c0ce92e21817031f26d8d14d8681ad4982e07a0b97db66777571ee0476",
+  "model_identity": {
+    "underlying_model": "qwen3-coder:30b",
+    "underlying_catalog_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "weight_blob_sha256": "1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a",
+    "serving_profiles": {
+      "single_task": {
+        "request_model": "qwen3-coder:30b-ctx64k",
+        "serving_alias_revision": "13cd851c8a123721a1b448f47d94733d63966757363e002dae4a0ef8a0eb9253",
+        "loaded_context_tokens": 65536
+      },
+      "persistent_n3": {
+        "request_model": "qwen3-coder:30b-ctx131k",
+        "serving_alias_revision": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+        "loaded_context_tokens": 131072
+      }
+    },
+    "identity_rule": "Every run records both the alias digest and underlying weight/config provenance; a catalog maximum is not accepted as active-context evidence."
+  },
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "pra_agent_behavior_sha256": "9b6643a2f73552ad2d90209a9d98ec0e8de7bec98c6148a8edca4a7cd9bc6031",
+  "ordered_instance_ids": [
+    "django__django-15277",
+    "django__django-15368",
+    "scikit-learn__scikit-learn-13135",
+    "django__django-15741",
+    "pytest-dev__pytest-7982",
+    "django__django-16145",
+    "django__django-14089",
+    "sphinx-doc__sphinx-8721",
+    "scikit-learn__scikit-learn-14496",
+    "sympy__sympy-23534",
+    "scikit-learn__scikit-learn-12585",
+    "psf__requests-2317",
+    "sympy__sympy-16886",
+    "django__django-12741"
+  ],
+  "agents": [
+    {
+      "agent_id": "mini-swe-agent",
+      "status": "frozen development reference; exact-token Tasks 1-3 FULL/tail-90 complete"
+    },
+    {
+      "agent_id": "openhands",
+      "version": "1.49.2",
+      "status": "Tasks 1-3 FULL/tail-90 complete; native condenser disabled"
+    },
+    {
+      "agent_id": "pra-agent",
+      "status": "Tasks 1 and 2 controlled FULL resolved; Task 4 post-guard patch resolves but remains auxiliary pending a transport-clean 131K retry"
+    },
+    {
+      "agent_id": "opencode",
+      "version": "1.18.31",
+      "status": "hermetic runner, typed-event reducer, zero-temperature config, and 131K alias preflight complete; model-backed admission pending"
+    },
+    {
+      "agent_id": "codex",
+      "version": "0.153.0",
+      "status": "native Ollama runner and model-digest gate complete; native sampling controls remain unverified and are separately labelled"
+    },
+    {
+      "agent_id": "pi",
+      "version": "0.75.3",
+      "status": "Tasks 1 and 2 FULL resolved; Task 4 failed before mutation after a length stop"
+    },
+    {
+      "agent_id": "kilo",
+      "version": "7.7.5",
+      "status": "Tasks 1 and 2 FULL resolved; Task 4 failed before mutation after a length stop"
+    }
+  ],
+  "execution_ladder": [
+    {
+      "stage": "single_task_transport_qualification",
+      "tasks": [1, 2, 4],
+      "arms": ["FULL"],
+      "gate": "official source-patch outcome, clean transport termination, observed model identity, complete durable event trace"
+    },
+    {
+      "stage": "boundary_free_n3",
+      "tasks": [1, 2, 3],
+      "arms": ["FULL", "instruction_epoch_E2", "matched_tail_90"],
+      "gate": "zero lost paired FULL successes, no aggregate action increase, and a valid N=1..3 cumulative prefix curve"
+    },
+    {
+      "stage": "selective_n6_then_n14",
+      "tasks": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+      "arms": ["nondominated_frozen_policy"],
+      "gate": "report unconditional official resolution, preservation on fresh per-task FULL successes, own logical saving, and paired workload saving separately"
+    }
+  ],
+  "persistent_session_contract": {
+    "boundary_mode": "boundary_free",
+    "task_boundary_signal_to_selector": false,
+    "preserve_all_genuine_user_prompts": true,
+    "workspace": "fresh official task container per issue",
+    "session": "one continuous model/agent typed-record history",
+    "prefix_curve": "one immutable execution records cumulative values after every episode",
+    "full_context_rule": "Persistent FULL is measured only while it fits the active context. Beyond that point, compare the selective session with declared fresh-per-task FULL controls rather than pretending an impossible persistent FULL arm exists."
+  },
+  "primary_metrics": [
+    "official SWE-bench resolution by task and N prefix",
+    "conditional preservation on paired or fresh-per-task FULL successes",
+    "own logical and materialized saving",
+    "paired cumulative workload saving",
+    "normalized actions and calls to solution",
+    "first divergence and reacquisition",
+    "transport and active-context failures"
+  ],
+  "guardrails": [
+    "Do not compare selective quality on a task that the same agent/model fails under its declared FULL comparator.",
+    "Do not expose benchmark task IDs or explicit task-boundary metadata to a boundary-free selector.",
+    "Do not count ordinary-text compaction as native K/V omission.",
+    "Do not pool Codex native admissions with frozen-sampling rows until sampling is observed or controlled.",
+    "Do not treat shared N prefixes as independent statistical samples."
+  ]
+}

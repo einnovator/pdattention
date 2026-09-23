@@ -92,3 +92,18 @@ def test_ctx131k_model_config_is_consistent_and_frozen() -> None:
     assert payload["provider"]["pra"]["models"][
         "qwen3-coder:30b-ctx131k"
     ]["limit"]["context"] == 131072
+
+
+def test_ctx64k_model_config_is_consistent_and_frozen() -> None:
+    path = (
+        Path(__file__).parents[1]
+        / "experiments" / "paper8_5_agent_memory" / "configs"
+        / "opencode_qwen3_coder_30b_ctx64k_medium_mac.json"
+    )
+    model = "pra/qwen3-coder:30b-ctx64k"
+
+    payload = _validate_model_config(path, model)
+
+    assert payload["provider"]["pra"]["models"][
+        "qwen3-coder:30b-ctx64k"
+    ]["limit"]["context"] == 65536

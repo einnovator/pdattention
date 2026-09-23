@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -324,3 +327,27 @@ def test_persistent_task_registry_supports_canonical_n_prefix(tmp_path) -> None:
     )
 
     assert tasks == [("task-1", (repository / "one.json").resolve())]
+
+
+def test_easy14_v2_campaign_matches_locked_task_registry() -> None:
+    root = Path(__file__).parents[1]
+    config_root = root / "experiments" / "paper8_5_agent_memory" / "configs"
+    campaign = json.loads(
+        (config_root / "agent_transfer_easy14_v2.json").read_text(encoding="utf-8")
+    )
+    registry_path = config_root / campaign["task_source_registry"]
+    registry_bytes = registry_path.read_bytes()
+    registry = json.loads(registry_bytes)
+
+    assert hashlib.sha256(registry_bytes).hexdigest() == (
+        campaign["task_source_registry_sha256"]
+    )
+    assert campaign["ordered_instance_ids"] == [
+        row["instance_id"] for row in registry["tasks"]
+    ]
+    profiles = campaign["model_identity"]["serving_profiles"]
+    assert profiles["single_task"]["loaded_context_tokens"] == 65536
+    assert profiles["persistent_n3"]["loaded_context_tokens"] == 131072
+    assert campaign["persistent_session_contract"][
+        "task_boundary_signal_to_selector"
+    ] is False
