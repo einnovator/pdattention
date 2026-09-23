@@ -39,6 +39,33 @@ def test_model_config_requires_same_primary_and_small_model(tmp_path: Path) -> N
         _validate_model_config(path, "pra/qwen3-coder:30b")
 
 
+def test_model_config_requires_explicit_zero_temperature_controls(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "opencode.json"
+    payload = {
+        "model": "pra/qwen3-coder:30b",
+        "small_model": "pra/qwen3-coder:30b",
+        "agent": {
+            "build": {
+                "model": "pra/qwen3-coder:30b",
+                "temperature": 0.55,
+                "top_p": 1.0,
+                "seed": 0,
+            }
+        },
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="freeze generation controls"):
+        _validate_model_config(path, "pra/qwen3-coder:30b")
+
+    payload["agent"]["build"]["temperature"] = 0.0
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert _validate_model_config(path, "pra/qwen3-coder:30b")["agent"][
+        "build"
+    ]["temperature"] == 0.0
+
+
 def test_opencode_tool_semantics_are_canonical_not_agent_policy() -> None:
     path = (
         Path(__file__).parents[1]

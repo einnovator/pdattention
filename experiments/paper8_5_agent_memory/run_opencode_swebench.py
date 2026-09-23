@@ -54,7 +54,12 @@ def _load_tool_semantics(path: Path) -> dict[str, dict[str, Any]]:
     }
 
 
-def _validate_model_config(path: Path, expected_model: str) -> dict[str, Any]:
+def _validate_model_config(
+    path: Path,
+    expected_model: str,
+    *,
+    agent_name: str = "build",
+) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("model") != expected_model:
         raise ValueError(
@@ -65,6 +70,20 @@ def _validate_model_config(path: Path, expected_model: str) -> dict[str, Any]:
         raise ValueError(
             "OpenCode small_model must equal the controlled primary model"
         )
+    agent = payload.get("agent", {}).get(agent_name, {})
+    expected_controls = {"temperature": 0.0, "top_p": 1.0, "seed": 0}
+    observed_controls = {
+        name: agent.get(name) for name in expected_controls
+    }
+    if observed_controls != expected_controls:
+        raise ValueError(
+            f"OpenCode agent {agent_name!r} must freeze generation controls "
+            f"as {expected_controls}, observed {observed_controls}"
+        )
+    if agent.get("model") != expected_model:
+        raise ValueError(
+            f"OpenCode agent {agent_name!r} model must equal {expected_model!r}"
+        )
     return payload
 
 
@@ -74,7 +93,14 @@ def run(args: argparse.Namespace) -> Path:
     trajectory = Path(args.reference_trajectory).resolve()
     model_config = Path(args.model_config).resolve()
     tool_semantics_path = Path(args.tool_semantics).resolve()
-    _validate_model_config(model_config, args.model)
+    validated_config = _validate_model_config(
+        model_config, args.model, agent_name=args.agent
+    )
+    generation = {
+        name: validated_config["agent"][args.agent][name]
+        for name in ("temperature", "top_p", "seed")
+    }
+    generation["max_completion_tokens"] = 1024
     tool_semantics = _load_tool_semantics(tool_semantics_path)
     observed_model_identity = (
         fetch_ollama_model_identity(
@@ -188,7 +214,7 @@ def run(args: argparse.Namespace) -> Path:
         "observed_model_identity": observed_model_identity,
         "tokenizer": args.tokenizer,
         "tokenizer_revision": args.tokenizer_revision,
-        "generation": {"temperature": 0.0, "top_p": 1.0, "seed": 0, "max_completion_tokens": 1024},
+        "generation": generation,
         "model_config_sha256": _sha256(model_config.read_bytes()),
         "tool_semantics_sha256": _sha256(tool_semantics_path.read_bytes()),
         "native_context_management": "disabled_OPENCODE_DISABLE_AUTOCOMPACT",
