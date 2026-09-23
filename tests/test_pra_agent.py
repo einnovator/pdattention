@@ -295,3 +295,13 @@ def test_agent_preserves_and_recovers_from_host_tool_guard_rejection(tmp_path) -
     assert backend.calls == 2
     assert not turn.tool_executions
     assert "inspection_budget_exhausted" in backend.prompts[1]
+    assistant_messages = [
+        row for row in turn.session.records
+        if isinstance(row.payload, dict) and row.payload.get("role") == "assistant"
+    ]
+    assert "[PRA action rejected]" in assistant_messages[0].payload["text"]
+    assert "but was not executed" in assistant_messages[0].payload["text"]
+    assert "[PRA action executed]" not in assistant_messages[0].payload["text"]
+    assert assistant_messages[0].payload["pra_agent_semantic_role"] == (
+        "assistant_action_rejected"
+    )

@@ -82,7 +82,9 @@ def _generated_text(value: str | GenerationResult) -> str:
     return value.text if isinstance(value, GenerationResult) else str(value)
 
 
-def _durable_assistant_action(text: str, call: ToolCall) -> str:
+def _durable_assistant_action(
+    text: str, call: ToolCall, *, executed: bool = True
+) -> str:
     """Preserve an action without replaying provider-reserved control tokens.
 
     Qwen/Ollama interprets a historical literal ``<tool_call>`` in assistant
@@ -92,15 +94,25 @@ def _durable_assistant_action(text: str, call: ToolCall) -> str:
     projection uses a PRA-owned marker.
     """
 
-    action = (
-        "[PRA action executed] Tool "
-        + json.dumps(call.name)
-        + " ran with arguments "
-        + json.dumps(dict(call.arguments), separators=(",", ":"))
-        + ". The immediately following PRA tool observation is its "
-        "authoritative result; do not repeat this call unless it failed, was "
-        "incomplete, or relevant state changed."
-    )
+    if executed:
+        action = (
+            "[PRA action executed] Tool "
+            + json.dumps(call.name)
+            + " ran with arguments "
+            + json.dumps(dict(call.arguments), separators=(",", ":"))
+            + ". The immediately following PRA tool observation is its "
+            "authoritative result; do not repeat this call unless it failed, was "
+            "incomplete, or relevant state changed."
+        )
+    else:
+        action = (
+            "[PRA action rejected] Tool "
+            + json.dumps(call.name)
+            + " was proposed with arguments "
+            + json.dumps(dict(call.arguments), separators=(",", ":"))
+            + ", but was not executed. Follow the immediately following host "
+            "rejection before proposing another action."
+        )
     return text.replace(call.raw_text, action, 1)
 
 
@@ -772,16 +784,6 @@ class PRAAgent:
                         text = self._generate_turn(last_turn_context)
                         continue
                 break
-            # Intermediate actions are part of the causal trajectory.  Before
-            # this append, only the initial user message, detached tool result,
-            # and final answer survived in durable state; later selection could
-            # not recover the tool name, arguments, or the model decision that
-            # produced an observation.
-            self._append_message(
-                "assistant",
-                _durable_assistant_action(text, call),
-                semantic_role="assistant_action",
-            )
             resource = None
             if self.runtime.executor is not None:
                 resource = self.runtime.executor.by_name.get(call.name)
@@ -792,6 +794,11 @@ class PRAAgent:
                 if self.tool_call_guard is not None else None
             )
             if guard_rejection:
+                self._append_message(
+                    "assistant",
+                    _durable_assistant_action(text, call, executed=False),
+                    semantic_role="assistant_action_rejected",
+                )
                 self._append_message(
                     "user",
                     f"[Tool decision rejected: {guard_rejection}]",
@@ -805,6 +812,15 @@ class PRAAgent:
                 )
                 text = self._generate_turn(last_turn_context)
                 continue
+            # Intermediate actions are part of the causal trajectory.  Only
+            # mark the projection executed after every host guard has accepted
+            # it; otherwise the conversational projection would contradict
+            # the following rejection record.
+            self._append_message(
+                "assistant",
+                _durable_assistant_action(text, call),
+                semantic_role="assistant_action",
+            )
             approved = False
             if resource is not None and self.authorization_callback is not None:
                 if resource.side_effect_class in {
