@@ -37,6 +37,7 @@ from experiments.paper8_5_agent_memory.auxiliary_workspace_state import (
     create_auxiliary_workspace_state_prediction,
 )
 from experiments.paper8_5_agent_memory.serve_agent_transfer_proxy import (
+    DEFAULT_TOOL_SEMANTICS,
     build_config as build_agent_transfer_config,
     build_parser as build_agent_transfer_parser,
 )
@@ -58,6 +59,13 @@ def test_agent_transfer_proxy_binds_exact_tokenizer_identity():
     )
 
     assert config.tokenizer_identity == "/models/tokenizer@revision-1"
+
+
+def test_default_typed_tool_semantics_use_portable_resource_arguments():
+    assert "filePath" in DEFAULT_TOOL_SEMANTICS["read"]["resource_arguments"]
+    assert DEFAULT_TOOL_SEMANTICS["read_file"]["operation_kind"] == "read"
+    assert DEFAULT_TOOL_SEMANTICS["search_text"]["resource_arguments"] == ["path"]
+    assert DEFAULT_TOOL_SEMANTICS["replace_text"]["operation_kind"] == "write"
 
 
 def test_proxy_joins_generic_execution_receipt_without_changing_tool_text(

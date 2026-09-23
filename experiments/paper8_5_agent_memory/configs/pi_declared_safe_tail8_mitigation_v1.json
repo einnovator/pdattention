@@ -1,0 +1,39 @@
+{
+  "schema_version": "paper8.5.pi-declared-safe-tail8-mitigation.v1",
+  "status": "frozen_before_execution",
+  "frozen_after_observation": {
+    "predecessor": "TAIL90_CAUSAL_H2T4_DECLARED_SAFE_V4",
+    "observed_result": "Official solve and exact FULL patch at 45.16% own whole-record saving, but 42 agent turns versus 28 and only 1.40% paired saving.",
+    "single_change_rationale": "Increase the protected recent causal-turn floor from four to eight to preserve the progress/recovery spine. Do not re-enable record rewriting."
+  },
+  "agent": "pi@0.75.3",
+  "model": {
+    "id": "qwen3-coder:30b",
+    "revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca"
+  },
+  "instance_id": "django__django-15277",
+  "policy": {
+    "implementation": "matched_token_tail",
+    "budget_fraction": 0.9,
+    "protected_head_turns": 2,
+    "protected_tail_turns": 8,
+    "boundary_compaction": "declared_safe",
+    "keep_all_genuine_user_prompts": true,
+    "causal_group_atomicity": true
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "maximum_provider_requests": 45,
+  "gates": {
+    "official_resolution": true,
+    "patch_sha256": "8512d6bc5111e1339c1786cd5be241461e34fd8ee13a81a04afa5257ef244aae",
+    "own_whole_record_saving_range": [0.30, 0.50],
+    "maximum_agent_turn_delta": 0,
+    "minimum_paired_input_saving": 0.30
+  },
+  "next_action": "If this single mitigation misses, use oracle add-back on the H2/T4 divergence rather than screening more tail values."
+}
