@@ -27,7 +27,10 @@ from pra_hf import (
     PRARuntimeConfig,
 )
 
-from .pra_agent_policy import PRAAgentMatchedTailSelector
+from .pra_agent_policy import (
+    PRAAgentInstructionEpochSelector,
+    PRAAgentMatchedTailSelector,
+)
 from .run_autonomous_swebench import _exact_token_counter
 from .run_pi_swebench import (
     _sha256,
@@ -149,15 +152,29 @@ def run(args: argparse.Namespace) -> Path:
         ),
     )
     retention_fraction = (
-        1.0 if args.history_policy == "full" else args.retention_fraction
+        args.retention_fraction
+        if args.history_policy == "matched_token_tail"
+        else 1.0
     )
-    history_selector = PRAAgentMatchedTailSelector(
-        retention_fraction=retention_fraction,
-        count_tokens=count_tokens,
-        tokenizer_identity=tokenizer_identity,
-        protected_head_turns=args.protected_head_turns,
-        protected_tail_turns=args.protected_tail_turns,
-    )
+    if args.history_policy == "instruction_epoch":
+        history_selector = PRAAgentInstructionEpochSelector(
+            count_tokens=count_tokens,
+            tokenizer_identity=tokenizer_identity,
+            prior_full_epochs=args.prior_full_epochs,
+            prior_recent_turns=args.prior_recent_turns,
+            prior_mutation_turns=args.prior_mutation_turns,
+            prior_verification_turns=args.prior_verification_turns,
+            prior_protocol_turns=args.prior_protocol_turns,
+            prior_finalization_turns=args.prior_finalization_turns,
+        )
+    else:
+        history_selector = PRAAgentMatchedTailSelector(
+            retention_fraction=retention_fraction,
+            count_tokens=count_tokens,
+            tokenizer_identity=tokenizer_identity,
+            protected_head_turns=args.protected_head_turns,
+            protected_tail_turns=args.protected_tail_turns,
+        )
 
     tenant_id = "paper8-5"
     workspace = DockerWorkspaceTools(args.docker, "unbound")
@@ -353,9 +370,19 @@ def run(args: argparse.Namespace) -> Path:
         "observed_model_identity": model_identity,
         "endpoint": args.endpoint,
         "history_policy": args.history_policy,
-        "retention_fraction": retention_fraction,
+        "retention_fraction": (
+            retention_fraction
+            if args.history_policy != "instruction_epoch"
+            else None
+        ),
         "protected_head_turns": args.protected_head_turns,
         "protected_tail_turns": args.protected_tail_turns,
+        "prior_full_epochs": args.prior_full_epochs,
+        "prior_recent_turns": args.prior_recent_turns,
+        "prior_mutation_turns": args.prior_mutation_turns,
+        "prior_verification_turns": args.prior_verification_turns,
+        "prior_protocol_turns": args.prior_protocol_turns,
+        "prior_finalization_turns": args.prior_finalization_turns,
         "tokenizer": tokenizer_identity,
         "tokenizer_revision": args.tokenizer_revision,
         "started_at": session_started.isoformat(),
@@ -424,12 +451,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--curl-executable")
     parser.add_argument(
         "--history-policy",
-        choices=("full", "matched_token_tail"),
+        choices=("full", "matched_token_tail", "instruction_epoch"),
         default="full",
     )
     parser.add_argument("--retention-fraction", type=float, default=0.9)
     parser.add_argument("--protected-head-turns", type=int, default=2)
     parser.add_argument("--protected-tail-turns", type=int, default=4)
+    parser.add_argument("--prior-full-epochs", type=int, default=2)
+    parser.add_argument("--prior-recent-turns", type=int, default=0)
+    parser.add_argument("--prior-mutation-turns", type=int, default=0)
+    parser.add_argument("--prior-verification-turns", type=int, default=0)
+    parser.add_argument("--prior-protocol-turns", type=int, default=0)
+    parser.add_argument("--prior-finalization-turns", type=int, default=0)
     parser.add_argument("--tokenizer", default="whitespace")
     parser.add_argument("--tokenizer-revision", default="diagnostic")
     parser.add_argument("--allow-whitespace-tokenizer", action="store_true")

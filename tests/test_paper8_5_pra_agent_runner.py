@@ -11,6 +11,7 @@ from experiments.paper8_5_agent_memory.run_pra_agent_persistent_swebench import 
     build_parser as build_persistent_parser,
 )
 from experiments.paper8_5_agent_memory.pra_agent_policy import (
+    PRAAgentInstructionEpochSelector,
     PRAAgentMatchedTailSelector,
     recordize_pra_agent_records,
 )
@@ -104,6 +105,46 @@ def test_recordize_completion_recovery_is_not_an_immutable_user_prompt() -> None
     assert history.records[-1].primary_role.value == "error_or_rejection"
 
 
+def test_instruction_epoch_selector_retires_only_old_closed_interactions() -> None:
+    def final(record_id: str, text: str) -> ContextRecord:
+        return ContextRecord(
+            record_id,
+            RecordType.GENERIC_TEXT,
+            {
+                "role": "assistant",
+                "text": text,
+                "pra_agent_semantic_role": "finalization",
+            },
+        )
+
+    rows = (
+        _message("task1", "user", "fix repository one"),
+        _message("a1", "assistant", "inspect one"),
+        _observation("o1", "one result"),
+        final("f1", "task one complete"),
+        _message("task2", "user", "fix repository two"),
+        _message("a2", "assistant", "inspect two"),
+        _observation("o2", "two result"),
+        final("f2", "task two complete"),
+        _message("task3", "user", "fix repository three"),
+        _message("a3", "assistant", "inspect three"),
+        _observation("o3", "three result"),
+    )
+    selector = PRAAgentInstructionEpochSelector(
+        count_tokens=lambda text: len(text.split()),
+        tokenizer_identity="unit-whitespace",
+        prior_full_epochs=1,
+    )
+
+    selected = selector(rows, "continue task three")
+    selected_ids = {row.record_id for row in selected}
+
+    assert {"task1", "task2", "task3"}.issubset(selected_ids)
+    assert {"a2", "o2", "f2", "a3", "o3"}.issubset(selected_ids)
+    assert {"a1", "o1", "f1"}.isdisjoint(selected_ids)
+    assert selector.traces[0]["policy"] == "instruction_epoch_e1"
+
+
 def test_pra_agent_h2_t4_selector_drops_only_an_unprotected_whole_turn() -> None:
     rows = [_message("task", "user", "fix the issue")]
     for index in range(1, 8):
@@ -190,3 +231,12 @@ def test_persistent_runner_accepts_ordered_boundary_free_tasks() -> None:
     assert _task_spec("django__django-15277=task.json")[0] == (
         "django__django-15277"
     )
+
+    instruction = build_persistent_parser().parse_args([
+        "--task", "django__django-15277=task1.json",
+        "--output", "out",
+        "--endpoint", "http://127.0.0.1:8000",
+        "--history-policy", "instruction_epoch",
+        "--prior-full-epochs", "2",
+    ])
+    assert instruction.prior_full_epochs == 2

@@ -411,13 +411,26 @@ class PRAAgent:
             payload={"result_ref": result_ref},
         )
 
-    def _append_message(self, role: str, text: str) -> AgentSessionState:
+    def _append_message(
+        self,
+        role: str,
+        text: str,
+        *,
+        semantic_role: str | None = None,
+    ) -> AgentSessionState:
+        payload: dict[str, object] = {
+            "role": role,
+            "text": text,
+            "timestamp": time.time(),
+        }
+        if semantic_role is not None:
+            payload["pra_agent_semantic_role"] = semantic_role
         return self.runtime.append_session_record(
             self.session,
             ContextRecord(
                 f"message:{uuid.uuid4().hex}",
                 RecordType.GENERIC_TEXT,
-                {"role": role, "text": text, "timestamp": time.time()},
+                payload,
             ),
         )
 
@@ -681,13 +694,17 @@ class PRAAgent:
                     # arguments.  Preserve the rejected attempt and expose a
                     # role-valid observation so the model can issue a fresh,
                     # independently validated decision.
-                    self._append_message("assistant", text)
+                    self._append_message(
+                        "assistant", text, semantic_role="assistant_action"
+                    )
                     rejection = (
                         "[Tool decision rejected: malformed_call. Re-emit the "
                         "intended action as one valid native tool call or "
                         "provider-neutral tool envelope.]"
                     )
-                    self._append_message("user", rejection)
+                    self._append_message(
+                        "user", rejection, semantic_role="error_or_rejection"
+                    )
                     last_turn_context = self._turn_context(
                         query,
                         self._context(query),
@@ -698,9 +715,13 @@ class PRAAgent:
                     continue
                 incomplete = self._incomplete_generation_reason()
                 if incomplete:
-                    self._append_message("assistant", text)
                     self._append_message(
-                        "user", f"[Completion rejected: {incomplete}]"
+                        "assistant", text, semantic_role="assistant_progress"
+                    )
+                    self._append_message(
+                        "user",
+                        f"[Completion rejected: {incomplete}]",
+                        semantic_role="error_or_rejection",
                     )
                     last_turn_context = self._turn_context(
                         query,
@@ -715,9 +736,13 @@ class PRAAgent:
                         self.state, text, tuple(executions)
                     )
                     if rejection:
-                        self._append_message("assistant", text)
                         self._append_message(
-                            "user", f"[Completion rejected: {rejection}]"
+                            "assistant", text, semantic_role="assistant_progress"
+                        )
+                        self._append_message(
+                            "user",
+                            f"[Completion rejected: {rejection}]",
+                            semantic_role="error_or_rejection",
                         )
                         last_turn_context = self._turn_context(
                             query,
@@ -733,7 +758,11 @@ class PRAAgent:
             # and final answer survived in durable state; later selection could
             # not recover the tool name, arguments, or the model decision that
             # produced an observation.
-            self._append_message("assistant", _durable_assistant_action(text, call))
+            self._append_message(
+                "assistant",
+                _durable_assistant_action(text, call),
+                semantic_role="assistant_action",
+            )
             resource = None
             if self.runtime.executor is not None:
                 resource = self.runtime.executor.by_name.get(call.name)
@@ -787,7 +816,14 @@ class PRAAgent:
             )
             last_turn_context = follow_up
             text = self._generate_turn(follow_up)
-        self._append_message("assistant", text)
+        semantic_role = (
+            "error_or_rejection"
+            if text.startswith("Tool call rejected:")
+            else "assistant_action"
+            if parse_tool_call(text) is not None or has_terminal_tool_intent(text)
+            else "finalization"
+        )
+        self._append_message("assistant", text, semantic_role=semantic_role)
         return AgentTurn(
             text=text,
             session=self.state,

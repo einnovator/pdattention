@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_same_model_agent_failure_audit",
+  "instance_id": "django__django-15741",
+  "arm": "FULL",
+  "configured_served_model": "qwen3-coder:30b",
+  "generation_controls": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "identity_claim": {
+    "level": "same configured endpoint/model, not yet complete per-run digest equality",
+    "known_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "gap": "The historical OpenHands artifact did not record the observed model digest. New admissions must validate it before execution."
+  },
+  "outcomes": [
+    {
+      "agent": "pi",
+      "version": "0.75.3",
+      "resolved": false,
+      "model_requests": 7,
+      "tool_actions": 6,
+      "patch_bytes": 0,
+      "failure_mechanism": "provider length stop was treated as semantic completion before write",
+      "diagnosis_state": "correct str(format_type) repair direction identified"
+    },
+    {
+      "agent": "kilo",
+      "version": "7.7.5",
+      "resolved": false,
+      "model_requests": 13,
+      "tool_actions": 12,
+      "patch_bytes": 0,
+      "failure_mechanism": "provider length stop was treated as semantic completion before write",
+      "diagnosis_state": "correct lazy format_type failure localized"
+    },
+    {
+      "agent": "pra-agent",
+      "version": "pre-completion-guard control",
+      "resolved": false,
+      "model_requests": 6,
+      "tool_actions": 5,
+      "patch_bytes": 0,
+      "failure_mechanism": "future-tense prose was accepted as task completion before write",
+      "diagnosis_state": "correct string-conversion repair identified"
+    },
+    {
+      "agent": "openhands-sdk",
+      "version": "1.49.2",
+      "resolved": true,
+      "model_requests": 43,
+      "tool_actions": 43,
+      "patch_bytes": 1049,
+      "failure_mechanism": null,
+      "diagnosis_state": "repair implemented and verified"
+    }
+  ],
+  "causal_interpretation": [
+    "The base model is not the only treatment: system prompt, tool schema, observation rendering, continuation rules and completion semantics differ across agents.",
+    "Task 4 separates loop persistence from diagnosis quality: all failed agents reached the correct repair direction, but their host loops stopped before mutation.",
+    "OpenHands preserved capability by continuing much longer; its 43-action trajectory is evidence for robustness but not efficiency.",
+    "PRA Agent's post-audit completion guard and provider-length continuation must be retested before replacing the historical 2/3 admission result."
+  ],
+  "sources": [
+    {
+      "path": "../pi_task04_full_controlled_v1/qualification.json",
+      "sha256": "a96f16a1e39bcca6a45e625214a5a18d89224bcc98ada7a52b0c542f28447b03"
+    },
+    {
+      "path": "../kilo_task04_full_controlled_v1/qualification.json",
+      "sha256": "9d15e3adf4d49ad400628e1521bb2b8ff9a03d7501c3422c6ce01a819b627a23"
+    },
+    {
+      "path": "../pra_agent_task04_full_controlled_v1/qualification.json",
+      "sha256": "69fa07306f8da913abbabacf4cc84735a35b17658123a3d52327fd0047ff6167"
+    },
+    {
+      "path": "../openhands_task04_full_receipt_pinned_transport_v1/qualification.json",
+      "sha256": "3a51339871552811f0800f6e5863d8413a56589795c7f0a2ce8252b6544ff889"
+    }
+  ]
+}

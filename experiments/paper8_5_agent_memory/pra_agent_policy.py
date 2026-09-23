@@ -30,6 +30,11 @@ from .matched_token_tail import (
     matched_token_tail_full_floor_record_ids,
     materialize_matched_token_tail,
 )
+from .model import AgentMemoryBudget
+from .selectors import (
+    PersistentInstructionEpochRetirementConfig,
+    PersistentInstructionEpochRetirementSelector,
+)
 
 
 TokenCounter = Callable[[str], int]
@@ -102,6 +107,28 @@ def recordize_pra_agent_records(
             turn_id = f"pra-turn-{turn_index:04d}"
             turn_index += 1
             group_id = f"pra-group-{turn_index:04d}"
+            semantic_role = str(payload.get("pra_agent_semantic_role") or "")
+            if semantic_role == "finalization":
+                logical.append(AgentRecord(
+                    record.record_id,
+                    turn_id,
+                    group_id,
+                    index,
+                    role,
+                    content,
+                    AgentRecordRole.FINALIZATION,
+                    (AgentRecordRole.FINALIZATION, AgentRecordRole.PROGRESS),
+                    session_id=record.session_uuid,
+                    complete=True,
+                ))
+                turns.append(AgentTurn(
+                    turn_id=turn_id,
+                    causal_group_id=group_id,
+                    record_ids=(record.record_id,),
+                    first_message_index=index,
+                    complete=True,
+                ))
+                continue
             pending = {
                 "turn_id": turn_id,
                 "group_id": group_id,
@@ -280,6 +307,76 @@ class PRAAgentMatchedTailSelector:
             "selected_record_ids": [row.record_id for row in selected],
             "excluded_record_ids": [
                 row.record_id for row in records if row.record_id not in selected_ids
+            ],
+        })
+        return selected
+
+
+@dataclass
+class PRAAgentInstructionEpochSelector:
+    """Identity-only E1/E2/E3 policy for persistent PRA Agent sessions."""
+
+    count_tokens: TokenCounter
+    tokenizer_identity: str
+    prior_full_epochs: int = 2
+    prior_recent_turns: int = 0
+    prior_mutation_turns: int = 0
+    prior_verification_turns: int = 0
+    prior_protocol_turns: int = 0
+    prior_finalization_turns: int = 0
+    traces: list[dict[str, object]] = field(default_factory=list, init=False)
+
+    def __post_init__(self) -> None:
+        self._selector = PersistentInstructionEpochRetirementSelector(
+            PersistentInstructionEpochRetirementConfig(
+                prior_recent_turns=self.prior_recent_turns,
+                prior_mutation_turns=self.prior_mutation_turns,
+                prior_verification_turns=self.prior_verification_turns,
+                prior_protocol_turns=self.prior_protocol_turns,
+                prior_finalization_turns=self.prior_finalization_turns,
+                prior_full_epochs=self.prior_full_epochs,
+                retire_closed_instructions=True,
+                keep_completed_task_statements=True,
+            )
+        )
+
+    def __call__(
+        self, records: Sequence[ContextRecord], query: str,
+    ) -> Sequence[ContextRecord]:
+        history = recordize_pra_agent_records(records)
+        full_tokens = sum(self.count_tokens(row.content) for row in history.records)
+        plan = self._selector.select(
+            history=history,
+            query=query,
+            budget=AgentMemoryBudget(max_tokens=max(1, full_tokens)),
+            count_tokens=self.count_tokens,
+        )
+        selected_ids = set(plan.selected_record_ids)
+        selected = tuple(row for row in records if row.record_id in selected_ids)
+        self.traces.append({
+            "request_index": len(self.traces) + 1,
+            "policy": f"instruction_epoch_e{self.prior_full_epochs}",
+            "tokenizer": self.tokenizer_identity,
+            "full_history_tokens": plan.full_history_tokens,
+            "selected_history_tokens": plan.selected_tokens,
+            "materialized_history_tokens": plan.selected_tokens,
+            "requested_budget_tokens": plan.requested_budget_tokens,
+            "mandatory_tokens": plan.mandatory_tokens,
+            "mandatory_overflow_tokens": plan.mandatory_overflow_tokens,
+            "full_record_ids": [row.record_id for row in records],
+            "selected_record_ids": [row.record_id for row in selected],
+            "excluded_record_ids": [
+                row.record_id for row in records
+                if row.record_id not in selected_ids
+            ],
+            "exclusions": [
+                {
+                    "causal_group_id": row.causal_group_id,
+                    "record_ids": list(row.record_ids),
+                    "rule_id": row.rule_id,
+                    "excluded_tokens": row.excluded_tokens,
+                }
+                for row in plan.exclusions
             ],
         })
         return selected

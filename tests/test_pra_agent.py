@@ -149,6 +149,9 @@ def test_agent_persists_task_messages_and_compact_tool_result(tmp_path) -> None:
         assistant_messages[0].payload["text"]
     )
     assert "<tool_call>" not in assistant_messages[0].payload["text"]
+    assert assistant_messages[-1].payload["pra_agent_semantic_role"] == (
+        "finalization"
+    )
     assert {row.payload.get("role") for row in turn.session.records if isinstance(row.payload, dict)} >= {"user", "assistant"}
     assert agent.runtime.inspect()["logical_sessions"]["session-a"]["records"] == 4
 
