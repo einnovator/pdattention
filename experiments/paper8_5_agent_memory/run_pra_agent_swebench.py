@@ -405,7 +405,10 @@ def run(args: argparse.Namespace) -> Path:
         "".join(json.dumps(row, default=str) + "\n" for row in events),
         encoding="utf-8",
     )
-    _write_json(output / "selection_trace.json", history_selector.traces)
+    _write_json(output / "selection_trace.json", {
+        "schema_version": 1,
+        "requests": history_selector.traces,
+    })
     cumulative_full_tokens = sum(
         int(row["full_history_tokens"]) for row in history_selector.traces
     )

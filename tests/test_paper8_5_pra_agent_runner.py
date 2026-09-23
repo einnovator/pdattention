@@ -4,6 +4,7 @@ import pytest
 
 from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
     DockerWorkspaceTools,
+    build_parser,
 )
 from experiments.paper8_5_agent_memory.pra_agent_policy import (
     PRAAgentMatchedTailSelector,
@@ -125,3 +126,23 @@ def test_pra_agent_percentage_never_overrides_short_history_floor() -> None:
     assert selector.traces[0]["materialized_history_tokens"] == (
         selector.traces[0]["full_history_tokens"]
     )
+
+
+def test_pra_agent_runner_exposes_auditable_history_policy_controls() -> None:
+    args = build_parser().parse_args([
+        "--instance-id", "django__django-15277",
+        "--reference-trajectory", "trajectory.json",
+        "--output", "out",
+        "--endpoint", "http://127.0.0.1:8000",
+        "--history-policy", "matched_token_tail",
+        "--retention-fraction", "0.9",
+        "--protected-head-turns", "2",
+        "--protected-tail-turns", "4",
+        "--tokenizer", "tokenizer-path",
+        "--tokenizer-revision", "frozen-revision",
+    ])
+
+    assert args.history_policy == "matched_token_tail"
+    assert args.retention_fraction == 0.9
+    assert (args.protected_head_turns, args.protected_tail_turns) == (2, 4)
+    assert args.tokenizer_revision == "frozen-revision"
