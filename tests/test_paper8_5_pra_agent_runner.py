@@ -18,6 +18,7 @@ from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
 from experiments.paper8_5_agent_memory.run_pra_agent_persistent_swebench import (
     _load_task_registry,
     _saving_fraction,
+    _initial_task_description,
     _task_spec,
     build_parser as build_persistent_parser,
 )
@@ -362,6 +363,15 @@ def test_persistent_runner_accepts_ordered_boundary_free_tasks() -> None:
         "--prior-full-epochs", "2",
     ])
     assert instruction.prior_full_epochs == 2
+
+
+def test_boundary_free_session_does_not_seed_stale_task_graph_state() -> None:
+    assert _initial_task_description("boundary_free", "first issue") is None
+    assert _initial_task_description("explicit_task", "first issue") == (
+        "first issue"
+    )
+    with pytest.raises(ValueError, match="unknown boundary mode"):
+        _initial_task_description("unknown", "first issue")
 
 
 def test_persistent_runner_keeps_large_record_capacity_for_multi_task_runs() -> None:

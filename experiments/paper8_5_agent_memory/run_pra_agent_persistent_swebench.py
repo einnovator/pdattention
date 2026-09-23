@@ -71,6 +71,21 @@ def _saving_fraction(full_tokens: int, materialized_tokens: int) -> float:
     return 0.0 if not full_tokens else 1.0 - materialized_tokens / full_tokens
 
 
+def _initial_task_description(boundary_mode: str, prompt: str) -> str | None:
+    """Seed task-graph state only for the explicitly bounded control.
+
+    A boundary-free session represents every issue solely as an ordinary user
+    message.  Keeping the first issue as an active task-graph node would leak a
+    stale ``Active task: task-1`` control label into all later episodes.
+    """
+
+    if boundary_mode == "boundary_free":
+        return None
+    if boundary_mode == "explicit_task":
+        return prompt
+    raise ValueError(f"unknown boundary mode: {boundary_mode}")
+
+
 def _load_task_registry(
     path: Path,
     *,
@@ -308,8 +323,17 @@ def run(args: argparse.Namespace) -> Path:
             if ordinal == 1:
                 agent.start_session(
                     args.session_id or f"paper85-pra-persistent-{int(time.time())}",
-                    task_description=prompt,
+                    task_description=_initial_task_description(
+                        args.boundary_mode, prompt
+                    ),
                 )
+                if (
+                    args.boundary_mode == "boundary_free"
+                    and agent.state.active_task_id is not None
+                ):
+                    raise AssertionError(
+                        "boundary-free session unexpectedly has an active task"
+                    )
             elif args.boundary_mode == "explicit_task":
                 agent.create_task(
                     prompt,
@@ -466,6 +490,10 @@ def run(args: argparse.Namespace) -> Path:
         "task_count_declared": len(tasks),
         "task_count_completed": len(episode_manifests),
         "boundary_mode": args.boundary_mode,
+        "task_graph_mode": (
+            "disabled" if args.boundary_mode == "boundary_free"
+            else "explicit_task_events"
+        ),
         "task_order": [row[0] for row in tasks],
         "model": args.model,
         "served_model": args.served_model or args.model,
