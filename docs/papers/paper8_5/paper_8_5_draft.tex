@@ -4563,8 +4563,9 @@ official resolution, cumulative logical input tokens, normalized causal
 actions, reacquisition, and calls to solution.  Native context compaction is
 disabled when possible and otherwise labels the arm as agent-managed context.
 
-The frozen declaration and staged gates are in
-\path{configs/agent_transfer_easy14_v1.json}.  Across agents, only native-event
+The current declaration and staged gates are in
+\path{configs/agent_transfer_easy14_v2.json}; the v1 file remains the immutable
+pre-131K campaign snapshot.  Across agents, only native-event
 normalization, declared tool semantics, and protocol-valid serialization may
 change.  Instruction pinning, causal-group atomicity, progress-spine floors,
 retirement parameters, and token accounting remain frozen.  Standard OpenAI
@@ -4969,7 +4970,13 @@ For the open-model cohort we additionally enable Codex's native
 adaptation, and no external Responses-to-Chat translation is attributed to
 PRA.  The Responses audit mode remains available as a separately labelled
 transport study; its state semantics cannot be pooled with the native Ollama
-admission.
+admission.  Native admission now fails closed unless the Ollama catalog exposes
+the exact declared model digest.  Codex CLI 0.153.0 does not expose native
+Ollama temperature, top-$p$, or seed controls, however, so that arm records
+sampling as agent-native and unverified rather than falsely labeling it a
+temperature-zero comparison.  It may establish capability and protocol shape;
+it cannot enter the strict frozen-sampling agent comparison until request-side
+sampling is observed or controlled.
 
 \subsection{PRA Agent}
 
@@ -5056,6 +5063,78 @@ passing 104/104 PASS\_TO\_PASS tests.  Thus PRA Agent completes plain-three at
 2/3; only Tasks 1 and 2 enter its policy denominator.  The full controls and
 quarantined diagnostics are in
 \path{cross_agent_transfer/pra_agent_task04_full_controlled_v1}.
+
+A completion-guard diagnostic then crosses that precise stopping boundary.  It
+performs the source edit, exports a 793-byte patch, and the independent grader
+resolves the issue.  The execution is nevertheless auxiliary rather than a new
+\textsc{Full} success: after 20 successful requests, request 21 terminates with
+HTTP 500 \texttt{EOF}.  The final successful response reports 32,734 prompt
+tokens plus 97 completion tokens while the active Ollama runner is configured
+for 32,768 tokens.  The catalog advertises the model's 262,144-token capability,
+but that is not evidence of the loaded serving allocation.  We therefore add
+separately digested 65,536-token single-task and 131,072-token persistent-session
+serving aliases and require three identity probes, a deterministic completion,
+and active-process context inspection before retry.  Evidence is in
+\path{cross_agent_transfer/pra_agent_task04_completion_guard_aux_v1}.
+
+Table~\ref{tab:same-model-task4-agent-loop} makes the causal comparison
+explicit.  The rows use the same configured Qwen3-Coder-30B endpoint and task,
+but not the same agent treatment.  The historical OpenHands artifact predates
+digest capture, so this is a scaffold/loop diagnosis rather than a strict
+bit-identical-model factorial.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Task-4 failures under the same configured base model are explained by
+agent-loop semantics, not by memory selection.  R/T is model requests or
+actions / executed tools; rejected proposals are not counted as executed
+tools.}
+\label{tab:same-model-task4-agent-loop}
+\begin{tabular}{lrrlp{4.8cm}}
+\toprule
+Agent & R/T & Patch & Official & Identified stopping behavior \\
+\midrule
+Pi & 7/6 & empty & fail & length-stopped correct reasoning treated as completion \\
+Kilo & 13/12 & empty & fail & length-stopped correct reasoning treated as completion \\
+PRA Agent, historical & 6/5 & empty & fail & promise to edit accepted as completion \\
+PRA Agent, guarded 32K & 20/20 & 793 B & resolves$^{*}$ & edit succeeds; next request exceeds loaded 32K context \\
+PRA Agent, corrected 64K & 15/12 & 701 B & resolves & host rejects two post-budget reads; model recovers and edits source \\
+OpenHands & 43/43 & 1,049 B & resolves & finish requires the native completion action after mutation and verification \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The shared pattern is therefore identifiable: model capability was present in
+all three empty-patch trajectories, but transport completion, semantic
+completion, and verified workspace completion were conflated differently by
+each harness.  The guarded row's asterisk denotes auxiliary patch capability,
+not a qualified end-to-end control.  The corrected 64K row is a clean FULL
+qualification: the independent SWE-bench grader reports one submitted, one
+completed, and one resolved instance with no error.  It is not a savings row.
+
+The final repair also exposed a subtler protocol defect.  The first bounded
+inspection implementation appended ``action executed'' before the host guard
+ran, then appended a user-side rejection for the same proposal.  Under this
+contradictory history the model proposed four additional reads and produced no
+patch.  The corrected runtime emits the executed projection only after guard
+acceptance; rejected proposals instead state that they were not executed and
+remain atomic with the host rejection.  On the clean retry, after eight
+executed tools the host rejects two verification commands because no tracked
+source mutation exists.  The model then acknowledges the constraint, edits the
+named source file, simplifies the edit, inspects it, and terminates normally.
+Evidence is in
+\path{cross_agent_transfer/pra_agent_action_projection_audit_v1} and
+\path{cross_agent_transfer/pra_agent_task04_rejection_semantics_full_v1}.
+
+The same trace also motivates two agent-side repairs before the persistent
+campaign.  Root file discovery now prunes repository-internal \texttt{.git}
+state and caps its observation, while an explicitly hashed behavior contract
+instructs the model to consume successful observations, avoid identical calls
+unless state changed, prefer targeted reads, act rather than promise, and
+verify before finalization.  These are prospective scaffold changes, not
+retrospective savings.  Live PRA Agent state is atomically persisted after
+each record so a host crash does not erase a long trajectory.
 
 \subsection{Longer-horizon mini-swe-agent capability control}
 
@@ -5251,7 +5330,12 @@ has a failed contemporaneous control while M2/P1 resolves.  It therefore does no
 Easy-14 expansion or transfer as a Paper~4.5 production default.  The
 one-to-fourteen-issue campaign continues to treat active-only retirement as session
 hygiene unless it beats deliberate fresh sessions on related or dependent
-sequences. Held-out sequences, additional models, and additional harnesses
+sequences.  The PRA Agent executor records cumulative FULL-denominator and
+materialized-policy tokens after every episode in one immutable fourteen-issue
+session.  Thus paired FULL/selective executions yield descriptive N=1--14
+prefix curves without the 105 task episodes required by separately rerunning
+every prefix; those shared prefixes are not independent samples or confidence
+intervals.  Held-out sequences, additional models, and additional harnesses
 remain the confirmation frontier.
 
 \section{Artifact Schema}

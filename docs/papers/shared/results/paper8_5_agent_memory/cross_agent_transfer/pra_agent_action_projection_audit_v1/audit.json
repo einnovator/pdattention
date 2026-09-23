@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "status": "diagnostic_not_a_quality_result",
+  "instance_id": "django__django-15741",
+  "model": "qwen3-coder:30b-ctx64k",
+  "model_revision": "13cd851c8a123721a1b448f47d94733d63966757363e002dae4a0ef8a0eb9253",
+  "temperature": 0.0,
+  "pre_fix_execution": {
+    "remote_artifact": ".pra/pra-agent-task04-runtime-guard-full-ctx64k-v1",
+    "executed_tools": 8,
+    "rejected_read_only_proposals_after_budget": 4,
+    "durable_records_at_stop": 25,
+    "patch_bytes": 0,
+    "terminal_state": "operator_stopped_after_repeated_contradictory_rejections",
+    "defect": "assistant projection said action executed before host guard rejected it"
+  },
+  "repair": {
+    "commit": "cfb39826",
+    "executed_projection": "emitted only after guard acceptance",
+    "rejected_projection": "explicitly says proposed action was not executed",
+    "semantic_role": "assistant_action_rejected",
+    "targeted_tests_passed": 52
+  },
+  "first_post_fix_attempt": {
+    "remote_artifact": ".pra/pra-agent-task04-rejection-semantics-full-ctx64k-v1",
+    "executed_tools": 7,
+    "patch_bytes": 0,
+    "terminal_state": "EndpointUnavailableError_before_guard",
+    "interpretation": "transport quarantine; does not test the repair"
+  },
+  "qualification_rule": "count only a clean post-fix execution that reaches the guard and terminates normally",
+  "qualified_retry": {
+    "evidence": "../pra_agent_task04_rejection_semantics_full_v1/qualification.json",
+    "executed_tools": 12,
+    "host_rejected_tool_proposals": 2,
+    "patch_bytes": 701,
+    "official_resolved": true
+  }
+}
