@@ -184,7 +184,7 @@ from .agent_resources import (
 )
 from .tool_records import ToolRecord, ToolSchema, tool_record_from_callable
 from .toolsets import Tool, Toolset, default_toolset
-from .agent import AgentTurn, PRAAgent, PRAAgentConfig
+from .agent import AgentTurn, PRAAgent, PRAAgentConfig, ToolCallGuardDecision
 from .agent_config import (
     AgentRuntimeSettings,
     ControlPlaneClientConfig,
@@ -1020,6 +1020,7 @@ __all__ += [
     "LocalSessionService",
     "PRAAgent",
     "PRAAgentConfig",
+    "ToolCallGuardDecision",
     "PlannedTask",
     "ResidencyState",
     "ScopeSelection",

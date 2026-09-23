@@ -14,6 +14,7 @@ from pra_hf import (
     Skill,
     Tool,
     Toolset,
+    ToolCallGuardDecision,
 )
 from pra_hf.context_records import ContextRecord, RecordType
 
@@ -90,6 +91,21 @@ class _GuardRecoveryBackend(_Backend):
         if self.calls == 1:
             return '<tool_call>{"name":"lookup","arguments":{"value":"alpha"}}</tool_call>'
         return "I cannot continue without an authorized action."
+
+
+class _StructuredGuardBackend(_Backend):
+    def __init__(self) -> None:
+        super().__init__()
+        self.disclosed_tools = []
+
+    def generate_turn(self, turn, **_kwargs):
+        self.disclosed_tools.append(tuple(
+            row["function"]["name"] for row in turn.tools
+        ))
+        self.calls += 1
+        if self.calls == 1:
+            return '<tool_call>{"name":"lookup","arguments":{"value":"alpha"}}</tool_call>'
+        return "The blocked read tool is no longer disclosed."
 
 
 def _agent(
@@ -305,3 +321,28 @@ def test_agent_preserves_and_recovers_from_host_tool_guard_rejection(tmp_path) -
     assert assistant_messages[0].payload["pra_agent_semantic_role"] == (
         "assistant_action_rejected"
     )
+
+
+def test_structured_guard_can_suppress_rejected_tool_from_next_palette(
+    tmp_path,
+) -> None:
+    backend = _StructuredGuardBackend()
+    agent = _agent(
+        tmp_path,
+        backend=backend,
+        max_tool_rounds=2,
+        tool_call_guard=lambda _state, _call, _resource, _executions: (
+            ToolCallGuardDecision(
+                "inspection_budget_exhausted",
+                suppress_tool_names=("lookup",),
+            )
+        ),
+    )
+    agent.start_session("session-a", task_description="Inspect alpha")
+
+    turn = agent.run_turn("Look up alpha")
+
+    assert not turn.tool_executions
+    assert backend.disclosed_tools[0]
+    assert backend.disclosed_tools[1] == ()
+    assert turn.disclosed_tool_uris == ()

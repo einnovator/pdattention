@@ -91,15 +91,22 @@ def test_inspection_budget_allows_mutation_and_rejects_more_discovery(
     guard = SWEInspectionBudgetGuard(workspace, max_inspections=2)
     executed = (object(), object())
 
-    assert "inspection_budget_exhausted" in guard(
+    read_decision = guard(
         None, ToolCall("read_file", {"path": "a.py"}), None, executed
     )
-    assert "inspection_budget_exhausted" in guard(
+    command_decision = guard(
         None,
         ToolCall("run_command", {"command": "git log --oneline"}),
         None,
         executed,
     )
+    assert read_decision is not None
+    assert "inspection_budget_exhausted" in read_decision.reason
+    assert set(read_decision.suppress_tool_names) == {
+        "list_files", "read_file", "search_text", "git_status",
+    }
+    assert command_decision is not None
+    assert "inspection_budget_exhausted" in command_decision.reason
     assert guard(
         None,
         ToolCall("replace_text", {"path": "a.py", "old": "x", "new": "y"}),

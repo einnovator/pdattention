@@ -32,6 +32,7 @@ from pra_hf import (
     SideEffectClass,
     Tool,
     Toolset,
+    ToolCallGuardDecision,
 )
 from pra_hf.context_records import ContextRecord, RecordType
 from pra_hf.agent_transport import TEXT_TOOL_OBSERVATION_PROJECTION
@@ -117,11 +118,17 @@ class SWEInspectionBudgetGuard:
             command = str(call.arguments.get("command") or "")
             if classify_bash_operation(command) == OperationKind.WRITE:
                 return None
-        return (
-            "inspection_budget_exhausted. No tracked source patch exists after "
-            f"{self.max_inspections} executed tools. The next tool must mutate "
-            "the source using write_file, replace_text, or a clearly mutating "
-            "run_command; otherwise report a concrete blocker."
+        return ToolCallGuardDecision(
+            reason=(
+                "inspection_budget_exhausted. No tracked source patch exists after "
+                f"{self.max_inspections} executed tools. Read-only discovery is "
+                "now undisclosed. The next tool must mutate the source using "
+                "write_file, replace_text, or a clearly mutating run_command; "
+                "otherwise report a concrete blocker."
+            ),
+            suppress_tool_names=(
+                "list_files", "read_file", "search_text", "git_status",
+            ),
         )
 
 

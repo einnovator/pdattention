@@ -78,6 +78,26 @@ class AgentTurn:
     transport: Mapping[str, object] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ToolCallGuardDecision:
+    """Structured host rejection with an optional disclosure downgrade.
+
+    A guard may suppress tools after a rejected proposal so the next model
+    decision cannot keep selecting an operation that is no longer admissible.
+    This changes only the disclosed capability palette; it never executes or
+    rewrites the rejected action.
+    """
+
+    reason: str
+    suppress_tool_names: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip():
+            raise ValueError("tool-call guard reason cannot be empty")
+        if len(self.suppress_tool_names) != len(set(self.suppress_tool_names)):
+            raise ValueError("suppressed tool names must be unique")
+
+
 def _generated_text(value: str | GenerationResult) -> str:
     return value.text if isinstance(value, GenerationResult) else str(value)
 
@@ -139,7 +159,7 @@ class PRAAgent:
                 AgentResource | None,
                 Sequence[RuntimeToolExecution],
             ],
-            str | None,
+            str | ToolCallGuardDecision | None,
         ] | None = None,
         observability: Observability | None = None,
         settings: PRAAgentSettings | Mapping[str, Any] | None = None,
@@ -712,6 +732,7 @@ class PRAAgent:
         self._append_message("user", query)
         scope = self._context(query)
         tool_uris, skill_uris = self._disclosed_capabilities(query)
+        active_tool_uris = tool_uris
         turn_context = self._turn_context(query, scope, tool_uris, skill_uris)
         last_turn_context = turn_context
         text = self._generate_turn(turn_context)
@@ -787,13 +808,32 @@ class PRAAgent:
             resource = None
             if self.runtime.executor is not None:
                 resource = self.runtime.executor.by_name.get(call.name)
-            guard_rejection = (
+            guard_decision = (
                 self.tool_call_guard(
                     self.state, call, resource, tuple(executions)
                 )
                 if self.tool_call_guard is not None else None
             )
-            if guard_rejection:
+            if guard_decision:
+                if isinstance(guard_decision, ToolCallGuardDecision):
+                    guard_rejection = guard_decision.reason
+                    suppressed_uris = {
+                        selected.uri
+                        for name in guard_decision.suppress_tool_names
+                        for selected in (
+                            (
+                                self.runtime.executor.by_name.get(name)
+                                if self.runtime.executor is not None else None
+                            ),
+                        )
+                        if selected is not None
+                    }
+                    active_tool_uris = tuple(
+                        uri for uri in active_tool_uris
+                        if uri not in suppressed_uris
+                    )
+                else:
+                    guard_rejection = str(guard_decision)
                 self._append_message(
                     "assistant",
                     _durable_assistant_action(text, call, executed=False),
@@ -807,7 +847,7 @@ class PRAAgent:
                 last_turn_context = self._turn_context(
                     query,
                     self._context(query),
-                    tool_uris,
+                    active_tool_uris,
                     skill_uris,
                 )
                 text = self._generate_turn(last_turn_context)
@@ -831,9 +871,9 @@ class PRAAgent:
             execution = self.runtime.execute_tool_and_record(
                 text,
                 session=self.session,
-                selected_uris=tool_uris,
+                selected_uris=active_tool_uris,
                 authorization=ExecutionAuthorization(
-                    frozenset(tool_uris),
+                    frozenset(active_tool_uris),
                     allow_writes=self.config.allow_writes or approved,
                     allow_destructive=self.config.allow_destructive or (
                         approved
@@ -865,7 +905,7 @@ class PRAAgent:
             follow_up = self._turn_context(
                 query,
                 self._context(query),
-                tool_uris,
+                active_tool_uris,
                 skill_uris,
                 extra_messages=(tool_message,),
             )
@@ -883,7 +923,7 @@ class PRAAgent:
             text=text,
             session=self.state,
             selected_record_ids=last_turn_context.selected_record_ids,
-            disclosed_tool_uris=tool_uris,
+            disclosed_tool_uris=active_tool_uris,
             disclosed_skill_uris=skill_uris,
             tool_executions=tuple(executions),
             transport=dict(self.runtime.backend.inspect().get("transport", {})),
