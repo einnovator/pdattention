@@ -4612,6 +4612,19 @@ The runner now watches the native terminal event, permits a declared grace
 period, and separately records forced post-terminal shutdown.  Evidence is in
 \path{cross_agent_transfer/opencode_task01_native_stop_aux_v1}.
 
+A fresh control exercises that watchdog end to end and independently resolves
+the same official instance with the same 689-byte patch.  It reaches semantic
+completion in 16 model calls and 15 native tool calls, versus 24 and 23 in the
+first execution, demonstrating substantial within-agent trajectory variance
+despite the frozen request configuration.  The complete trace contains no
+nested agent or invalid JSON and reports 154,751 cumulative logical input
+tokens.  OpenCode again does not exit during the 30-second post-stop grace, so
+the controller terminates only the already-complete process and records both
+native stop and forced shutdown explicitly.  This qualifies reproducible task
+capability and bounded lifecycle handling; it does not establish native clean
+exit or a retention-policy result.  Evidence is in
+\path{cross_agent_transfer/opencode_task01_native_stop_watchdog_v2}.
+
 \subsection{First Pi admission outcome}
 
 The first exact-parameter control uses Pi 0.75.3 on
