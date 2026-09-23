@@ -51,6 +51,32 @@ def test_tool_call_parser_accepts_only_terminal_durable_action_projection():
     ) is None
 
 
+def test_tool_call_parser_accepts_only_terminal_pra_executed_projection():
+    text = (
+        "I will inspect the target.\n"
+        '[PRA action executed] Tool "read_file" ran with arguments '
+        '{"path":"src/a.py","start_line":10,"end_line":20}. '
+        "The immediately following PRA tool observation is its authoritative "
+        "result; do not repeat this call unless it failed, was incomplete, or "
+        "relevant state changed."
+    )
+
+    call = parse_tool_call(text)
+
+    assert call is not None
+    assert call.name == "read_file"
+    assert call.arguments == {
+        "path": "src/a.py",
+        "start_line": 10,
+        "end_line": 20,
+    }
+    assert parse_tool_call(text + " Quoted example only.") is None
+
+    malformed = text.replace('"end_line":20', '"end_line":20}')
+    assert parse_tool_call(malformed) is None
+    assert has_terminal_tool_intent(malformed)
+
+
 def test_tool_call_parser_accepts_terminal_qwen_function_block():
     text = (
         "I will inspect the relevant files.\n"

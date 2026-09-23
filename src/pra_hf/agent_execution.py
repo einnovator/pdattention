@@ -24,6 +24,15 @@ _SERIALIZED_TOOL_DECISION = re.compile(
     r"with these arguments:\s*(?P<arguments>\{.*\})\.\s*$",
     re.DOTALL,
 )
+_PRA_EXECUTED_TOOL_DECISION = re.compile(
+    r"\[PRA action executed\]\s+Tool\s+"
+    r"(?P<name>\"(?:\\.|[^\"\\])*\")\s+"
+    r"ran with arguments\s+(?P<arguments>\{.*\})\.\s+"
+    r"The immediately following PRA tool observation is its authoritative "
+    r"result; do not repeat this call unless it failed, was incomplete, or "
+    r"relevant state changed\.\s*$",
+    re.DOTALL,
+)
 _QWEN_FUNCTION_DECISION = re.compile(
     r"(?:<tool_call>\s*)?"
     r"<function=(?P<name>[A-Za-z_][A-Za-z0-9_.:-]*)>\s*"
@@ -38,6 +47,13 @@ _QWEN_FUNCTION_PARAMETER = re.compile(
 _TERMINAL_SERIALIZED_TOOL_INTENT = re.compile(
     r"I executed the tool decision named\s+\"[^\"\r\n]*\"\s+"
     r"with these arguments:\s*\{.*\}\}?\.\s*$",
+    re.DOTALL,
+)
+_TERMINAL_PRA_EXECUTED_TOOL_INTENT = re.compile(
+    r"\[PRA action executed\]\s+Tool\s+\"[^\"\r\n]*\"\s+"
+    r"ran with arguments\s+\{.*\}\.\s+The immediately following PRA tool "
+    r"observation is its authoritative result; do not repeat this call unless "
+    r"it failed, was incomplete, or relevant state changed\.\s*$",
     re.DOTALL,
 )
 _TERMINAL_QWEN_TOOL_INTENT = re.compile(
@@ -106,7 +122,9 @@ def parse_tool_call(text: str) -> ToolCall | None:
         arguments = payload.get("arguments")
         raw_text = match.group(0)
     else:
-        serialized = _SERIALIZED_TOOL_DECISION.search(text)
+        serialized = _PRA_EXECUTED_TOOL_DECISION.search(text)
+        if serialized is None:
+            serialized = _SERIALIZED_TOOL_DECISION.search(text)
         if serialized is not None:
             try:
                 name = json.loads(serialized.group("name"))
@@ -159,9 +177,10 @@ def has_terminal_tool_intent(text: str) -> bool:
     return any(
         pattern.search(text) is not None
         for pattern in (
-            _TERMINAL_XML_TOOL_INTENT,
-            _TERMINAL_SERIALIZED_TOOL_INTENT,
-            _TERMINAL_QWEN_TOOL_INTENT,
+        _TERMINAL_XML_TOOL_INTENT,
+        _TERMINAL_SERIALIZED_TOOL_INTENT,
+        _TERMINAL_PRA_EXECUTED_TOOL_INTENT,
+        _TERMINAL_QWEN_TOOL_INTENT,
         )
     )
 
