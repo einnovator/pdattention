@@ -227,6 +227,7 @@ def run(args: argparse.Namespace) -> Path:
             args.ollama_tags_url,
             expected_model=args.served_model,
             expected_revision=args.model_revision,
+            curl_executable=args.curl_executable,
         )
         if args.ollama_tags_url else None
     )
@@ -466,6 +467,10 @@ def build_parser() -> argparse.ArgumentParser:
             "Optional /api/tags URL; when set, the observed endpoint digest "
             "must equal --model-revision before Docker starts."
         ),
+    )
+    parser.add_argument(
+        "--curl-executable",
+        help="Optional native curl used for model-identity lookup on LAN hosts.",
     )
     parser.add_argument("--agent-version", default="1.49.2")
     parser.add_argument("--max-iterations", type=int, default=50)
