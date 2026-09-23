@@ -84,6 +84,11 @@ loses the solve because its apparent 8.53\% materialized saving contains only
 of an oversized observation.  Under the repaired declared-safe contract, Pi
 again resolves with the exact FULL patch at 41.53\% own whole-record saving,
 but uses 39 versus 28 calls and saves only 11.81\% against paired FULL work.
+The same declared-safe H2/T4 configuration on Kilo preserves the official
+solve and exact patch but saves only 7.30\% within its own trajectory.  Its
+first action diverges before selection begins, and the candidate consumes
+158.18\% more selected input than the paired Full trajectory; that paired
+number is therefore descriptive, not causally attributable to selection.
 This contrast motivates a portable rule: internal spans are selectable only
 when stable natural boundaries exist before K/V encoding; otherwise only whole
 records may retire.  Correctness repair alone does not guarantee favorable
@@ -706,6 +711,19 @@ edit result.  Thus the unsafe rewrite was a real correctness bug, while the
 remaining inefficiency is an agent recovery/conditioning result requiring
 causal add-back rather than a wider tail-size grid.
 
+The first normalized Kilo pairing adds a complementary negative result.  Kilo
+injects a wall-clock \texttt{Message time} field into the model-visible user
+record; a generic request-normalization declaration replaces only that
+volatile field before both hashing and forwarding.  The resulting Full and
+declared-safe H2/T4 arms have the same initial request digest and generation
+controls, resolve officially, and emit the same 689-byte patch.  Nevertheless,
+their first canonical tool actions differ at action~1, seven requests before
+selection first changes an input.  The candidate saves 7.30\% against its own
+whole-record counterfactual but materializes 376,980 selected tokens versus
+146,013 in Full, or $-158.18$\% paired saving.  We therefore reject causal
+attribution and promotion: temperature zero and identical first inputs do not
+guarantee a repeatable backend trajectory.
+
 \subsection{Task-clustered headline comparison}
 
 Table~\ref{tab:editorial-headline-policies} keeps discovery and confirmation
@@ -730,7 +748,8 @@ Matched Recency & development & 3 (6 runs) & 5/6; 4/6 & 154/113 & not admitted &
 Matched Recency H2/T4 & post-fix audit & 3 & 3/3; 3/3 & 61/64 & 364,457/341,556 & 6.03L/8.17M; 6.28P\% & $+3$ calls; not promoted \\
 Matched Recency H2/T4 & OpenHands post-fix & 1 & 1/1; 1/1 & 33/31 & 509,381/287,641 & 35.35/43.53\% & $-2$ actions; repeat pending \\
 Matched Recency H2/T4 & Pi post-fix & 1 & 1/1; 0/1 & 28/28 & 464,135/424,805 & 0.30L/8.53M; 8.47P\% & lost success; superseded \\
-Declared-safe H2/T8 & Pi repair audit & 1 & 1/1; 1/1 & 28/39 & 464,135/409,335 & 41.53L/11.81P\% & exact patch; $+11$ calls \\
+Declared-safe H2/T8 & Pi repair audit & 1 & 1/1; 1/1 & 28/39 & 464,135/409,335 & 41.53/11.81\% & same patch; $+11$ calls \\
+Declared-safe H2/T4 & Kilo pairing audit & 1 & 1/1; 1/1 & 20/19 & 146,013/376,980 & 7.30/$-158.2$\% & preselection fork; noncausal \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
@@ -4608,6 +4627,20 @@ calls and 16 native tools, with 289,550 cumulative logical input tokens and
 though their transport status is \texttt{completed}, independently confirming
 that transport and semantic success require separate fields.  Evidence is in
 \path{cross_agent_transfer/kilo_task01_full_controlled_v1}.
+
+A fresh exact-pair audit exposes a Kilo-specific source of false mismatch:
+the harness appends a wall-clock \texttt{Message time} to its environment
+block.  We normalize only this declared volatile field to a fixed string in
+both arms.  The normalized Full and declared-safe H2/T4 requests then share
+the exact initial SHA-256 digest and generation controls.  Both executions
+resolve and produce the same minimal 689-byte patch, using 20 and 19 proxy
+requests respectively.  However, their first canonical tool actions already
+differ, while record selection does not activate until request~8.  The
+candidate's 7.30\% own saving is valid, but its $-158.18$\% paired saving is
+not causally attributable to selection.  This is a strict negative promotion
+result and evidence that a temperature-zero pair still requires a
+preselection-divergence audit.  The compact ledger is in
+\path{cross_agent_transfer/kilo_declared_safe_task01_v2}.
 
 The third plain control, \texttt{django\_\_django-15741}, is a genuine
 \textsc{Full} failure after a hermetic retry.  Disabling external telemetry,
