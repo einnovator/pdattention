@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_pra_agent_boundary_free_persistent_full",
+  "run_id": "paper85-pra-agent-persistent-n3-full-v4",
+  "code_revision": "5a2dbb7b",
+  "agent": "pra-agent",
+  "model": "qwen3-coder:30b-ctx131k",
+  "model_revision": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "session": {
+    "mode": "persistent",
+    "boundary_mode": "boundary_free",
+    "task_graph_mode": "disabled",
+    "history_policy": "full",
+    "declared_tasks": 3,
+    "completed_tasks": 3
+  },
+  "ordered_instance_ids": [
+    "django__django-15277",
+    "django__django-15368",
+    "scikit-learn__scikit-learn-13135"
+  ],
+  "prefix_results": [
+    {
+      "n": 1,
+      "official_resolved": 1,
+      "requests": 15,
+      "executed_tool_events": 10,
+      "cumulative_full_history_tokens": 184147,
+      "patch_bytes": 689,
+      "patch_sha256": "8512d6bc5111e1339c1786cd5be241461e34fd8ee13a81a04afa5257ef244aae"
+    },
+    {
+      "n": 2,
+      "official_resolved": 2,
+      "requests": 25,
+      "executed_tool_events": 16,
+      "cumulative_full_history_tokens": 393487,
+      "patch_bytes": 671,
+      "patch_sha256": "58b8f39e9a0597ad446bb3a07ec549d368bc248264aac78ac043a51b272a453d"
+    },
+    {
+      "n": 3,
+      "official_resolved": 3,
+      "requests": 35,
+      "executed_tool_events": 25,
+      "cumulative_full_history_tokens": 708506,
+      "patch_bytes": 756,
+      "patch_sha256": "8771533ecb2820b6907dd40009cddcccc01b6423482b8d3cae450b6d778c81d0"
+    }
+  ],
+  "official_grade": {
+    "submitted": 3,
+    "completed": 3,
+    "resolved": 3,
+    "errors": 0
+  },
+  "decision": "qualified persistent FULL control; no selective-policy claim",
+  "paired_selective_status": "pending stable endpoint window",
+  "post_run_fixes": [
+    {
+      "revision": "e1377d0d",
+      "description": "export rejected or schema-invalid tool outcomes with a null record instead of dereferencing a nonexistent committed observation"
+    },
+    {
+      "revision": "5b3e3593",
+      "description": "carry execution-time shell operation_kind into durable records so mutation and verification floors do not parse rendered prose"
+    }
+  ]
+}

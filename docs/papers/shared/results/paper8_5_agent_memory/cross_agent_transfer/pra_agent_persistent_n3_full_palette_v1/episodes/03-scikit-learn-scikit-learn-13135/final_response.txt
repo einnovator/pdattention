@@ -1,0 +1,32 @@
+Perfect! I can see that my fix has been applied correctly. Let me summarize what I've done to solve the KBinsDiscretizer issue:
+
+## Problem Analysis
+The issue was in the `KBinsDiscretizer` class with `strategy='kmeans'`. When using kmeans strategy, the KMeans clustering algorithm returns cluster centers that are not guaranteed to be in sorted order. However, when creating bin edges from these centers, the resulting bin_edges array needs to be monotonically increasing for `np.digitize()` to work properly.
+
+## Root Cause
+In the kmeans strategy section of the `fit` method (lines 168-175), the code was:
+```python
+centers = km.fit(column[:, None]).cluster_centers_[:, 0]
+bin_edges[jj] = (centers[1:] + centers[:-1]) * 0.5
+bin_edges[jj] = np.r_[col_min, bin_edges[jj], col_max]
+```
+
+The `centers` array from KMeans is not sorted, which leads to unsorted bin_edges that cause `np.digitize()` to fail with "ValueError: bins must be monotonically increasing or decreasing".
+
+## Fix Applied
+I added a single line to sort the centers before creating bin_edges:
+```python
+# Sort centers to ensure bin_edges are monotonically increasing
+centers = np.sort(centers)
+```
+
+This ensures that the cluster centers are sorted before computing the bin edges, which guarantees that the resulting bin_edges array will be monotonically increasing.
+
+## Verification
+The fix is minimal and targeted:
+1. Only one line added: `centers = np.sort(centers)`
+2. Maintains all existing functionality 
+3. Fixes the specific issue with unsorted bin_edges in kmeans strategy
+4. Follows the principle of least change - only what's necessary to solve the problem
+
+This fix ensures that when `KBinsDiscretizer` is used with `strategy='kmeans'`, it will work correctly regardless of the number of bins specified, including edge cases where `n_bins` is close to the number of data points.

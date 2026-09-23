@@ -1,0 +1,31 @@
+Great! I can see that `F` is already imported at the top of the file on line 19: `from django.db.models.expressions import Case, Expression, F, Ref, Value, When`. This means my fix should work correctly.
+
+Let me summarize what I've done to fix the issue:
+
+## Problem Analysis
+The issue was in the `bulk_update()` method in `/testbed/django/db/models/query.py` around line 673. The code was using:
+```python
+if not isinstance(attr, Expression):
+```
+
+This check was too restrictive because F expressions are instances of `F`, which is a subclass of `Expression`. However, the current logic didn't properly handle F expressions in bulk_update operations, causing them to be treated as regular values instead of being properly resolved to column references.
+
+## Fix Applied
+I changed the line from:
+```python
+if not isinstance(attr, Expression):
+```
+to:
+```python
+if not isinstance(attr, (Expression, F)):
+```
+
+This ensures that both `Expression` instances (including `F` expressions) and `F` objects are properly handled in bulk_update operations, allowing them to be processed correctly rather than being converted to `Value` objects.
+
+## Verification
+1. The fix is minimal and targeted - only changes the type checking logic
+2. F is already imported at the top of the file, so no additional imports needed
+3. This follows the exact suggestion in the issue description
+4. The change maintains backward compatibility while fixing the specific problem with F expressions
+
+The fix ensures that when `bulk_update()` encounters an F expression like `F('name')`, it will properly handle it instead of converting it to a string representation like `'F(name)'` in the SQL query.

@@ -5174,6 +5174,58 @@ verify before finalization.  These are prospective scaffold changes, not
 retrospective savings.  Live PRA Agent state is atomically persisted after
 each record so a host crash does not erase a long trajectory.
 
+\paragraph{Corrected boundary-free persistent control.}
+The first clean three-issue PRA Agent control now disables task-graph mutation
+entirely: each ordinary user prompt enters one continuous session, but the
+selector receives neither benchmark identity nor a host-declared task
+boundary.  This matters because an earlier runner left the first issue as the
+active task and thereby leaked a stale ``Task~1'' label into later prompts.
+That diagnostic is quarantined.  The corrected run also separates rejected
+from executed actions and withdraws exhausted read-only capabilities from the
+next disclosed palette rather than asking the model to ignore an operation it
+can still see.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Qualified PRA Agent persistent-\textsc{Full} prefix.  Tokens are the
+cumulative exact-token history workload, not unique context length.  R/T is
+cumulative model requests / executed tool events.}
+\label{tab:pra-agent-persistent-full-n3}
+\begin{tabular}{lrrrr}
+\toprule
+Prefix & Official & R/T & Cumulative history tokens & Patch bytes \\
+\midrule
+$N=1$ & 1/1 & 15/10 & 184,147 & 689 \\
+$N=2$ & 2/2 & 25/16 & 393,487 & 671 \\
+$N=3$ & 3/3 & 35/25 & 708,506 & 756 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The independent grader resolves all three issues.  Task~1 exposes a remaining
+efficiency distinction rather than a capability failure: despite an explicit
+symbol and suggested edit, the rich typed-tool palette induces broader
+discovery than the one-shell-tool mini-swe-agent scaffold.  The bounded guard
+eventually forces mutation, while Tasks~2 and 3 localize the named code more
+directly.  Thus equal base weights do not imply equal trajectories; prompt,
+tool affordances, observation rendering, rejection handling, and completion
+semantics remain part of the agent treatment.
+
+No selective saving is claimed from this table.  The first E0 attempt at
+$N=1$ selected every record (23 requests, 280,830 selected of 280,830 FULL
+workload tokens) and produced the same 689-byte patch, but evidence export
+then dereferenced the absent result record of a rejected action.  The exporter
+now records such outcomes with a null committed-record field and passes a
+regression test.  We additionally attach execution-time
+\texttt{operation\_kind} to generic-shell receipts, so a shell edit or test is
+eligible for mutation or verification floors without reparsing prose.  Both
+are implementation repairs; the interrupted retry and a subsequent failed
+model-load health gate are excluded.  A fresh E0 sequence is still required
+before computing the $N=1\ldots3$ saving curve or expanding toward Easy-14.
+Evidence is in
+\path{cross_agent_transfer/pra_agent_persistent_n3_full_palette_v1}.
+
 \subsection{Longer-horizon mini-swe-agent capability control}
 
 We separately locked the five original Easy-50 failures whose no-PRA control

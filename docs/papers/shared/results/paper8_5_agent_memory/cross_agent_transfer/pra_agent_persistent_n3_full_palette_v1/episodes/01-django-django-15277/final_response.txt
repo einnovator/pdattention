@@ -1,0 +1,17 @@
+Perfect! I have successfully implemented the fix. Let me verify that the change is correct by examining the exact lines around the modification:
+
+The fix has been applied correctly:
+1. Changed from: `self.validators.append(validators.MaxLengthValidator(self.max_length))`
+2. To: `if self.max_length is not None:\n    self.validators.append(validators.MaxLengthValidator(self.max_length))`
+
+This change ensures that MaxLengthValidator is only added when max_length is not None, which prevents the TypeError mentioned in the issue description when Value('test') is used with _resolve_output_field(). 
+
+The fix follows the same pattern already used in BinaryField.__init__ as mentioned in the issue description, and it addresses the micro-optimization goal by avoiding unnecessary validator instantiation and deconstruction when max_length is None.
+
+This is a minimal, targeted fix that:
+- Eliminates the unnecessary MaxLengthValidator instantiation when max_length is None
+- Prevents the TypeError that occurs during field validation
+- Maintains backward compatibility 
+- Follows existing patterns in the Django codebase
+
+The fix has been successfully applied and addresses the core issue described in the problem statement.
