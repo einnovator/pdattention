@@ -11,6 +11,7 @@ import subprocess
 import time
 from typing import Any, Mapping
 
+from .model_identity import fetch_ollama_model_identity
 from .responses_audit_proxy import ResponsesAuditConfig, ResponsesAuditProxy
 from .run_pi_swebench import (
     _run,
@@ -69,6 +70,24 @@ def _trace_summary(path: Path) -> dict[str, Any]:
     }
 
 
+def _observed_model_identity(args: argparse.Namespace) -> dict[str, Any] | None:
+    if bool(args.ollama_tags_url) != bool(args.model_revision):
+        raise ValueError(
+            "--ollama-tags-url and --model-revision must be supplied together"
+        )
+    if args.provider_mode == "ollama_oss" and not args.ollama_tags_url:
+        raise ValueError(
+            "native Ollama admission requires an observed model revision"
+        )
+    if not args.ollama_tags_url:
+        return None
+    return fetch_ollama_model_identity(
+        args.ollama_tags_url,
+        expected_model=args.model,
+        expected_revision=args.model_revision,
+    )
+
+
 def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
@@ -78,6 +97,7 @@ def run(args: argparse.Namespace) -> Path:
     prompt = task_prompt(trajectory, instance_id)
     prompt_path = output / "task_prompt.txt"
     prompt_path.write_text(prompt + "\n", encoding="utf-8")
+    observed_model_identity = _observed_model_identity(args)
 
     repository = Path(__file__).resolve().parents[2]
     dockerfile = repository / "experiments" / "paper8_5_agent_memory" / "docker" / "codex-swebench.Dockerfile"
@@ -186,7 +206,10 @@ def run(args: argparse.Namespace) -> Path:
         "arm": args.arm,
         "agent": "codex-cli",
         "agent_version": args.agent_version,
-        "agent_protocol": "openai_responses",
+        "agent_protocol": (
+            "openai_responses"
+            if args.provider_mode == "responses_audit" else "ollama_native"
+        ),
         "native_context_management": "ephemeral_session_no_compaction_claim",
         "instance_id": instance_id,
         "task_index": task_index,
@@ -195,6 +218,8 @@ def run(args: argparse.Namespace) -> Path:
         "reference_trajectory": str(trajectory),
         "reference_trajectory_sha256": _sha256(trajectory.read_bytes()),
         "model": args.model,
+        "model_revision": args.model_revision,
+        "observed_model_identity": observed_model_identity,
         "provider_mode": args.provider_mode,
         "upstream_base_url": args.upstream_base_url,
         "source_image": source_image,
@@ -205,12 +230,25 @@ def run(args: argparse.Namespace) -> Path:
         "elapsed_seconds": (finished - started).total_seconds(),
         "exit_code": execution.returncode,
         "timed_out": timed_out,
-        "generation": {
-            "temperature": args.temperature,
-            "top_p": args.top_p,
-            "seed": args.seed,
-            "max_output_tokens": args.max_completion_tokens,
-        },
+        "generation": (
+            {
+                "status": "audit_proxy_enforced",
+                "temperature": args.temperature,
+                "top_p": args.top_p,
+                "seed": args.seed,
+                "max_output_tokens": args.max_completion_tokens,
+            }
+            if args.provider_mode == "responses_audit" else
+            {
+                "status": "agent_native_not_externally_enforced",
+                "requested_model": args.model,
+                "note": (
+                    "Codex CLI exposes no sampling flags in native Ollama mode; "
+                    "do not treat the runner's temperature/top_p/seed CLI "
+                    "defaults as applied generation controls."
+                ),
+            }
+        ),
         "responses_trace": trace_summary,
         "event_summary": event_summary,
         "workspace_status_sha256": _sha256(status.stdout),
@@ -224,7 +262,9 @@ def run(args: argparse.Namespace) -> Path:
                 "it only fills frozen controls and records the request envelope."
                 if args.provider_mode == "responses_audit" else
                 "Codex uses its built-in Ollama OSS provider; no external "
-                "Responses-to-Chat translation is attributed to PRA."
+                "Responses-to-Chat translation is attributed to PRA. Native "
+                "sampling remains separately disclosed rather than claimed "
+                "as temperature-zero."
             ),
             "Policy transfer is blocked until the Responses history representation is inventoried from this FULL control.",
         ],
@@ -244,6 +284,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", required=True)
     parser.add_argument("--arm", default="FULL")
     parser.add_argument("--model", default="qwen3-coder:30b")
+    parser.add_argument("--model-revision")
+    parser.add_argument("--ollama-tags-url")
     parser.add_argument("--agent-version", default="0.153.0")
     parser.add_argument("--upstream-base-url", required=True)
     parser.add_argument(

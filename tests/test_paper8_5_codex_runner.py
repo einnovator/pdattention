@@ -6,6 +6,8 @@ from pathlib import Path
 import threading
 from urllib import request
 
+import pytest
+
 from experiments.paper8_5_agent_memory.responses_audit_proxy import (
     ResponsesAuditConfig,
     ResponsesAuditProxy,
@@ -13,6 +15,7 @@ from experiments.paper8_5_agent_memory.responses_audit_proxy import (
 from experiments.paper8_5_agent_memory.run_codex_swebench import (
     build_parser,
     _event_summary,
+    _observed_model_identity,
     _trace_summary,
 )
 
@@ -24,8 +27,23 @@ def test_codex_runner_accepts_native_ollama_provider_mode() -> None:
         "--reference-trajectory", "trajectory.json",
         "--upstream-base-url", "http://model.example:11434",
         "--provider-mode", "ollama_oss",
+        "--ollama-tags-url", "http://model.example:11434/api/tags",
+        "--model-revision", "revision",
     ])
     assert args.provider_mode == "ollama_oss"
+
+
+def test_native_codex_fails_closed_without_observed_model_identity() -> None:
+    args = build_parser().parse_args([
+        "--instance-id", "django__django-15277",
+        "--output", "out",
+        "--reference-trajectory", "trajectory.json",
+        "--upstream-base-url", "http://model.example:11434",
+        "--provider-mode", "ollama_oss",
+    ])
+
+    with pytest.raises(ValueError, match="observed model revision"):
+        _observed_model_identity(args)
 
 
 def test_codex_event_summary_preserves_native_action_types(tmp_path: Path) -> None:
