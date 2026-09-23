@@ -11,9 +11,21 @@ from experiments.paper8_5_agent_memory.responses_audit_proxy import (
     ResponsesAuditProxy,
 )
 from experiments.paper8_5_agent_memory.run_codex_swebench import (
+    build_parser,
     _event_summary,
     _trace_summary,
 )
+
+
+def test_codex_runner_accepts_native_ollama_provider_mode() -> None:
+    args = build_parser().parse_args([
+        "--instance-id", "django__django-15277",
+        "--output", "out",
+        "--reference-trajectory", "trajectory.json",
+        "--upstream-base-url", "http://model.example:11434",
+        "--provider-mode", "ollama_oss",
+    ])
+    assert args.provider_mode == "ollama_oss"
 
 
 def test_codex_event_summary_preserves_native_action_types(tmp_path: Path) -> None:

@@ -102,31 +102,47 @@ def run(args: argparse.Namespace) -> Path:
         raise RuntimeError(f"Codex task image build failed with {build.returncode}")
 
     trace = output / "responses_proxy_trace.jsonl"
-    proxy = ResponsesAuditProxy(ResponsesAuditConfig(
-        upstream_base_url=args.upstream_base_url,
-        expected_model=args.model,
-        trace_path=trace,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        seed=args.seed,
-        max_output_tokens=args.max_completion_tokens,
-        timeout_seconds=args.upstream_timeout_seconds,
-    ))
-    proxy_url = proxy.start()
+    proxy: ResponsesAuditProxy | None = None
+    provider_args: tuple[str, ...]
+    provider_environment: tuple[str, ...]
+    if args.provider_mode == "responses_audit":
+        proxy = ResponsesAuditProxy(ResponsesAuditConfig(
+            upstream_base_url=args.upstream_base_url,
+            expected_model=args.model,
+            trace_path=trace,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            seed=args.seed,
+            max_output_tokens=args.max_completion_tokens,
+            timeout_seconds=args.upstream_timeout_seconds,
+        ))
+        proxy_url = proxy.start()
+        provider_environment = ()
+        provider_args = (
+            "--config", "model_provider=paper85",
+            "--config", "model_providers.paper85.name=Paper85",
+            "--config", f"model_providers.paper85.base_url={proxy_url}",
+            "--config", "model_providers.paper85.env_key=OPENAI_API_KEY",
+            "--config", "model_providers.paper85.wire_api=responses",
+        )
+    else:
+        # Let Codex own the open-model adaptation. This avoids attributing a
+        # Responses-to-Chat translation layer to the PRA memory policy.
+        provider_environment = (
+            "--env", f"OLLAMA_HOST={args.upstream_base_url.rstrip('/')}",
+        )
+        provider_args = ("--oss", "--local-provider", "ollama")
     command = (
         args.docker, "run", "--name", container, "--platform", "linux/amd64",
         "--env", "OPENAI_API_KEY=paper85-local",
         "--env", "OTEL_SDK_DISABLED=true",
         "--env", "DO_NOT_TRACK=1",
+        *provider_environment,
         "--entrypoint", "codex", image,
         "exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules",
         "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox",
         "--model", args.model,
-        "--config", "model_provider=paper85",
-        "--config", "model_providers.paper85.name=Paper85",
-        "--config", f"model_providers.paper85.base_url={proxy_url}",
-        "--config", "model_providers.paper85.env_key=OPENAI_API_KEY",
-        "--config", "model_providers.paper85.wire_api=responses",
+        *provider_args,
         prompt,
     )
     started = datetime.now(timezone.utc)
@@ -140,7 +156,8 @@ def run(args: argparse.Namespace) -> Path:
             command, 124, stdout=error.stdout or b"", stderr=error.stderr or b""
         )
     finally:
-        proxy.close()
+        if proxy is not None:
+            proxy.close()
     finished = datetime.now(timezone.utc)
     events = output / "codex_events.jsonl"
     events.write_bytes(execution.stdout)
@@ -178,6 +195,7 @@ def run(args: argparse.Namespace) -> Path:
         "reference_trajectory": str(trajectory),
         "reference_trajectory_sha256": _sha256(trajectory.read_bytes()),
         "model": args.model,
+        "provider_mode": args.provider_mode,
         "upstream_base_url": args.upstream_base_url,
         "source_image": source_image,
         "derived_image": image,
@@ -201,7 +219,13 @@ def run(args: argparse.Namespace) -> Path:
         "official_resolution": None,
         "notes": [
             "Codex uses its native prompt, shell/file tools, and Responses protocol.",
-            "The audit proxy does not translate protocol or select history; it only fills frozen generation controls and records the request envelope.",
+            (
+                "The audit proxy does not translate protocol or select history; "
+                "it only fills frozen controls and records the request envelope."
+                if args.provider_mode == "responses_audit" else
+                "Codex uses its built-in Ollama OSS provider; no external "
+                "Responses-to-Chat translation is attributed to PRA."
+            ),
             "Policy transfer is blocked until the Responses history representation is inventoried from this FULL control.",
         ],
     })
@@ -222,6 +246,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default="qwen3-coder:30b")
     parser.add_argument("--agent-version", default="0.153.0")
     parser.add_argument("--upstream-base-url", required=True)
+    parser.add_argument(
+        "--provider-mode",
+        choices=("responses_audit", "ollama_oss"),
+        default="responses_audit",
+    )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=0)
@@ -244,4 +273,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
