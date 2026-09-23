@@ -7,6 +7,7 @@ from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
     build_parser,
 )
 from experiments.paper8_5_agent_memory.run_pra_agent_persistent_swebench import (
+    _load_task_registry,
     _task_spec,
     build_parser as build_persistent_parser,
 )
@@ -241,3 +242,22 @@ def test_persistent_runner_accepts_ordered_boundary_free_tasks() -> None:
         "--prior-full-epochs", "2",
     ])
     assert instruction.prior_full_epochs == 2
+
+
+def test_persistent_task_registry_supports_canonical_n_prefix(tmp_path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    registry = tmp_path / "tasks.json"
+    registry.write_text(
+        '{"tasks":['
+        '{"instance_id":"task-1","reference_artifact":"one.json"},'
+        '{"instance_id":"task-2","reference_artifact":"two.json"}'
+        ']}',
+        encoding="utf-8",
+    )
+
+    tasks = _load_task_registry(
+        registry, repository=repository, task_count=1
+    )
+
+    assert tasks == [("task-1", (repository / "one.json").resolve())]

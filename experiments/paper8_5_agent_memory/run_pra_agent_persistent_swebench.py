@@ -58,6 +58,37 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
+def _load_task_registry(
+    path: Path,
+    *,
+    repository: Path,
+    task_count: int | None = None,
+) -> list[tuple[str, Path]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    rows = payload.get("tasks")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("task registry must contain a non-empty tasks array")
+    tasks: list[tuple[str, Path]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("task registry rows must be objects")
+        instance_id = str(row.get("instance_id") or "")
+        reference_text = str(row.get("reference_artifact") or "")
+        if not instance_id or not reference_text:
+            raise ValueError("task registry row lacks identity or reference")
+        reference = Path(reference_text)
+        if not reference.is_absolute():
+            reference = repository / reference
+        tasks.append((instance_id, reference.resolve()))
+    if len({row[0] for row in tasks}) != len(tasks):
+        raise ValueError("task registry contains duplicate instance identities")
+    if task_count is not None:
+        if task_count < 1 or task_count > len(tasks):
+            raise ValueError("task_count is outside the task registry")
+        tasks = tasks[:task_count]
+    return tasks
+
+
 def _start_container(
     docker: str,
     instance_id: str,
@@ -113,11 +144,23 @@ def _tool_events(turn: Any) -> list[dict[str, object]]:
 
 
 def run(args: argparse.Namespace) -> Path:
-    if not args.task:
-        raise ValueError("At least one --task is required.")
+    repository = Path(__file__).resolve().parents[2]
+    if args.task and args.task_registry:
+        raise ValueError("Use repeated --task or --task-registry, not both.")
+    declared_tasks = list(args.task or ())
+    if args.task_registry:
+        declared_tasks = _load_task_registry(
+            Path(args.task_registry).resolve(),
+            repository=repository,
+            task_count=args.task_count,
+        )
+    elif args.task_count is not None:
+        raise ValueError("--task-count requires --task-registry")
+    if not declared_tasks:
+        raise ValueError("At least one --task or --task-registry is required.")
     benchmark = Path(args.benchmark_card).resolve()
     tasks: list[tuple[str, Path, int, str]] = []
-    for instance_id, trajectory in args.task:
+    for instance_id, trajectory in declared_tasks:
         _, locked_id, task_index = load_locked_task(benchmark, instance_id)
         if not trajectory.is_file():
             raise FileNotFoundError(trajectory)
@@ -425,8 +468,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--task",
         action="append",
         type=_task_spec,
-        required=True,
         help="Repeat INSTANCE_ID=REFERENCE_TRAJECTORY in session order.",
+    )
+    parser.add_argument("--task-registry")
+    parser.add_argument(
+        "--task-count",
+        type=int,
+        help="Run the first N locked registry tasks in canonical order.",
     )
     parser.add_argument(
         "--benchmark-card",
