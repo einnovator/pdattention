@@ -113,6 +113,45 @@ def test_inspection_budget_allows_mutation_and_rejects_more_discovery(
     ) is None
 
 
+@pytest.mark.parametrize(
+    "path",
+    (
+        "test_lazy_format.py",
+        "/testbed/tests/test_formats.py",
+        "package-lock.json",
+        "benchmarks/easy14.json",
+    ),
+)
+def test_inspection_guard_rejects_protected_structured_writes(path: str) -> None:
+    workspace = DockerWorkspaceTools("docker", "task-container")
+    guard = SWEInspectionBudgetGuard(workspace, max_inspections=8)
+
+    rejection = guard(
+        None,
+        ToolCall("write_file", {"path": path, "content": "scratch"}),
+        None,
+        (),
+    )
+
+    assert rejection is not None
+    assert "protected_path" in rejection
+
+
+def test_inspection_guard_allows_structured_source_write_before_budget() -> None:
+    workspace = DockerWorkspaceTools("docker", "task-container")
+    guard = SWEInspectionBudgetGuard(workspace, max_inspections=8)
+
+    assert guard(
+        None,
+        ToolCall(
+            "replace_text",
+            {"path": "django/utils/formats.py", "old": "x", "new": "y"},
+        ),
+        None,
+        (),
+    ) is None
+
+
 def test_durable_tool_events_survive_a_later_turn_failure() -> None:
     records = (
         _message("a1", "assistant", "inspect"),

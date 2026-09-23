@@ -78,7 +78,35 @@ class SWEInspectionBudgetGuard:
         self.workspace = workspace
         self.max_inspections = max_inspections
 
+    @staticmethod
+    def _protected_mutation_path(value: object) -> bool:
+        text = str(value or "").replace("\\", "/")
+        path = PurePosixPath(text)
+        parts = {part.lower() for part in path.parts}
+        name = path.name.lower()
+        if parts & {"test", "tests", "benchmarks", ".github"}:
+            return True
+        if name.startswith("test_") or name.endswith(("_test.py", ".test.js")):
+            return True
+        return name in {
+            "package.json",
+            "package-lock.json",
+            "pyproject.toml",
+            "requirements.txt",
+            "setup.cfg",
+            "setup.py",
+            "tox.ini",
+        }
+
     def __call__(self, _state, call, _resource, executions) -> str | None:
+        if call.name in {"write_file", "replace_text"}:
+            path = call.arguments.get("path")
+            if self._protected_mutation_path(path):
+                return (
+                    "protected_path. This benchmark permits source fixes but "
+                    f"forbids modifying tests, dependency/build files, or "
+                    f"benchmark metadata; {path!r} was not written."
+                )
         if len(executions) < self.max_inspections:
             return None
         if self.workspace.has_tracked_source_patch():
