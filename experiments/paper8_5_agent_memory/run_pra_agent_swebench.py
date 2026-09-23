@@ -333,6 +333,11 @@ class DockerWorkspaceTools:
         return {
             "command": command,
             "cwd": directory,
+            # Preserve the middleware's observed operation class in the
+            # durable tool result.  The history policy must not have to parse
+            # rendered prose later to distinguish an edit, verification, or
+            # source inspection performed through the generic shell tool.
+            "operation_kind": classify_bash_operation(command).value,
             "exit_code": result.returncode,
             "stdout": self._text(result.stdout)[-100_000:],
             "stderr": self._text(result.stderr)[-100_000:],

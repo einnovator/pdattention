@@ -83,6 +83,31 @@ def test_workspace_file_listing_prunes_git_and_caps_payload(monkeypatch) -> None
     assert result["truncated"] is True
 
 
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    (
+        ("sed -i 's/x/y/' source.py", "write"),
+        ("pytest -q tests/test_source.py", "verify"),
+        ("sed -n '1,20p' source.py", "read"),
+    ),
+)
+def test_run_command_emits_durable_operation_kind(
+    monkeypatch, command: str, expected: str,
+) -> None:
+    workspace = DockerWorkspaceTools("docker", "task-container")
+    monkeypatch.setattr(
+        workspace,
+        "_shell",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ("bash",), 0, b"ok\n", b""
+        ),
+    )
+
+    result = workspace.run_command(command)
+
+    assert result["operation_kind"] == expected
+
+
 def test_inspection_budget_allows_mutation_and_rejects_more_discovery(
     monkeypatch,
 ) -> None:
@@ -214,6 +239,45 @@ def test_recordize_pra_agent_records_preserves_typed_causal_pairs() -> None:
         ("a2", "o2"),
     ]
     assert all(turn.complete for turn in history.turns)
+
+
+@pytest.mark.parametrize(
+    ("operation_kind", "expected_role"),
+    (
+        ("read", "source_view"),
+        ("search_discovery", "source_view"),
+        ("write", "mutation"),
+        ("verify", "verification"),
+        ("diff", "verification"),
+    ),
+)
+def test_recordize_uses_typed_shell_operation_semantics(
+    operation_kind: str, expected_role: str,
+) -> None:
+    rows = (
+        _message("task", "user", "fix the issue"),
+        _message("action", "assistant", "run shell action"),
+        ContextRecord(
+            "observation",
+            RecordType.TOOL_RESPONSE,
+            {
+                "producer_tool_uri": "pra://tool/run_command",
+                "compact": {
+                    "fields": {
+                        "command": "opaque to policy",
+                        "operation_kind": operation_kind,
+                    }
+                },
+            },
+        ),
+    )
+
+    history = recordize_pra_agent_records(rows)
+
+    observation = next(
+        row for row in history.records if row.record_id == "observation"
+    )
+    assert expected_role in {role.value for role in observation.semantic_roles}
 
 
 def test_recordize_completion_recovery_is_not_an_immutable_user_prompt() -> None:

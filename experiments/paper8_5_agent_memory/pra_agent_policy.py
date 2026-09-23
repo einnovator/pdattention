@@ -56,12 +56,27 @@ def _visible_content(record: ContextRecord) -> str:
 def _tool_roles(record: ContextRecord) -> tuple[AgentRecordRole, ...]:
     payload = record.payload if isinstance(record.payload, Mapping) else {}
     uri = str(payload.get("producer_tool_uri") or "").lower()
+    compact = payload.get("compact")
+    compact_fields = (
+        compact.get("fields", {})
+        if isinstance(compact, Mapping) else {}
+    )
+    operation_kind = str(
+        compact_fields.get("operation_kind")
+        if isinstance(compact_fields, Mapping) else ""
+    ).lower()
     roles = [AgentRecordRole.TOOL_OBSERVATION]
-    if any(name in uri for name in ("list_files", "read_file", "search_text")):
+    if (
+        any(name in uri for name in ("list_files", "read_file", "search_text"))
+        or operation_kind in {"read", "search_discovery"}
+    ):
         roles.append(AgentRecordRole.SOURCE_VIEW)
-    if any(name in uri for name in ("write_file", "replace_text")):
+    if (
+        any(name in uri for name in ("write_file", "replace_text"))
+        or operation_kind == "write"
+    ):
         roles.append(AgentRecordRole.MUTATION)
-    if "git_status" in uri:
+    if "git_status" in uri or operation_kind in {"diff", "verify"}:
         roles.append(AgentRecordRole.VERIFICATION)
     return tuple(roles)
 
