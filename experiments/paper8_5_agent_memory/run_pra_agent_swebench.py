@@ -23,7 +23,7 @@ from typing import Any, Mapping, Sequence
 from pra_hf import (
     AgentConfig,
     CapabilitySDK,
-    InMemorySessionService,
+    LocalSessionService,
     NegotiatedRemoteBackend,
     PRAAgent,
     PRAAgentConfig,
@@ -401,7 +401,7 @@ def run(args: argparse.Namespace) -> Path:
         backend=backend,
         capability_sdk=capabilities,
         executor=tools.executor(),
-        session_service=InMemorySessionService(),
+        session_service=LocalSessionService(output / "live_session"),
     )
     agent = PRAAgent(
         runtime,
@@ -512,6 +512,7 @@ def run(args: argparse.Namespace) -> Path:
         "arm": "FULL" if args.history_policy == "full" else "MATCHED_RECENCY",
         "agent": "pra-agent",
         "agent_protocol": "typed_records_with_openai_text_fallback",
+        "session_persistence": "atomic_local_json_per_record",
         "behavior_instructions": PRA_SWE_AGENT_BEHAVIOR,
         "behavior_instructions_sha256": _sha256(
             PRA_SWE_AGENT_BEHAVIOR.encode("utf-8")

@@ -19,7 +19,7 @@ from typing import Any, Sequence
 from pra_hf import (
     AgentConfig,
     CapabilitySDK,
-    InMemorySessionService,
+    LocalSessionService,
     NegotiatedRemoteBackend,
     PRAAgent,
     PRAAgentConfig,
@@ -256,7 +256,7 @@ def run(args: argparse.Namespace) -> Path:
         backend=backend,
         capability_sdk=capabilities,
         executor=tools.executor(),
-        session_service=InMemorySessionService(),
+        session_service=LocalSessionService(output / "live_session"),
     )
     agent = PRAAgent(
         runtime,
@@ -452,6 +452,7 @@ def run(args: argparse.Namespace) -> Path:
         "schema_version": 1,
         "study": "paper8_5_persistent_cross_agent_transfer",
         "agent": "pra-agent",
+        "session_persistence": "atomic_local_json_per_record",
         "behavior_instructions": PRA_SWE_AGENT_BEHAVIOR,
         "behavior_instructions_sha256": _sha256(
             PRA_SWE_AGENT_BEHAVIOR.encode("utf-8")
