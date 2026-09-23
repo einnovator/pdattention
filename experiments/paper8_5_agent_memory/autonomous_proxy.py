@@ -1505,7 +1505,7 @@ class AutonomousSelectionProxy:
             # ambiguous and must remain fail-closed rather than replay a POST.
             "--retry", str(max(0, self.upstream_connect_attempts - 1)),
             "--retry-connrefused",
-            "--retry-delay", str(self.upstream_connect_retry_seconds),
+            "--retry-delay", str(int(math.ceil(self.upstream_connect_retry_seconds))),
             "--request", request.get_method(),
         ]
         for key, value in request.header_items():
