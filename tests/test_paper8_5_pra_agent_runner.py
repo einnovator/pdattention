@@ -338,6 +338,50 @@ def test_instruction_epoch_selector_retires_only_old_closed_interactions() -> No
     assert selector.traces[0]["policy"] == "instruction_epoch_e1"
 
 
+def test_instruction_epoch_preserves_prior_typed_shell_mutation_floor() -> None:
+    rows = (
+        _message("task1", "user", "fix repository one"),
+        _message("write1", "assistant", "edit source one"),
+        ContextRecord(
+            "write-result1",
+            RecordType.TOOL_RESPONSE,
+            {
+                "producer_tool_uri": "pra://tool/run_command",
+                "compact": {
+                    "fields": {
+                        "command": "opaque to policy",
+                        "operation_kind": "write",
+                    }
+                },
+            },
+        ),
+        ContextRecord(
+            "final1",
+            RecordType.GENERIC_TEXT,
+            {
+                "role": "assistant",
+                "text": "task one complete",
+                "pra_agent_semantic_role": "finalization",
+            },
+        ),
+        _message("task2", "user", "fix repository two"),
+        _message("read2", "assistant", "inspect source two"),
+        _observation("read-result2", "source two"),
+    )
+    selector = PRAAgentInstructionEpochSelector(
+        count_tokens=lambda text: len(text.split()),
+        tokenizer_identity="unit-whitespace",
+        prior_full_epochs=0,
+        prior_mutation_turns=1,
+    )
+
+    selected = selector(rows, "continue repository two")
+    selected_ids = {row.record_id for row in selected}
+
+    assert {"task1", "task2", "write1", "write-result1"}.issubset(selected_ids)
+    assert {"read2", "read-result2"}.issubset(selected_ids)
+
+
 def test_pra_agent_h2_t4_selector_drops_only_an_unprotected_whole_turn() -> None:
     rows = [_message("task", "user", "fix the issue")]
     for index in range(1, 8):
