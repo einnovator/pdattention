@@ -4582,11 +4582,9 @@ Kilo.  Native Bash remains an unknown-effect barrier; read, glob, grep, edit,
 write, progress, and delegation tools receive declarative semantics in
 \path{configs/opencode_tool_semantics_v1.json}.  A nested \texttt{task} call
 fails root-trace qualification until child-session events are joined.  The
-implementation is complete, but no OpenCode quality or saving number is
-reported before its same-model \textsc{Full} admission succeeds.  The pinned
 Linux/amd64 image and hermetic configuration pass preflight on the Medium Mac:
-the CLI reports version 1.18.31 and exposes only
-\texttt{pra/qwen3-coder:30b}.  This installation evidence is archived in
+the CLI reports version 1.18.31 and exposes only the controlled model.  This
+installation evidence is archived in
 \path{cross_agent_transfer/opencode_admission_preflight_v1}; it is not a task
 or policy result.
 
@@ -4600,6 +4598,19 @@ of those values.  Delegation is disabled for the first admission so the root
 event stream is complete; child-session joining remains a separate future
 qualification.  This repair invalidates no reported task result because the
 model-backed OpenCode control had not yet run.
+
+The first model-backed control now supplies a capability result, but remains a
+process-lifecycle auxiliary row.  On Task~1, OpenCode makes 24 model calls and
+23 native tool calls, exports the correct 689-byte patch, and the official
+grader resolves the instance.  Its 89-event root trace is complete, contains
+no nested-agent call or invalid JSON line, and records 280,015 cumulative
+logical input tokens.  However, after emitting native
+\texttt{step\_finish(reason=stop)}, the CLI process remains alive until the
+controller stops the container, yielding exit code 137.  We do not relabel
+that process exit as task failure, nor call it clean lifecycle qualification.
+The runner now watches the native terminal event, permits a declared grace
+period, and separately records forced post-terminal shutdown.  Evidence is in
+\path{cross_agent_transfer/opencode_task01_native_stop_aux_v1}.
 
 \subsection{First Pi admission outcome}
 
