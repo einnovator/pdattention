@@ -31,6 +31,10 @@ _MUTATION_COMMAND = re.compile(
     r"(?:python\d*|ruby)\b.*(?:write_text|open\([^)]*,\s*['\"]w|replace\()|"
     r">{1,2}\s*[^&|]+)"
 )
+_DIRECT_MUTATION_COMMAND = re.compile(
+    r"(?:apply_patch|sed\s+-i|perl\s+-pi|git\s+apply|patch\s+-p|"
+    r"(?:python\d*|ruby)\b.*(?:write_text|open\([^)]*,\s*['\"]w|replace\())"
+)
 _VERIFICATION_COMMAND = re.compile(
     r"(?:^|[;&|]\s*)(?:pytest|tox|nox|make\s+(?:test|check|lint)|"
     r"python\s+-m\s+(?:pytest|unittest)|git\s+(?:diff|status)|"
@@ -96,7 +100,7 @@ def _assistant_roles(command: str | None, content: str) -> tuple[AgentRecordRole
     roles = [AgentRecordRole.ASSISTANT_ACTION]
     if content.partition("```")[0].strip():
         roles.append(AgentRecordRole.PROGRESS)
-    if command and _MUTATION_COMMAND.search(command):
+    if command and _is_solution_mutation(command):
         roles.append(AgentRecordRole.MUTATION)
     if command and _VERIFICATION_COMMAND.search(command):
         roles.append(AgentRecordRole.VERIFICATION)
@@ -115,11 +119,28 @@ def _observation_roles(
         roles.append(AgentRecordRole.ERROR_OR_REJECTION)
     if command and _SOURCE_COMMAND.search(command):
         roles.append(AgentRecordRole.SOURCE_VIEW)
-    if command and _MUTATION_COMMAND.search(command):
+    if command and _is_solution_mutation(command):
         roles.append(AgentRecordRole.MUTATION)
     if command and _VERIFICATION_COMMAND.search(command):
         roles.append(AgentRecordRole.VERIFICATION)
     return tuple(dict.fromkeys(roles))
+
+
+def _is_solution_mutation(command: str) -> bool:
+    """Exclude derived verification output from the source-mutation floor.
+
+    A command such as ``git diff > patch.txt`` does write an artifact, but it
+    does not change the solution state that later reasoning must remember.  A
+    direct edit remains a mutation even when the same compound command also
+    performs verification.
+    """
+
+    if _DIRECT_MUTATION_COMMAND.search(command):
+        return True
+    return bool(
+        _MUTATION_COMMAND.search(command)
+        and not _VERIFICATION_COMMAND.search(command)
+    )
 
 
 def recordize_minisweagent_messages(

@@ -1827,6 +1827,63 @@ def test_head_tail_recency_uses_retention_floor_without_dag_rules():
     assert result.trace["selected_tokens"] >= result.trace["requested_budget_tokens"]
 
 
+def test_head_tail_progress_spine_keeps_middle_mutation_bundle():
+    messages = [
+        {"role": "system", "content": "Use one Bash command per turn."},
+        {"role": "user", "content": "Fix src/example.py."},
+    ]
+    commands = (
+        "grep -n target src/example.py",
+        "nano src/example.py",
+        "vi src/example.py",
+        "sed -i 's/old/new/' src/example.py",
+        "git diff -- src/example.py > patch.txt",
+        "cat patch.txt",
+        "echo waiting",
+        "cat patch.txt",
+    )
+    for index, command in enumerate(commands):
+        messages.extend((
+            {
+                "role": "assistant",
+                "content": (
+                    "THOUGHT: continue\n```mswea_bash_command\n"
+                    f"{command}\n```"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "<returncode>0</returncode>\n"
+                    f"<output>observation {index} " + "detail " * 40 + "</output>"
+                ),
+            },
+        ))
+
+    result = transform_autonomous_payload(
+        {"model": "locked-model", "messages": messages},
+        AutonomousSelectionConfig(
+            policy="head_tail_progress_spine",
+            budget_fraction=.6,
+            protected_head_turns=2,
+            protected_tail_turns=2,
+            expected_model="locked-model",
+            require_exact_sidecars=False,
+        ),
+    )
+
+    assert "turn:t0003" in result.trace["selected_causal_group_ids"]
+    mutation_ids = {"m8", "m9"}
+    assert mutation_ids <= set(result.trace["selected_record_ids"])
+    assert result.trace["selection_reasons"]["m8"] == (
+        "role_floor:mutation"
+    )
+    assert result.trace["selection_reasons"]["m9"] == (
+        "role_floor:mutation"
+    )
+    assert result.trace["budget_interpretation"] == "retention_floor_round_up"
+
+
 def test_sidecar_sequence_mismatch_fails_closed(tmp_path):
     payload = _payload()
     for step, command in enumerate(("cat a.py", "cat WRONG.py", "cat c.py", "cat d.py")):

@@ -77,6 +77,7 @@ from .serialization import serialize_materialized_messages
 _COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
 AUTONOMOUS_POSITIVE_POLICIES = (
     "head_tail_recency",
+    "head_tail_progress_spine",
     "matched_token_tail",
     "full_structured_observation",
 )
@@ -606,6 +607,18 @@ class AutonomousSelectionConfig:
                 middle_strategy=MiddleSelectionStrategy.RECENCY,
                 round_up_to_budget=True,
             ))
+        if self.policy == "head_tail_progress_spine":
+            return HeadMiddleTailSelector(HeadMiddleTailConfig(
+                head_turns=self.protected_head_turns,
+                tail_turns=self.protected_tail_turns,
+                middle_strategy=MiddleSelectionStrategy.RECENCY,
+                source_turns=1,
+                mutation_turns=1,
+                verification_turns=1,
+                progress_turns=1,
+                error_turns=1,
+                round_up_to_budget=True,
+            ))
         if self.policy == "matched_token_tail":
             raise RuntimeError(
                 "matched_token_tail is realized directly under a materialized-token ceiling"
@@ -842,7 +855,11 @@ def transform_autonomous_payload(
                 count_tokens=count_tokens,
             )
     retention_floor = bool(
-        config.policy in {"head_tail_recency", "dag_certified_progress_spine"}
+        config.policy in {
+            "head_tail_recency",
+            "head_tail_progress_spine",
+            "dag_certified_progress_spine",
+        }
         or config.negative_fallback == "recency"
     )
     certified_exclusion_tokens = (
