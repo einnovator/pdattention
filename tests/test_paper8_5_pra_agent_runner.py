@@ -4,6 +4,7 @@ import pytest
 
 from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
     DockerWorkspaceTools,
+    _durable_tool_events,
     build_parser,
 )
 from experiments.paper8_5_agent_memory.run_pra_agent_persistent_swebench import (
@@ -51,6 +52,27 @@ def test_docker_workspace_exposes_typed_portable_tools() -> None:
     assert by_name["replace_text"].side_effect_class.value == "write"
     workspace.bind_container("next-task-container")
     assert workspace.container == "next-task-container"
+
+
+def test_durable_tool_events_survive_a_later_turn_failure() -> None:
+    records = (
+        _message("a1", "assistant", "inspect"),
+        ContextRecord(
+            "o1",
+            RecordType.TOOL_RESPONSE,
+            {
+                "producer_tool_uri": "pra://tool/read_file",
+                "call_id": "call-1",
+                "compact": {"text": "source"},
+            },
+        ),
+    )
+
+    events = _durable_tool_events(records)
+
+    assert len(events) == 1
+    assert events[0]["record_id"] == "o1"
+    assert events[0]["call_id"] == "call-1"
 
 
 def _message(record_id: str, role: str, text: str) -> ContextRecord:

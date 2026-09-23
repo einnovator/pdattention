@@ -33,6 +33,7 @@ from pra_hf import (
     Tool,
     Toolset,
 )
+from pra_hf.context_records import ContextRecord, RecordType
 
 from .run_pi_swebench import (
     _sha256,
@@ -101,7 +102,6 @@ class DockerWorkspaceTools:
             input_bytes=input_bytes,
             timeout=timeout_seconds,
         )
-
     @staticmethod
     def _text(value: bytes) -> str:
         return value.decode("utf-8", errors="replace")
@@ -304,6 +304,26 @@ class DockerWorkspaceTools:
         )
 
 
+def _durable_tool_events(
+    records: Sequence[ContextRecord],
+) -> list[dict[str, object]]:
+    """Recover committed tool observations even when a turn raises later."""
+
+    rows: list[dict[str, object]] = []
+    for record in records:
+        if record.record_type != RecordType.TOOL_RESPONSE:
+            continue
+        payload = record.payload if isinstance(record.payload, Mapping) else {}
+        rows.append({
+            "index": len(rows) + 1,
+            "record_id": record.record_id,
+            "producer_tool_uri": payload.get("producer_tool_uri"),
+            "call_id": payload.get("call_id"),
+            "payload": dict(payload),
+        })
+    return rows
+
+
 def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
@@ -392,6 +412,7 @@ def run(args: argparse.Namespace) -> Path:
     started = datetime.now(timezone.utc)
     error: Exception | None = None
     turn = None
+    durable_records: tuple[ContextRecord, ...] = ()
     try:
         agent.start_session(
             f"paper85-pra-agent-{slug}", task_description=prompt,
@@ -404,6 +425,7 @@ def run(args: argparse.Namespace) -> Path:
         )
     finally:
         if agent.session is not None:
+            durable_records = tuple(agent.state.records)
             agent.export_session(output / "session.json")
         agent.close()
     finished = datetime.now(timezone.utc)
@@ -437,6 +459,11 @@ def run(args: argparse.Namespace) -> Path:
             })
     (output / "tool_events.jsonl").write_text(
         "".join(json.dumps(row, default=str) + "\n" for row in events),
+        encoding="utf-8",
+    )
+    durable_events = _durable_tool_events(durable_records)
+    (output / "durable_tool_events.jsonl").write_text(
+        "".join(json.dumps(row, default=str) + "\n" for row in durable_events),
         encoding="utf-8",
     )
     _write_json(output / "selection_trace.json", {
@@ -512,7 +539,8 @@ def run(args: argparse.Namespace) -> Path:
             "seed": args.seed,
             "max_completion_tokens": args.max_completion_tokens,
         },
-        "tool_event_count": len(events),
+        "tool_event_count": len(durable_events),
+        "returned_turn_tool_event_count": len(events),
         "patch_bytes": len(patch.stdout),
         "patch_sha256": _sha256(patch.stdout),
         "transport": transport,
