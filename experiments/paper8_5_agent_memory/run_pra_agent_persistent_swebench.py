@@ -131,7 +131,7 @@ def run(args: argparse.Namespace) -> Path:
     episodes_root.mkdir()
     _write_json(output / "session_plan.json", {
         "schema_version": 1,
-        "boundary_mode": "ordinary_user_messages_no_policy_reset",
+        "boundary_mode": args.boundary_mode,
         "tasks": [
             {
                 "ordinal": index,
@@ -250,7 +250,7 @@ def run(args: argparse.Namespace) -> Path:
                     args.session_id or f"paper85-pra-persistent-{int(time.time())}",
                     task_description=prompt,
                 )
-            else:
+            elif args.boundary_mode == "explicit_task":
                 agent.create_task(
                     prompt,
                     task_id=f"issue-{ordinal:02d}-{_slug(instance_id)}",
@@ -323,7 +323,10 @@ def run(args: argparse.Namespace) -> Path:
                 "model_patch": patch.stdout.decode("utf-8", errors="replace"),
                 "instance_id": instance_id,
             }
-            if agent.state.active_task_id is not None:
+            if (
+                args.boundary_mode == "explicit_task"
+                and agent.state.active_task_id is not None
+            ):
                 agent.complete_task(
                     agent.state.active_task_id,
                     result_ref=f"episode:{ordinal:02d}:model.patch",
@@ -362,7 +365,7 @@ def run(args: argparse.Namespace) -> Path:
         "session_id": args.session_id,
         "task_count_declared": len(tasks),
         "task_count_completed": len(episode_manifests),
-        "boundary_mode": "ordinary_user_messages_no_policy_reset",
+        "boundary_mode": args.boundary_mode,
         "task_order": [row[0] for row in tasks],
         "model": args.model,
         "served_model": args.served_model or args.model,
@@ -434,6 +437,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", required=True)
     parser.add_argument("--session-id")
+    parser.add_argument(
+        "--boundary-mode",
+        choices=("boundary_free", "explicit_task"),
+        default="boundary_free",
+        help=(
+            "boundary_free exposes only ordinary user prompts; explicit_task "
+            "also mutates the PRA task graph and is a separately labelled control"
+        ),
+    )
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--model", default="qwen3-coder:30b")
     parser.add_argument("--served-model")

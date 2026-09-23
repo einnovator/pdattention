@@ -228,6 +228,7 @@ def test_persistent_runner_accepts_ordered_boundary_free_tasks() -> None:
         "scikit-learn__scikit-learn-14087",
     ]
     assert args.context_records == 4096
+    assert args.boundary_mode == "boundary_free"
     assert _task_spec("django__django-15277=task.json")[0] == (
         "django__django-15277"
     )
