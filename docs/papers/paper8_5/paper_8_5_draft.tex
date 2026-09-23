@@ -89,6 +89,14 @@ solve and exact patch but saves only 7.30\% within its own trajectory.  Its
 first action diverges before selection begins, and the candidate consumes
 158.18\% more selected input than the paired Full trajectory; that paired
 number is therefore descriptive, not causally attributable to selection.
+An additional OpenHands Task~2 control clarifies policy scope: boundary-free
+M2/P1 preserves the official solve and identical patch, but selects 100\% of
+history because a one-task session contains only one user-instruction epoch.
+The repeat diverges at response~9 and uses 33 versus 25 actions despite no
+exclusion, directly measuring backend/agent trajectory variance rather than a
+selection cost.  Accordingly, H2/T4 and matched recency estimate within-task
+savings, whereas M2/P1 estimates retirement across persistent instruction
+epochs; their savings must not be pooled.
 This contrast motivates a portable rule: internal spans are selectable only
 when stable natural boundaries exist before K/V encoding; otherwise only whole
 records may retire.  Correctness repair alone does not guarantee favorable
@@ -750,6 +758,7 @@ Matched Recency H2/T4 & OpenHands post-fix & 1 & 1/1; 1/1 & 33/31 & 509,381/287,
 Matched Recency H2/T4 & Pi post-fix & 1 & 1/1; 0/1 & 28/28 & 464,135/424,805 & 0.30L/8.53M; 8.47P\% & lost success; superseded \\
 Declared-safe H2/T8 & Pi repair audit & 1 & 1/1; 1/1 & 28/39 & 464,135/409,335 & 41.53/11.81\% & same patch; $+11$ calls \\
 Declared-safe H2/T4 & Kilo pairing audit & 1 & 1/1; 1/1 & 20/19 & 146,013/376,980 & 7.30/$-158.2$\% & preselection fork; noncausal \\
+Recent Frontier M2/P1 & OpenHands single epoch & 1 & 1/1; 1/1 & 25/33 & 186,635/287,257 & 0.00/$-53.91$\% & exact abstention; divergence before selection \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
@@ -768,6 +777,15 @@ and seven failed controls; its only admitted policy arm abstains at 0\% saving,
 so no unconditional saving is reported.}
 \label{tab:editorial-headline-policies}
 \end{table}
+
+The OpenHands single-epoch row is deliberately a scope and variance control,
+not a failed saving policy.  With only one visible user instruction, the last
+$M=2$ instruction frontier contains the entire session, so M2/P1 has no older
+epoch eligible for retirement.  Its 0\% own saving is exact.  The 53.91\%
+paired cost increase follows a response-9 fork under identical selected
+message content and therefore cannot be attributed to selection.  This
+control prevents the persistent-session policy from being misreported as a
+single-task compressor and reinforces task-clustered repeat controls.
 
 The held-out rows make the uncertainty visible rather than inflating the
 denominator.  In the first order, exact-prefix \textsc{Full} resolves only 3/8
@@ -2143,6 +2161,17 @@ the three-identity hybrid estimate.  A fresh
 Qwen2.5-Coder-14B/MLX \textsc{Full} retry on Django-15277 fails in seven calls
 after an over-broad edit, so its selective arm is correctly withheld; this is
 additional evidence that temperature zero is not an admission guarantee.
+Two later admission diagnostics isolate a second model-transfer confound.
+With the unchanged mini-swe-agent backtick scaffold, Qwen2.5-Coder-14B makes
+no tracked mutation on Task~2: 21 of 24 executed commands fail, including 19
+failed writes.  Changing only the action encoding to mini-swe-agent's XML
+scaffold lets the same model produce the exact one-line Task~3 source fix, but
+it then repeats a post-fix action and never issues the required primary
+submission.  These stopped runs are neither official failures nor policy
+points; no selection occurred.  They show that cross-model claims must first
+qualify action encoding and termination semantics, and that a correct final
+workspace cannot replace the primary submission metric.  The compact evidence
+is in \path{cross_model_admission_diagnostics_v1}.
 PRA Agent also required a sampling-control repair: its earlier transport
 silently omitted temperature, top-$p$, and seed.  The corrected Task~1 Full
 control resolves in 15 requests with the exact minimal patch under explicit
