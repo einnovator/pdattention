@@ -25,6 +25,7 @@ from .run_pi_swebench import (
 
 
 PINNED_OPENCODE_VERSION = "1.18.31"
+OPENCODE_DATA_PATH = "/root/.local/share/opencode"
 
 
 def _has_native_stop_event(payload: bytes) -> bool:
@@ -41,6 +42,53 @@ def _has_native_stop_event(payload: bytes) -> bool:
         if isinstance(part, Mapping) and part.get("reason") == "stop":
             return True
     return False
+
+
+def _native_session_id(payload: bytes) -> str | None:
+    """Return the unique native OpenCode session ID in a JSONL trace.
+
+    Persistent-session evidence must not infer continuity from task order or a
+    shared output directory.  OpenCode emits ``sessionID`` on every root event;
+    require those events to agree before a later task may resume the session.
+    """
+
+    values: set[str] = set()
+    for line in payload.decode("utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, Mapping):
+            continue
+        value = event.get("sessionID")
+        if isinstance(value, str) and value:
+            values.add(value)
+    if len(values) > 1:
+        raise ValueError(
+            "OpenCode event trace contains multiple root session IDs: "
+            + ", ".join(sorted(values))
+        )
+    return next(iter(values), None)
+
+
+def _session_arguments(
+    session_store: str | None,
+    session_id: str | None,
+) -> tuple[tuple[str, ...], tuple[str, ...], Path | None]:
+    """Build Docker and OpenCode arguments for native session continuation."""
+
+    if session_id and not session_store:
+        raise ValueError("--session-id requires --session-store")
+    if not session_store:
+        return (), (), None
+    store = Path(session_store).expanduser().resolve()
+    store.mkdir(parents=True, exist_ok=True)
+    docker_args = (
+        "--mount",
+        f"type=bind,source={store},target={OPENCODE_DATA_PATH}",
+    )
+    opencode_args = () if not session_id else ("--session", session_id)
+    return docker_args, opencode_args, store
 
 
 def _native_stop_watchdog(
@@ -159,6 +207,9 @@ def run(args: argparse.Namespace) -> Path:
     )
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
+    session_docker_args, session_opencode_args, session_store = (
+        _session_arguments(args.session_store, args.session_id)
+    )
 
     prompt = task_prompt(trajectory, instance_id)
     (output / "task_prompt.txt").write_text(prompt + "\n", encoding="utf-8")
@@ -188,6 +239,7 @@ def run(args: argparse.Namespace) -> Path:
 
     command: tuple[str, ...] = (
         args.docker, "run", "--name", container, "--platform", "linux/amd64",
+        *session_docker_args,
         "--volume", f"{model_config}:/root/.config/opencode/opencode.json:ro",
         "--env", "OPENCODE_CONFIG=/root/.config/opencode/opencode.json",
         "--env", "OPENCODE_DISABLE_AUTOUPDATE=true",
@@ -198,6 +250,7 @@ def run(args: argparse.Namespace) -> Path:
         "--env", "DO_NOT_TRACK=1",
         "--entrypoint", "opencode", image,
         "--pure", "run", "--format", "json", "--auto",
+        *session_opencode_args,
         "--agent", args.agent, "--model", args.model, "--dir", "/testbed", prompt,
     )
     started = datetime.now(timezone.utc)
@@ -232,6 +285,16 @@ def run(args: argparse.Namespace) -> Path:
     finished = datetime.now(timezone.utc)
     events = output / "opencode_events.jsonl"
     events.write_bytes(execution.stdout)
+    observed_session_id = _native_session_id(execution.stdout)
+    if args.session_store and observed_session_id is None:
+        raise RuntimeError(
+            "persistent OpenCode run emitted no native session identity"
+        )
+    if args.session_id and observed_session_id != args.session_id:
+        raise RuntimeError(
+            "OpenCode session continuity failed: requested "
+            f"{args.session_id!r}, observed {observed_session_id!r}"
+        )
     (output / "opencode_stderr.log").write_bytes(execution.stderr)
 
     snapshot = f"{image.rsplit(':', 1)[0]}-snapshot:{int(time.time())}"
@@ -284,6 +347,16 @@ def run(args: argparse.Namespace) -> Path:
         "model_config_sha256": _sha256(model_config.read_bytes()),
         "tool_semantics_sha256": _sha256(tool_semantics_path.read_bytes()),
         "native_context_management": "disabled_OPENCODE_DISABLE_AUTOCOMPACT",
+        "native_session": {
+            "data_path": OPENCODE_DATA_PATH,
+            "host_store": None if session_store is None else str(session_store),
+            "requested_session_id": args.session_id,
+            "observed_session_id": observed_session_id,
+            "continuity_validated": bool(
+                observed_session_id
+                and (args.session_id is None or observed_session_id == args.session_id)
+            ),
+        },
         "source_image": source_image,
         "derived_image": image,
         "capture_snapshot_image": snapshot,
@@ -345,6 +418,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--build-timeout-seconds", type=int, default=1800)
     parser.add_argument("--agent-timeout-seconds", type=int, default=3600)
     parser.add_argument("--native-stop-grace-seconds", type=float, default=30.0)
+    parser.add_argument(
+        "--session-store",
+        help=(
+            "Dedicated host directory mounted at OpenCode's native data path. "
+            "Reuse it across fresh task containers for a persistent session."
+        ),
+    )
+    parser.add_argument(
+        "--session-id",
+        help="Native session ID emitted by the preceding task in this session.",
+    )
     parser.add_argument("--keep-container", action="store_true")
     parser.add_argument("--keep-snapshot", action="store_true")
     return parser

@@ -4,9 +4,12 @@ from pathlib import Path
 import pytest
 
 from experiments.paper8_5_agent_memory.run_opencode_swebench import (
+    OPENCODE_DATA_PATH,
     PINNED_OPENCODE_VERSION,
     _has_native_stop_event,
     _load_tool_semantics,
+    _native_session_id,
+    _session_arguments,
     _validate_model_config,
     build_parser,
 )
@@ -42,6 +45,35 @@ def test_native_stop_detection_requires_terminal_step_finish() -> None:
         b'{"type":"step_finish","part":{"reason":"tool-calls"}}'
     )
     assert not _has_native_stop_event(b"not-json")
+
+
+def test_native_session_identity_is_unique_and_explicit() -> None:
+    payload = b"\n".join((
+        b'{"type":"step_start","sessionID":"ses-1"}',
+        b'{"type":"tool_use","sessionID":"ses-1"}',
+    ))
+    assert _native_session_id(payload) == "ses-1"
+    assert _native_session_id(b'{"type":"text"}') is None
+    with pytest.raises(ValueError, match="multiple root session IDs"):
+        _native_session_id(b"\n".join((
+            b'{"type":"step_start","sessionID":"ses-1"}',
+            b'{"type":"step_start","sessionID":"ses-2"}',
+        )))
+
+
+def test_native_session_store_is_required_for_resume(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="session-store"):
+        _session_arguments(None, "ses-1")
+
+    docker_args, opencode_args, store = _session_arguments(
+        str(tmp_path / "native-session"), "ses-1"
+    )
+    assert store is not None and store.is_dir()
+    assert docker_args == (
+        "--mount",
+        f"type=bind,source={store},target={OPENCODE_DATA_PATH}",
+    )
+    assert opencode_args == ("--session", "ses-1")
 
 
 def test_model_config_requires_same_primary_and_small_model(tmp_path: Path) -> None:
