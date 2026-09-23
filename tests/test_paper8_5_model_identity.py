@@ -7,7 +7,10 @@ from experiments.paper8_5_agent_memory.model_identity import (
     fetch_ollama_model_identity,
     validate_ollama_tags,
 )
-from experiments.paper8_5_agent_memory.run_pi_swebench import observed_model_identity
+from experiments.paper8_5_agent_memory.run_pi_swebench import (
+    observed_model_identity,
+    task_prompt,
+)
 
 
 DIGEST = "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca"
@@ -86,3 +89,21 @@ def test_model_identity_can_use_declared_curl_transport(monkeypatch) -> None:
     assert result["transport"] == "curl"
     assert observed["command"][0] == "/usr/bin/curl"
     assert observed["kwargs"]["check"] is False
+
+
+def test_task_prompt_accepts_immutable_persistent_episode_export(tmp_path) -> None:
+    reference = tmp_path / "persistent_episode_export.json"
+    reference.write_text(json.dumps({
+        "schema_version": 1,
+        "trajectory": {
+            "instance_id": "django__django-14089",
+            "messages": [{
+                "role": "user",
+                "content": "<pr_description>Fix nested export</pr_description>",
+            }],
+        },
+    }), encoding="utf-8")
+
+    prompt = task_prompt(reference, "django__django-14089")
+
+    assert prompt.endswith("Issue (django__django-14089):\nFix nested export")

@@ -84,7 +84,10 @@ def swebench_image(instance_id: str) -> str:
 
 
 def task_prompt(trajectory_path: Path, instance_id: str) -> str:
-    trajectory = json.loads(trajectory_path.read_text(encoding="utf-8"))
+    artifact = json.loads(trajectory_path.read_text(encoding="utf-8"))
+    trajectory = artifact.get("trajectory", artifact)
+    if not isinstance(trajectory, Mapping):
+        raise ValueError("reference artifact lacks a trajectory object")
     if str(trajectory.get("instance_id")) != instance_id:
         raise ValueError("reference trajectory identity does not match the task")
     messages = trajectory.get("messages")
