@@ -166,7 +166,13 @@ def _tool_events(turn: Any) -> list[dict[str, object]]:
                 None if result.call is None else dict(result.call.arguments)
             ),
             "output": dict(result.output),
-            "record": execution.record.compact_view(),
+            # Host/runtime rejection is a real action outcome but has no
+            # committed tool-response record.  Preserve the event as such
+            # instead of crashing evidence export or fabricating a record.
+            "record": (
+                None if execution.record is None
+                else execution.record.compact_view()
+            ),
         })
     return rows
 

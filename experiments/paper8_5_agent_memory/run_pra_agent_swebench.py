@@ -553,7 +553,14 @@ def run(args: argparse.Namespace) -> Path:
                 "tool_name": None if result.call is None else result.call.name,
                 "arguments": None if result.call is None else dict(result.call.arguments),
                 "output": dict(result.output),
-                "record": execution.record.compact_view(),
+                # Rejected or schema-invalid actions intentionally have no
+                # committed tool-result record.  Export the decision without
+                # inventing one; durable executed observations remain
+                # recoverable from the session record stream below.
+                "record": (
+                    None if execution.record is None
+                    else execution.record.compact_view()
+                ),
             })
     (output / "tool_events.jsonl").write_text(
         "".join(json.dumps(row, default=str) + "\n" for row in events),

@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +21,7 @@ from experiments.paper8_5_agent_memory.run_pra_agent_persistent_swebench import 
     _saving_fraction,
     _initial_task_description,
     _task_spec,
+    _tool_events,
     build_parser as build_persistent_parser,
 )
 from experiments.paper8_5_agent_memory.pra_agent_policy import (
@@ -204,6 +206,36 @@ def test_durable_tool_events_survive_a_later_turn_failure() -> None:
     assert len(events) == 1
     assert events[0]["record_id"] == "o1"
     assert events[0]["call_id"] == "call-1"
+
+
+def test_tool_event_export_preserves_rejection_without_a_record() -> None:
+    result = SimpleNamespace(
+        accepted=False,
+        executed=False,
+        reason="schema_validation_failed",
+        resource_uri=None,
+        call=ToolCall("run_command", {"command": "pytest -q"}),
+        output={},
+    )
+    turn = SimpleNamespace(
+        tool_executions=(
+            SimpleNamespace(execution=result, record=None),
+        )
+    )
+
+    events = _tool_events(turn)
+
+    assert events == [{
+        "index": 1,
+        "accepted": False,
+        "executed": False,
+        "reason": "schema_validation_failed",
+        "resource_uri": None,
+        "tool_name": "run_command",
+        "arguments": {"command": "pytest -q"},
+        "output": {},
+        "record": None,
+    }]
 
 
 def _message(record_id: str, role: str, text: str) -> ContextRecord:
