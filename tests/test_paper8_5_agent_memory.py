@@ -559,6 +559,34 @@ def test_recordizer_prefers_the_executable_miniswe_tag_over_explanatory_fences()
     assert history.record_by_id["m2"].command == "cat foo.py"
 
 
+def test_fenced_and_xml_actions_have_identical_logical_roles():
+    fenced = _messages(1)
+    fenced[2]["content"] = "```mswea_bash_command\ncat foo.py\n```"
+    xml = _messages(1)
+    xml[2]["content"] = (
+        "<mswea_bash_command>cat foo.py</mswea_bash_command>"
+    )
+
+    fenced_action = recordize_minisweagent_messages(fenced).record_by_id["m2"]
+    xml_action = recordize_minisweagent_messages(xml).record_by_id["m2"]
+
+    assert fenced_action.command == xml_action.command == "cat foo.py"
+    assert fenced_action.semantic_roles == xml_action.semantic_roles
+    assert not fenced_action.has_role(AgentRecordRole.PROGRESS)
+
+
+def test_xml_thought_is_progress_but_xml_action_is_not():
+    rows = _messages(1)
+    rows[2]["content"] = (
+        "THOUGHT: inspect the source\n"
+        "<mswea_bash_command>cat foo.py</mswea_bash_command>"
+    )
+
+    action = recordize_minisweagent_messages(rows).record_by_id["m2"]
+
+    assert action.has_role(AgentRecordRole.PROGRESS)
+
+
 def test_recordizer_never_treats_an_explanatory_closing_fence_as_an_action():
     rows = _messages(1)
     rows[2]["content"] = (

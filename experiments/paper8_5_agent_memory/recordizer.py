@@ -90,6 +90,19 @@ def _command(content: str) -> str | None:
     return extract_miniswe_command(content)
 
 
+def _assistant_reasoning(content: str) -> str:
+    """Remove the executable action envelope before classifying progress.
+
+    This keeps logical roles invariant to mini-swe-agent's fenced versus XML
+    serialization. The executable command is already represented by the
+    assistant-action record and must not, by itself, create a progress role.
+    """
+
+    without_tagged = _MINISWE_COMMAND_BLOCK.sub("", content)
+    without_tagged = _MINISWE_XML_COMMAND.sub("", without_tagged)
+    return _COMMAND_BLOCK.sub("", without_tagged).strip()
+
+
 def _return_code(content: str, message: Mapping[str, Any]) -> int | None:
     extra = message.get("extra")
     if isinstance(extra, Mapping) and isinstance(extra.get("returncode"), int):
@@ -124,7 +137,7 @@ def _task_resource_ids(content: str) -> tuple[str, ...]:
 
 def _assistant_roles(command: str | None, content: str) -> tuple[AgentRecordRole, ...]:
     roles = [AgentRecordRole.ASSISTANT_ACTION]
-    if content.partition("```")[0].strip():
+    if _assistant_reasoning(content):
         roles.append(AgentRecordRole.PROGRESS)
     if command and _is_solution_mutation(command):
         roles.append(AgentRecordRole.MUTATION)

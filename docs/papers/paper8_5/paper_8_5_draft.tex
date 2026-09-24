@@ -2206,7 +2206,9 @@ official XML encoding.  XML commands were executed by the environment while
 their receipts were marked unparseable, so a selective XML treatment would
 have failed closed to \textsc{Full}.  The decoder now accepts either syntax,
 requires exactly one action across both, and is regression-tested for exact
-receipt joins and ambiguous-action rejection.  This cannot explain the
+receipt joins and ambiguous-action rejection.  Progress classification also
+removes either action envelope before assigning logical roles, making the two
+serializations selection-equivalent.  This cannot explain the
 \textsc{Full} loop, because no history was removed, but it invalidates any
 selective XML evidence captured before the repair; none is admitted here.
 A subsequent Task~1 diagnostic tests the corrected positive progress-spine

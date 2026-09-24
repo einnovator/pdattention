@@ -41,7 +41,9 @@ syntax but not its official XML action syntax. The environment still executed
 the XML commands, while the policy layer marked their sidecars unparseable and
 would have failed closed to FULL. The decoder now accepts either encoding,
 requires exactly one action across both, and has regression coverage for exact
-XML receipt joins and mixed/multiple-action rejection. This defect did not
+XML receipt joins and mixed/multiple-action rejection. Progress-role detection
+also removes either action envelope before classifying reasoning text, so the
+two serializations now produce the same logical roles. This defect did not
 cause the FULL no-progress loop because FULL does not remove records; it would
 have invalidated any later selective XML run, so no such run is admitted from
 the earlier code.
