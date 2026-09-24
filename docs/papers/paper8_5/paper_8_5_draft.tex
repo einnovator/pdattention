@@ -2223,7 +2223,14 @@ lexicographically orders only simple context-free \texttt{find} and recursive
 both observation hashes.  Its canonicalized \textsc{Full} execution still
 fails in seven calls with the same patch.  Thus observation order is a real
 repeatability confound, but removing it does not admit this model/task pair;
-no selective arm is launched.  The audit is in
+no selective arm is launched.  A paired frozen-prefix replay on the same
+current endpoint strengthens the causal diagnosis: the successful ordering
+reproduces its recorded second assistant action byte for byte, while the failed
+ordering reproduces its different recorded second action byte for byte.  The
+two prefixes share the system, task, and first-action hashes and differ only in
+the observation hash.  Ordering is therefore sufficient for the immediate
+action fork, although this one-turn intervention does not prove that ordering
+alone determines final task resolution.  The audit is in
 \path{cross_agent_transfer/mini_swe_qwen25_14b_tool_order_control_v1}.
 Two further canonicalized \textsc{Full} admissions also fail before treatment.
 Task~4 reaches its 20-call bound after repeated workspace mutations and submits

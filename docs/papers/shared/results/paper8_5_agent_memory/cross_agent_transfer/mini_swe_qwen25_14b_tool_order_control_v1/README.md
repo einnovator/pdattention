@@ -31,7 +31,16 @@ malformed patch.  Canonicalization therefore removes this variance source but
 does not turn Task 1 into a favorable model/task admission.  No selective arm
 is qualified against these failed FULL controls.
 
-The three directories contain the run manifest, request ledger, logical
+A paired frozen-prefix replay then removes the remaining environment and
+trajectory variables.  On the same current endpoint, the successful ordering
+reproduces its recorded second assistant action byte for byte, and the failed
+ordering reproduces its different recorded second action byte for byte.  Both
+requests have the same system/task/first-action hashes and differ only in the
+first observation hash.  This establishes that observation order alone is
+sufficient for the immediate action fork; it does not establish that order
+alone determines the final task outcome.  Receipts are under `prefix_replay/`.
+
+The run directories contain the run manifest, request ledger, logical
 metrics, and official result.  `audit.json` records message and patch hashes
 and the exact first-observation comparison.  The canonicalization is an
 evaluation/tool-semantics control, not a PRA policy and not a token-saving
