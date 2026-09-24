@@ -2,22 +2,26 @@
 
 These runs test whether a model/mini-swe-agent pair can establish a valid
 FULL control before any PRA selection policy is applied. They are deliberately
-excluded from accuracy--saving curves because neither execution reached a
-primary autonomous submission.
+excluded from accuracy--saving curves unless a FULL control first resolves
+officially. No selective policy is executed after a failed or stopped FULL.
 
 | Model / task / scaffold | Requests observed | Workspace outcome | Admission |
 |---|---:|---|---|
 | Qwen2.5-Coder-14B / Task 2 / backticks | 25 | no tracked mutation; 21/24 executed commands returned nonzero, including 19 failed writes | diagnostic failure |
 | Qwen2.5-Coder-14B / Task 3 / XML | 16 | correct one-line source patch exists, but no primary submission; one response repeats seven times and 12/16 commands return nonzero | diagnostic failure |
 | Qwen3-14B / Task 1 / XML, thinking disabled | 14 | intended `CharField` guard plus an erroneous duplicate `BinaryField` guard; same failing write repeats three times | diagnostic failure |
+| Qwen3-14B / Task 4 / XML, thinking disabled | 13 | submits a three-hunk patch that adds an undefined `lazy` reference | official FULL failure |
+| Qwen3-14B / Task 3 / XML, thinking disabled | 19 | no tracked mutation; recurrent command groups revisit the same unchanged workspace | stopped diagnostic |
 
-Both runs use MLX revision `29efdbab55a161237ab1e432a3abaf6c7ae2b477`,
-its exact tokenizer snapshot, temperature zero, top-p one, seed zero and a
-1,024-token completion ceiling. The backtick run shows an edit-interface
-failure. Switching only the mini-swe-agent action encoding to XML repairs the
-source edit, but exposes a distinct termination/submission failure. The
-correct Task-3 patch snapshot is retained to separate workspace capability
-from the primary submission metric.
+The Qwen2.5 runs use MLX revision
+`29efdbab55a161237ab1e432a3abaf6c7ae2b477`; the Qwen3 runs use revision
+`a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4`. Each uses its exact tokenizer
+snapshot, temperature zero, top-p one, seed zero and a 1,024-token completion
+ceiling. The Qwen2.5 backtick run shows an edit-interface failure. Switching
+only the mini-swe-agent action encoding to XML repairs the source edit, but
+exposes a distinct termination/submission failure. The correct Task-3 patch
+snapshot is retained to separate workspace capability from the primary
+submission metric.
 
 These are stopped diagnostics, not official task failures and not evidence
 about a selective policy. A selective arm is correctly withheld until the same
@@ -68,3 +72,20 @@ investigator stops the run at 14 observed executions rather than spending the
 remaining 26 calls on a no-progress cycle. There is no primary submission and
 no selective arm. This is a model/scaffold admission diagnostic, not a task
 failure estimate or a policy-quality point.
+
+Two same-profile follow-ups prevent a single-task conclusion. Task 4 completes
+and submits after 13 actions and 74,283 cumulative FULL input tokens, but the
+official grader rejects its patch. The model adds a `lazy` parameter to
+`get_format()`, changes two unrelated conditionals, and leaves an undefined
+`lazy` reference in `number_format()`. This is a clean official FULL failure,
+not a transport or submission failure. On the simpler Task 3, the model reaches
+19 executions without any tracked source mutation. Five command groups recur
+against the same workspace state; only `patch.txt` and `reproduce_issue.py`
+exist when the investigator stops the run. It is a stopped diagnostic rather
+than an official failure.
+
+The three attempted Qwen3-14B identities therefore do not establish one
+plain-success pair. Running a selective arm would condition on a favorable
+baseline and is prohibited. The next model-transfer execution must use a
+plain-success model/task pair, such as the already qualified Qwen3-Coder-30B
+cohort, before comparing FULL with a frozen policy.

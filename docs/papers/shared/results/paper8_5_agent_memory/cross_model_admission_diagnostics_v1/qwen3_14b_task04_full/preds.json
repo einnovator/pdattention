@@ -1,0 +1,7 @@
+{
+  "django__django-15741": {
+    "model_name_or_path": "openai/mlx-community/Qwen3-14B-4bit",
+    "instance_id": "django__django-15741",
+    "model_patch": "diff --git a/django/utils/formats.py b/django/utils/formats.py\nindex 3f38322d84..cf5e7b1811 100644\n--- a/django/utils/formats.py\n+++ b/django/utils/formats.py\n@@ -97,7 +97,7 @@ def get_format_modules(lang=None):\n     return _format_modules_cache[lang]\n \n \n-def get_format(format_type, lang=None, use_l10n=None):\n+def get_format(format_type, lang=None, use_l10n=None, lazy=False):\n     \"\"\"\n     For a specific format type, return the format for the current\n     language (locale). Default to the format in the settings.\n@@ -106,7 +106,7 @@ def get_format(format_type, lang=None, use_l10n=None):\n     If use_l10n is provided and is not None, it forces the value to\n     be localized (or not), overriding the value of settings.USE_L10N.\n     \"\"\"\n-    if use_l10n is None:\n+    if use_l10n is None or lazy:\n         try:\n             use_l10n = settings._USE_L10N_INTERNAL\n         except AttributeError:\n@@ -178,7 +178,7 @@ def number_format(value, decimal_pos=None, use_l10n=None, force_grouping=False):\n     If use_l10n is provided and is not None, it forces the value to\n     be localized (or not), overriding the value of settings.USE_L10N.\n     \"\"\"\n-    if use_l10n is None:\n+    if use_l10n is None or lazy:\n         try:\n             use_l10n = settings._USE_L10N_INTERNAL\n         except AttributeError:\n"
+  }
+}
