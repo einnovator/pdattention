@@ -134,6 +134,11 @@ def _tool_calling_argument(native_tool_calling: bool) -> str:
     )
 
 
+def _prompt_mock_examples_argument(enabled: bool) -> str:
+    """Return the explicit switch for optional prompt-mocked demonstrations."""
+    return "--prompt-mock-examples" if enabled else "--no-prompt-mock-examples"
+
+
 def _container_api_preflight(
     executable: str,
     image: str,
@@ -339,6 +344,7 @@ def run(args: argparse.Namespace) -> Path:
         "--request-timeout-seconds", str(args.request_timeout_seconds),
         "--request-retries", str(args.request_retries),
         _tool_calling_argument(args.native_tool_calling),
+        _prompt_mock_examples_argument(args.prompt_mock_examples),
     )
     started = datetime.now(timezone.utc)
     timed_out = False
@@ -346,7 +352,7 @@ def run(args: argparse.Namespace) -> Path:
         execution = _run(command, timeout=args.agent_timeout_seconds, check=False)
     except subprocess.TimeoutExpired as error:
         timed_out = True
-        _run((args.docker, "stop", "--time", "5", container), check=False)
+        _run((args.docker, "stop", "--timeout", "5", container), check=False)
         execution = subprocess.CompletedProcess(
             command,
             124,
@@ -399,6 +405,7 @@ def run(args: argparse.Namespace) -> Path:
             "provider_native" if args.native_tool_calling else "prompt_mocked"
         ),
         "native_tool_calling": bool(args.native_tool_calling),
+        "prompt_mock_examples": bool(args.prompt_mock_examples),
         "native_context_management": "disabled_condenser_none",
         "instance_id": instance_id,
         "task_index": task_index,
@@ -503,6 +510,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Use provider-native OpenAI tool_calls. Disable only after a "
             "qualification shows that the provider returns tool syntax as text."
+        ),
+    )
+    parser.add_argument(
+        "--prompt-mock-examples",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Include optional OpenHands in-context tool demonstrations in "
+            "prompt-mocked mode; disable to retain schemas/instructions while "
+            "reducing prompt and cache pressure."
         ),
     )
     parser.add_argument("--container-preflight-attempts", type=int, default=3)

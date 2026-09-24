@@ -5,6 +5,7 @@ from pathlib import Path
 
 from experiments.paper8_5_agent_memory.run_openhands_swebench import (
     _tool_calling_argument,
+    _prompt_mock_examples_argument,
     _container_api_preflight,
     _event_summary,
     _prepare_build_context,
@@ -204,3 +205,5 @@ def test_container_api_preflight_retries_before_semantic_execution(monkeypatch):
 def test_openhands_tool_protocol_is_explicit_and_fail_closed():
     assert _tool_calling_argument(True) == "--native-tool-calling"
     assert _tool_calling_argument(False) == "--no-native-tool-calling"
+    assert _prompt_mock_examples_argument(True) == "--prompt-mock-examples"
+    assert _prompt_mock_examples_argument(False) == "--no-prompt-mock-examples"

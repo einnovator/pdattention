@@ -54,6 +54,23 @@ def _install_openai_usage_compatibility() -> None:
     openhands_telemetry.Telemetry._cache_buckets = staticmethod(safe_cache_buckets)
 
 
+def _configure_prompt_mock_examples(enabled: bool) -> None:
+    """Control OpenHands' optional prompt-mocked tool demonstrations.
+
+    OpenHands always includes the tool schema and fail-closed XML protocol when
+    native tool calling is disabled.  Its additional in-context demonstrations
+    are optional, however, and add roughly two thousand tokens for the default
+    coding tools.  Expose that distinction explicitly so constrained hosts do
+    not have to falsify the model name to trigger OpenHands' private heuristic.
+    """
+
+    if enabled:
+        return
+    from openhands.sdk.llm.mixins import fn_call_converter
+
+    fn_call_converter.IN_CONTEXT_LEARNING_EXAMPLE_PREFIX = lambda _tools: ""
+
+
 class _ExecutionReceiptBridge:
     """OpenHands event adapter for the generic PRA receipt sidechannel."""
 
@@ -193,11 +210,22 @@ def main() -> int:
             "that require OpenHands' prompt-mocked, fail-closed tool protocol."
         ),
     )
+    parser.add_argument(
+        "--prompt-mock-examples",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Include OpenHands' optional in-context tool demonstrations when "
+            "native tool calling is disabled. The tool schema and strict "
+            "protocol instructions remain present when examples are disabled."
+        ),
+    )
     args = parser.parse_args()
 
     prompt = Path(args.prompt_file).read_text(encoding="utf-8").strip()
     os.chdir("/testbed")
     _install_openai_usage_compatibility()
+    _configure_prompt_mock_examples(args.prompt_mock_examples)
     llm = LLM(
         usage_id="agent",
         model=args.model,
