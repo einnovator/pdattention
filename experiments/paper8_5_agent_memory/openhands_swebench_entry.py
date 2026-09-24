@@ -184,6 +184,15 @@ def main() -> int:
     parser.add_argument("--max-output-tokens", type=int, default=1024)
     parser.add_argument("--request-timeout-seconds", type=int, default=1200)
     parser.add_argument("--request-retries", type=int, default=0)
+    parser.add_argument(
+        "--native-tool-calling",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use provider-native OpenAI tool_calls. Disable this for providers "
+            "that require OpenHands' prompt-mocked, fail-closed tool protocol."
+        ),
+    )
     args = parser.parse_args()
 
     prompt = Path(args.prompt_file).read_text(encoding="utf-8").strip()
@@ -192,11 +201,11 @@ def main() -> int:
     llm = LLM(
         usage_id="agent",
         model=args.model,
-        model_canonical_name="qwen3-coder:30b",
+        model_canonical_name=args.model,
         base_url=args.base_url,
         api_key=SecretStr("dummy"),
         api_mode="chat",
-        native_tool_calling=True,
+        native_tool_calling=args.native_tool_calling,
         temperature=0.0,
         top_p=1.0,
         seed=0,

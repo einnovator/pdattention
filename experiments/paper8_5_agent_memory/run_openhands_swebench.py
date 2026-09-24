@@ -120,6 +120,20 @@ def _docker_image_exists(executable: str, image: str) -> bool:
     return inspected.returncode == 0
 
 
+def _tool_calling_argument(native_tool_calling: bool) -> str:
+    """Return the explicit OpenHands tool-protocol switch.
+
+    The runner never infers this from a model name.  A provider qualification
+    must declare either native OpenAI ``tool_calls`` or OpenHands' prompt-mocked
+    protocol, and the manifest records that choice.
+    """
+    return (
+        "--native-tool-calling"
+        if native_tool_calling
+        else "--no-native-tool-calling"
+    )
+
+
 def _container_api_preflight(
     executable: str,
     image: str,
@@ -324,6 +338,7 @@ def run(args: argparse.Namespace) -> Path:
         "--max-output-tokens", str(args.max_completion_tokens),
         "--request-timeout-seconds", str(args.request_timeout_seconds),
         "--request-retries", str(args.request_retries),
+        _tool_calling_argument(args.native_tool_calling),
     )
     started = datetime.now(timezone.utc)
     timed_out = False
@@ -380,6 +395,10 @@ def run(args: argparse.Namespace) -> Path:
         "agent": "openhands-sdk",
         "agent_version": args.agent_version,
         "agent_protocol": "openai_tools",
+        "tool_calling_mode": (
+            "provider_native" if args.native_tool_calling else "prompt_mocked"
+        ),
+        "native_tool_calling": bool(args.native_tool_calling),
         "native_context_management": "disabled_condenser_none",
         "instance_id": instance_id,
         "task_index": task_index,
@@ -477,6 +496,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--request-timeout-seconds", type=int, default=1200)
     parser.add_argument("--request-retries", type=int, default=0)
+    parser.add_argument(
+        "--native-tool-calling",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use provider-native OpenAI tool_calls. Disable only after a "
+            "qualification shows that the provider returns tool syntax as text."
+        ),
+    )
     parser.add_argument("--container-preflight-attempts", type=int, default=3)
     parser.add_argument("--container-preflight-timeout-seconds", type=int, default=5)
     parser.add_argument("--container-preflight-interval-seconds", type=float, default=2.0)
