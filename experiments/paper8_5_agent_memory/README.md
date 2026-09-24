@@ -213,6 +213,17 @@ clean workspace per issue; dependent same-workspace sequences require a
 separate benchmark with an explicit workspace-handoff digest and are never
 silently inferred.
 
+For autonomous paired controls, `--canonicalize-unordered-search-output` is an
+optional tool-environment repeatability control. It lexicographically orders
+only independent lines from simple context-free `find` and recursive `grep`
+commands; pipelines, redirects, context output, NUL output, and JSON output
+remain untouched. The manifest and observation receipt record the transform.
+It is not a selection policy and must be held fixed across every paired arm.
+On memory-constrained Apple Silicon hosts,
+`run_mlx_server_bounded.py` starts the stock MLX-LM server with explicit MLX
+cache and wired-memory limits; prompt-cache disabling and the resulting lack
+of cache reuse must remain visible in the run declaration.
+
 `persistent_episode_retirement` exposes independent completed-issue floors for
 recent turns, mutation turns, verification turns, and clean protocol exemplars:
 `--completed-recent-turns`, `--completed-mutation-turns`,

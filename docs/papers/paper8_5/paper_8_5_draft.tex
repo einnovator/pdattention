@@ -700,9 +700,11 @@ more specific reads supersede it.  This three-identity result is not a populatio
 accuracy estimate, but it demonstrates that the corrected policy is transverse
 to the agent interface and that opportunity is workload-dependent.
 
-A same-model bridge also bounds that claim.  Qwen2.5-Coder-14B solves Task~1
-under mini-swe-agent, but fails OpenHands \textsc{Full} admission before any
-history selection.  Provider-native calling first terminates on narrative tool
+A same-model bridge also bounds that claim.  Qwen2.5-Coder-14B has one
+successful Task~1 mini-swe-agent execution, but repeated \textsc{Full}
+controls do not make that identity a reliable admission pair; it also fails
+OpenHands \textsc{Full} admission before any history selection.
+Provider-native calling first terminates on narrative tool
 syntax.  Explicit prompt-mocked calling repairs dispatch, yet the default
 OpenHands surface repeats five identical invalid editor calls; a terminal-only
 surface instead performs broad, corruptive substitutions on Task~1 and invents
@@ -2208,6 +2210,21 @@ selection begins in the candidate.  We therefore do not treat the selective
 solve as a paired policy-quality estimate.  The three executions and exact
 input/trajectory audit are in
 \path{cross_agent_transfer/mini_swe_qwen25_14b_progress_spine_task01_v1}.
+Two post-refactor \textsc{Full} controls reproduce that seven-call failure
+byte for byte, including every assistant response and the malformed patch.
+The common record/DAG refactor is therefore not its cause.  Comparison with
+Paper~4.5's successful direct-MLX control identifies the first causal
+difference one turn earlier: the system text, task, first response, recursive
+\texttt{grep} command, return code, and six matches are equal, but the matches
+arrive in a different filesystem enumeration order.  The next assistant
+action then diverges at temperature zero.  An opt-in control now
+lexicographically orders only simple context-free \texttt{find} and recursive
+\texttt{grep} result sets, rejects order-sensitive shell forms, and records
+both observation hashes.  Its canonicalized \textsc{Full} execution still
+fails in seven calls with the same patch.  Thus observation order is a real
+repeatability confound, but removing it does not admit this model/task pair;
+no selective arm is launched.  The audit is in
+\path{cross_agent_transfer/mini_swe_qwen25_14b_tool_order_control_v1}.
 PRA Agent also required a sampling-control repair: its earlier transport
 silently omitted temperature, top-$p$, and seed.  The corrected Task~1 Full
 control resolves in 15 requests with the exact minimal patch under explicit

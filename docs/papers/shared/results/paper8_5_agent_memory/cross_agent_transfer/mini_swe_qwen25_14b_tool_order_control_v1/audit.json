@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_tool_observation_order_control",
+  "instance_id": "django__django-15277",
+  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+  "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "seed": 0,
+  "raw_full_repeats": {
+    "count": 2,
+    "resolved": [false, false],
+    "calls": [7, 7],
+    "cumulative_full_tokens": [17410, 17410],
+    "assistant_trajectory_sha256": "bd73f6ccedd75eb31be506a2cabb421231b7b8f5107b36dd802ebe76b140e2c3",
+    "patch_bytes": 945,
+    "patch_sha256": "a6c6e0a3b0384896a27bf4843b537d8beba4923120184e5a495b548e4e1f3b84",
+    "first_wrapped_observation_sha256": "ddd58f3d804a45f83189396a576c76bab257d8e648fe139334a541e42dadabb4"
+  },
+  "paper4_5_successful_direct_mlx_control": {
+    "source_branch": "research/paper4-5-engine-parity",
+    "source_result": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_task01_qwen25coder14b_postfix_02e53d01/plain_r01",
+    "resolved": true,
+    "calls": 6,
+    "assistant_trajectory_sha256": "72350ddfb6f83425cf5f7b6cf315d7e42d828904850723e5074429806570eb1a",
+    "first_wrapped_observation_sha256": "23d920c329ebc8e0357225735904e19594ba6cf051e6834aa95c9a6764176caf"
+  },
+  "first_causal_difference": {
+    "same_system_sha256": "3b42f1c2151ebf24703bd15cde414ee5cfc33f56683d6a3971cc8dbb1c9fa842",
+    "same_task_sha256": "fd9638a4c68fdc234095a0a3ea00ee15bef1221451977080a7259c50bdc6758f",
+    "same_first_assistant_sha256": "69bdd01d27ae5c091fbcce876a7ec5ab27cf1d527e75b21468029fd6e086689d",
+    "same_first_command_sha256": "ead96524c2835c1337c9eb430e14e079767b790f5f961a5dc5b589b5d862a5aa",
+    "cause": "same recursive-grep match set in a different line order"
+  },
+  "canonicalized_full": {
+    "repository_revision": "b7fc18664458ed6c7a025f48930389f7373d9070",
+    "resolved": false,
+    "calls": 7,
+    "cumulative_full_tokens": 17392,
+    "assistant_trajectory_sha256": "05bda441379f8585de0de873ce2e5331cff2863809db0c90a2bc529f2821c521",
+    "patch_bytes": 945,
+    "patch_sha256": "a6c6e0a3b0384896a27bf4843b537d8beba4923120184e5a495b548e4e1f3b84",
+    "normalization": {
+      "kind": "unordered_search_lines_lexicographic",
+      "changed": true,
+      "original_output_sha256": "1699c91e47cf3fe9df2cb40539de87258309049535f4edfde61287382d472829",
+      "visible_output_sha256": "4266a034f2b88b8c4b883c270ec9f9ae3c9001c798f92a84053d55d407f4b892"
+    }
+  },
+  "conclusion": "The refactor preserves the known failed FULL trajectory. Tool-result ordering is a real temperature-zero confound, but canonical ordering alone does not admit this model/task pair. Selective treatment remains withheld."
+}
