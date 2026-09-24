@@ -40,6 +40,41 @@ def validate_chat_completion(
     return content
 
 
+def fetch_openai_model_identity(
+    url: str,
+    *,
+    expected_model: str,
+    declared_revision: str,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """Qualify a non-Ollama OpenAI-compatible model catalog.
+
+    The OpenAI ``/v1/models`` contract exposes a served model ID, not a weight
+    revision.  Preserve that distinction: the catalog ID is observed while the
+    local snapshot revision is merely declared by the launcher/run manifest.
+    """
+
+    with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        raise ValueError("OpenAI model catalog is missing a data array")
+    identifiers = {
+        str(row.get("id")) for row in rows
+        if isinstance(row, Mapping) and row.get("id")
+    }
+    if expected_model not in identifiers:
+        raise ValueError(
+            f"expected served model {expected_model!r} not found in catalog"
+        )
+    return {
+        "model": expected_model,
+        "revision": declared_revision,
+        "revision_observed_by_endpoint": False,
+        "identity_basis": "openai_model_catalog_plus_declared_revision",
+    }
+
+
 def fetch_completion(
     url: str,
     *,
@@ -87,17 +122,34 @@ def wait_for_health(args: argparse.Namespace) -> dict[str, Any]:
             raise TimeoutError("model endpoint did not pass the health gate in time")
         try:
             probe_started = time.monotonic()
-            identity = fetch_ollama_model_identity(
-                args.tags_url,
-                expected_model=args.model,
-                expected_revision=args.revision,
-                timeout_seconds=args.request_timeout_seconds,
-            )
+            if args.tags_url:
+                identity = fetch_ollama_model_identity(
+                    args.tags_url,
+                    expected_model=args.model,
+                    expected_revision=args.revision,
+                    timeout_seconds=args.request_timeout_seconds,
+                )
+                identity = {
+                    **identity,
+                    "revision_observed_by_endpoint": True,
+                    "identity_basis": "ollama_catalog_digest",
+                }
+            else:
+                identity = fetch_openai_model_identity(
+                    args.models_url,
+                    expected_model=args.model,
+                    declared_revision=args.revision,
+                    timeout_seconds=args.request_timeout_seconds,
+                )
             consecutive.append({
                 "observed_at": _now(),
                 "latency_seconds": time.monotonic() - probe_started,
                 "model": identity["model"],
                 "revision": identity["revision"],
+                "revision_observed_by_endpoint": identity[
+                    "revision_observed_by_endpoint"
+                ],
+                "identity_basis": identity["identity_basis"],
             })
             if len(consecutive) < args.consecutive_probes:
                 time.sleep(args.retry_seconds)
@@ -133,7 +185,9 @@ def wait_for_health(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tags-url", required=True)
+    catalog = parser.add_mutually_exclusive_group(required=True)
+    catalog.add_argument("--tags-url")
+    catalog.add_argument("--models-url")
     parser.add_argument("--completion-url", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--revision", required=True)

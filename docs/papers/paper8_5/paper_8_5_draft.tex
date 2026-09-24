@@ -28,89 +28,40 @@
 
 \begin{abstract}
 Long-running coding agents accumulate instructions, actions, observations,
-edits, and verification state.  We study which logical records can be omitted
-independently of the inference engine.  Records are decomposed into state,
-provenance, control, and semantic evidence because these components need not
-share a lifetime.  This exposes a central negative result: operationally
-superseded state is not necessarily behaviorally irrelevant.  Whole-record
-retirement can remove localization or workflow evidence and trigger
-reacquisition or failure.
+edits, and verification state.  We study which typed logical records can be
+omitted independently of the inference engine.  Decomposing each record into
+state, provenance, control, and semantic evidence exposes a central negative
+result: operationally superseded state is not necessarily behaviorally
+irrelevant.  Removing it can erase localization or workflow evidence and
+trigger reacquisition or failure.
 
-We evaluate typed causal policies with mini-swe-agent on SWE-bench Verified
-using restored workspaces, exact-prefix controls, repeated full-history
-qualification, and official resolution as the primary endpoint.  A
-boundary-free Recent Frontier policy preserves 3/3 qualified discovery
-successes, uses 22 versus 30 calls, and omits 40.53\% of its own full-history
-counterfactual.  A distinct Prompt Pinned policy preserves 3/3 cold identities,
-uses 33 versus 34 calls, and saves 39.45\% within trajectory and 41.71\%
-against paired Full executions.  Two repeat-exact strict selection-only E2
-runs resolve 2/2 on one identity while omitting 40.56\% of their own
-full-history counterfactual and materializing no synthetic receipt tokens;
-this is one task-clustered observation, not a population estimate.  In a frozen
-eight-identity persistent order,
-Full resolves only 3/8; conditioned on those eligible identities, Recent
-Frontier preserves 3/3 outcomes and 37 versus 37 calls at 40.05\% paired input
-saving.  Unconditional whole-session saving is 15.59\%.  A reversed order
-resolves only 1/8 Full controls and contributes only an exact 0\%-saving
-abstention, demonstrating that the present cohorts do not estimate population
-accuracy.
+We evaluate boundary-free causal policies with mini-swe-agent on SWE-bench
+Verified using restored workspaces, exact-prefix controls, repeated
+full-history qualification, and official resolution as the primary endpoint.
+A Recent Frontier policy preserves 3/3 qualified discovery successes, uses 22
+versus 30 calls, and omits 40.53\% of its own full-history counterfactual.  A
+Prompt Pinned policy separately preserves 3/3 cold identities, uses 33 versus
+34 calls, and saves 39.45\% within trajectory and 41.71\% against paired Full.
+However, in two frozen eight-identity orders, Full resolves only 3/8 and 1/8.
+Recent Frontier preserves the three eligible first-order successes at 40.05\%
+paired saving, but the second order contributes only a 0\%-saving abstention.
+These cohorts qualify mechanisms, not population accuracy.
 
-A post-refactor policy audit finds that historical matched-tail runs recorded
-H2/T4 parameters that their materializer did not consume.  After correcting
-the implementation, mini-swe-agent preserves 3/3 paired solves, but saves only
-6.03\% through whole-causal-group retirement and 8.17\% after record-internal
-span materialization within trajectory, plus 6.28\% against pooled FULL-A input,
-while adding three calls.  The old totals remain reproducible for the legacy pure-tail
-policy; they are not evidence for corrected H2/T4.
+A post-refactor audit also finds that historical H2/T4 manifests recorded
+floors the materializer did not consume.  Corrected mini-swe-agent H2/T4
+preserves 3/3 solves but saves only 6.03\% as whole causal groups and adds three
+calls.  Corrected exact-token OpenHands transfer preserves 3/3 solves, uses 74
+versus 77 actions, and saves 22.67\% against its own-trajectory counterfactual
+and 29.76\% against paired Full.  Pi and Kilo preserve selected controls under
+a declared-safe materializer, but recovery or trajectory variance erases the
+paired economic benefit.
 
-Cross-agent transfer to OpenHands supplies a separate three-identity result.
-After 3/3 Full admission, the retrospectively audited legacy causal-tail
-implementation preserves 3/3 official
-resolutions, reduces actions from 114 to 79, saves 20.71\% through whole-group
-retirement and 22.49\% after record-internal span materialization within its
-own trajectories, and saves 46.86\% against paired Full input.  The latter includes
-trajectory contraction and must not be read as per-request omission.  The
-cohort is one run per identity and one model family, so it is evidence for
-transfer and the target operating region rather than a production default.
-Although its manifests recorded two protected head and four protected tail
-turns, a later code audit found that this materializer consumed neither floor;
-the row therefore describes pure prompt-pinned recency and is not evidence for
-the corrected H2/T4 policy.
-
-In corrected exact-token transfer on three shared identities, OpenHands preserves
-3/3 official solves, uses 74 versus 77 actions, and saves 22.67\% against its
-aggregate own-trajectory counterfactual and 29.76\% against paired Full input.
-The own-saving range is 8.14--35.35\%, exposing workload-dependent opportunity
-under a fixed agent, model, tokenizer, and policy.  Pi first
-loses the solve because its apparent 8.53\% materialized saving contains only
-0.30\% whole-group retirement and is dominated by unsafe post-hoc rewriting
-of an oversized observation.  Under the repaired declared-safe contract, Pi
-again resolves with the exact FULL patch at 41.53\% own whole-record saving,
-but uses 39 versus 28 calls and saves only 11.81\% against paired FULL work.
-The same declared-safe H2/T4 configuration on Kilo preserves the official
-solve and exact patch but saves only 7.30\% within its own trajectory.  Its
-first action diverges before selection begins, and the candidate consumes
-158.18\% more selected input than the paired Full trajectory; that paired
-number is therefore descriptive, not causally attributable to selection.
-An additional OpenHands Task~2 control clarifies policy scope: boundary-free
-M2/P1 preserves the official solve and identical patch, but selects 100\% of
-history because a one-task session contains only one user-instruction epoch.
-The repeat diverges at response~9 and uses 33 versus 25 actions despite no
-exclusion, directly measuring backend/agent trajectory variance rather than a
-selection cost.  Accordingly, H2/T4 and matched recency estimate within-task
-savings, whereas M2/P1 estimates retirement across persistent instruction
-epochs; their savings must not be pooled.
-This contrast motivates a portable rule: internal spans are selectable only
-when stable natural boundaries exist before K/V encoding; otherwise only whole
-records may retire.  Correctness repair alone does not guarantee favorable
-trajectory economics.
-
-Finally, per-request omission can reverse economically: one six-issue policy
-omits 55.34\% against its own trajectory and resolves 6/6, but expands from 60
+Finally, per-request omission can reverse end-to-end: one six-issue policy
+resolves 6/6 and omits 55.34\% against its own trajectory, yet expands from 60
 to 114 calls and consumes 43.87\% more input than paired Full.  We therefore
-separate own-trajectory omission from paired cumulative work.  The resulting
-policies are frozen promotion candidates, not production defaults; native K/V
-realization and post-cache transformation costs belong to a separate runtime
+report own omission, paired cumulative work, task success, and action cost
+separately.  The surviving policies are promotion candidates rather than
+production defaults; native K/V realization belongs to a separate runtime
 contract.
 \end{abstract}
 
@@ -824,9 +775,8 @@ denominator.  The normalized first order recovers one cross-task failure, but
 the reversed order recovers 0/6 while omitting 48.98\% of candidate-own input
 and increasing calls from 92 to 104.  Thus old-task interference sometimes
 matters, but recovery is prefix- and order-sensitive and does not explain the
-cohort generally.  Appendix~\ref{sec:detailed-evidence-ledger} retains the task
-order, runtime normalization, submission analysis, and complete failure
-ledgers.
+cohort generally.  The companion technical report retains the task order,
+runtime normalization, submission analysis, and complete failure ledgers.
 
 \begin{figure}[H]
 \centering
@@ -955,6 +905,7 @@ official resolution, reacquisition, calls, and cumulative work, not a nominal
 retention percentage.  Logical policy and physical runtime realization remain
 separate contracts.
 
+\ifdefined\PaperEightFiveTechnicalReport
 \clearpage
 \appendix
 \section{Detailed Methods and Evidence Ledger}
@@ -2211,6 +2162,19 @@ removes either action envelope before assigning logical roles, making the two
 serializations selection-equivalent.  This cannot explain the
 \textsc{Full} loop, because no history was removed, but it invalidates any
 selective XML evidence captured before the repair; none is admitted here.
+
+A separate Qwen3-14B admission makes the serving profile part of the control.
+The default MLX thinking template exhausts a 16-token health completion inside
+hidden reasoning, so the bounded launcher now records
+\texttt{enable\_thinking=false}; three catalog probes and an exact visible
+health completion then pass.  On Task~1, the resulting \textsc{Full} run starts
+the intended \texttt{CharField} repair but an over-broad write duplicates an
+existing \texttt{BinaryField} guard and leaves invalid syntax.  The same failed
+recovery action then repeats three times against an unchanged workspace.  We
+stop after 14 executions and withhold selection.  This remains an admission
+diagnostic, not an accuracy point; it also shows why a model name and
+temperature zero do not fully specify a reproducible agent treatment.
+
 A subsequent Task~1 diagnostic tests the corrected positive progress-spine
 implementation.  It protects the latest source, mutation, verification,
 progress, and error turns and no longer mistakes redirected patch capture for
@@ -5550,6 +5514,7 @@ MEMORY_RECOVERY_SUCCESS
 MEMORY_RECOVERY_FAILURE
 UNQUALIFIED_SESSION_INTERFERENCE
 \end{verbatim}
+\fi
 
 \bibliographystyle{plain}
 % \bibliography{../shared/references}

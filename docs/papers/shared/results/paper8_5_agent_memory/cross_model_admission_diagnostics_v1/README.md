@@ -9,6 +9,7 @@ primary autonomous submission.
 |---|---:|---|---|
 | Qwen2.5-Coder-14B / Task 2 / backticks | 25 | no tracked mutation; 21/24 executed commands returned nonzero, including 19 failed writes | diagnostic failure |
 | Qwen2.5-Coder-14B / Task 3 / XML | 16 | correct one-line source patch exists, but no primary submission; one response repeats seven times and 12/16 commands return nonzero | diagnostic failure |
+| Qwen3-14B / Task 1 / XML, thinking disabled | 14 | intended `CharField` guard plus an erroneous duplicate `BinaryField` guard; same failing write repeats three times | diagnostic failure |
 
 Both runs use MLX revision `29efdbab55a161237ab1e432a3abaf6c7ae2b477`,
 its exact tokenizer snapshot, temperature zero, top-p one, seed zero and a
@@ -47,3 +48,23 @@ two serializations now produce the same logical roles. This defect did not
 cause the FULL no-progress loop because FULL does not remove records; it would
 have invalidated any later selective XML run, so no such run is admitted from
 the earlier code.
+
+## Qwen3-14B serving-profile admission
+
+The first Qwen3-14B control makes the serving profile explicit. With the MLX
+default thinking template, a 16-token health request spends the complete budget
+inside hidden reasoning and emits no visible action. The bounded launcher now
+records `enable_thinking=false`; three catalog probes and a subsequent exact
+`PRA_HEALTH_OK` completion pass before the autonomous control. The OpenAI model
+catalog observes the served model ID but does not expose a weight digest, so
+the local snapshot revision is labelled declared rather than endpoint-observed.
+
+The Task-1 FULL control reads source normally and begins the intended
+`CharField.max_length is not None` repair. A broad write also inserts a second
+guard into the already guarded `BinaryField` block, producing invalid syntax.
+After two different failed recovery commands, actions 11--13 repeat the same
+write command, return code 2, against the same workspace fingerprint. The
+investigator stops the run at 14 observed executions rather than spending the
+remaining 26 calls on a no-progress cycle. There is no primary submission and
+no selective arm. This is a model/scaffold admission diagnostic, not a task
+failure estimate or a policy-quality point.

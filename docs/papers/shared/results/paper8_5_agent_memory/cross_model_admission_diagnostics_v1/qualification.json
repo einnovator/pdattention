@@ -1,8 +1,19 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "study": "paper8_5_cross_model_autonomous_admission",
-  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
-  "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+  "models": [
+    {
+      "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+      "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477"
+    },
+    {
+      "model": "mlx-community/Qwen3-14B-4bit",
+      "model_revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+      "enable_thinking": false,
+      "revision_observed_by_endpoint": false,
+      "identity_basis": "openai_model_catalog_plus_declared_revision"
+    }
+  ],
   "generation": {
     "temperature": 0.0,
     "top_p": 1.0,
@@ -11,6 +22,8 @@
   },
   "runs": [
     {
+      "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+      "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
       "instance_id": "django__django-15368",
       "scaffold": "swebench_backticks.yaml",
       "requests_observed": 25,
@@ -22,6 +35,8 @@
       "status": "operator_stopped_diagnostic_not_scored"
     },
     {
+      "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+      "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
       "instance_id": "scikit-learn__scikit-learn-13135",
       "scaffold": "swebench_xml.yaml",
       "requests_observed": 16,
@@ -31,9 +46,22 @@
       "primary_submission": false,
       "maximum_identical_response_repetitions": 7,
       "status": "operator_stopped_diagnostic_not_scored"
+    },
+    {
+      "model": "mlx-community/Qwen3-14B-4bit",
+      "model_revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+      "instance_id": "django__django-15277",
+      "scaffold": "swebench_xml.yaml",
+      "enable_thinking": false,
+      "executions_observed": 14,
+      "correct_target_edit_attempted": true,
+      "syntax_valid": false,
+      "primary_submission": false,
+      "maximum_identical_failed_action_repetitions": 3,
+      "status": "operator_stopped_diagnostic_not_scored"
     }
   ],
   "selection_policy_executed": false,
   "curve_admissible": false,
-  "conclusion": "Agent action encoding and completion protocol must qualify before cross-model policy sensitivity can be measured."
+  "conclusion": "Model, serving profile, action encoding, and completion protocol must qualify under FULL before cross-model policy sensitivity can be measured."
 }
