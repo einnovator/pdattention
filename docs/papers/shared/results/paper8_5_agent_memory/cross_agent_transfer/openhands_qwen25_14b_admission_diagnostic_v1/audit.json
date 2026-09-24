@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_openhands_qwen25_14b_admission_diagnostic",
+  "agent": "openhands-sdk",
+  "agent_version": "1.49.2",
+  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+  "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "history_policy": "FULL",
+  "selection_changed_any_request": false,
+  "outcomes": [
+    {
+      "instance_id": "django__django-15277",
+      "tool_protocol": "provider_native",
+      "tool_set": "default",
+      "semantic_actions": 0,
+      "status": "failed_admission",
+      "failure_mechanism": "model emitted narrative JSON-like tool examples as ordinary assistant text; OpenHands treated the response as completion"
+    },
+    {
+      "instance_id": "django__django-15277",
+      "tool_protocol": "prompt_mocked_without_optional_examples",
+      "tool_set": "default",
+      "initial_prompt_tokens": 7739,
+      "semantic_actions": 6,
+      "observations": 6,
+      "status": "stopped_failed_admission",
+      "failure_mechanism": "wrong fields.py followed by five identical invalid editor replacements despite explicit error observations",
+      "raw_events": {
+        "path": "/Users/jorge.simao/git/rd/paper85-runs/qwen25-14b-cross-agent-f35d/openhands-task01-full-promptmock-noicl-bounded-retry2/diagnostic_events.jsonl",
+        "bytes": 54718,
+        "sha256": "1dc68d291c6ea08c9ba80612c6e152289a3c00af012ed976e335fc4e5c440297"
+      }
+    },
+    {
+      "instance_id": "django__django-15277",
+      "tool_protocol": "prompt_mocked_without_optional_examples",
+      "tool_set": "terminal",
+      "initial_prompt_tokens": 5578,
+      "semantic_actions": 6,
+      "observations": 6,
+      "status": "stopped_failed_admission",
+      "failure_mechanism": "correct file localization followed by a global sed mutation that corrupted unrelated classes and repeated after failed verification",
+      "raw_events": {
+        "path": "/Users/jorge.simao/git/rd/paper85-runs/qwen25-14b-cross-agent-900d/openhands-task01-full-shell-promptmock-noicl/diagnostic_events.jsonl",
+        "bytes": 46122,
+        "sha256": "0a7505c2121cad1ff2c4bbfd1ea79b5ef417e64312279fd97f9d6af5182fb84c"
+      }
+    },
+    {
+      "instance_id": "django__django-15741",
+      "tool_protocol": "prompt_mocked_without_optional_examples",
+      "tool_set": "terminal",
+      "initial_prompt_tokens": 4944,
+      "semantic_actions": 6,
+      "observations": 5,
+      "status": "stopped_failed_admission",
+      "failure_mechanism": "localized get_format but invented an unused allow_lazy API and diverted into environment setup after verification failures",
+      "raw_events": {
+        "path": "/Users/jorge.simao/git/rd/paper85-runs/qwen25-14b-cross-agent-900d/openhands-task04-full-shell-promptmock-noicl/diagnostic_events.jsonl",
+        "bytes": 41867,
+        "sha256": "60eb41db98970934b4482c2e5266ff3283bc02c715ee165fce53138eccfa17b5"
+      }
+    }
+  ],
+  "interpretation": [
+    "A model/task success under mini-swe-agent does not imply admission under OpenHands because the system prompt, protocol and tool affordances are part of the treatment.",
+    "Removing optional tool demonstrations and unused tool schemas reduces prompt cost but does not by itself restore task capability.",
+    "No selective-history result is valid until the same agent/model/task has a successful contemporaneous FULL control.",
+    "The existing OpenHands/Qwen3-Coder-30B three-task cohort remains the qualified policy-transfer result; this 14B bridge is a negative admission diagnostic."
+  ],
+  "implementation_commits": [
+    "ca003ba3",
+    "f35d2558",
+    "900dc120"
+  ]
+}
