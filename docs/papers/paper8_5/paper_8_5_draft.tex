@@ -2225,6 +2225,14 @@ fails in seven calls with the same patch.  Thus observation order is a real
 repeatability confound, but removing it does not admit this model/task pair;
 no selective arm is launched.  The audit is in
 \path{cross_agent_transfer/mini_swe_qwen25_14b_tool_order_control_v1}.
+Two further canonicalized \textsc{Full} admissions also fail before treatment.
+Task~4 reaches its 20-call bound after repeated workspace mutations and submits
+no patch (official 0/1; 100,638 cumulative message-content tokens).  Task~5 is
+stopped as a no-progress diagnostic after 16 actions and 102,919 tokens because
+all 16 captured pre/post workspace fingerprints are unchanged; it is not an
+official accuracy row.  These negatives are retained under
+\path{cross_agent_transfer/mini_swe_qwen25_14b_additional_admission_v1} and
+prevent favorable-only selection of a 14B policy pair on this host.
 PRA Agent also required a sampling-control repair: its earlier transport
 silently omitted temperature, top-$p$, and seed.  The corrected Task~1 Full
 control resolves in 15 requests with the exact minimal patch under explicit
