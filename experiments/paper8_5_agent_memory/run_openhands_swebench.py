@@ -345,6 +345,7 @@ def run(args: argparse.Namespace) -> Path:
         "--request-retries", str(args.request_retries),
         _tool_calling_argument(args.native_tool_calling),
         _prompt_mock_examples_argument(args.prompt_mock_examples),
+        "--tool-set", args.tool_set,
     )
     started = datetime.now(timezone.utc)
     timed_out = False
@@ -406,6 +407,7 @@ def run(args: argparse.Namespace) -> Path:
         ),
         "native_tool_calling": bool(args.native_tool_calling),
         "prompt_mock_examples": bool(args.prompt_mock_examples),
+        "tool_set": args.tool_set,
         "native_context_management": "disabled_condenser_none",
         "instance_id": instance_id,
         "task_index": task_index,
@@ -520,6 +522,15 @@ def build_parser() -> argparse.ArgumentParser:
             "Include optional OpenHands in-context tool demonstrations in "
             "prompt-mocked mode; disable to retain schemas/instructions while "
             "reducing prompt and cache pressure."
+        ),
+    )
+    parser.add_argument(
+        "--tool-set",
+        choices=("default", "terminal"),
+        default="default",
+        help=(
+            "OpenHands tool surface. Use 'terminal' for the transverse generic "
+            "shell configuration shared with mini-swe-agent."
         ),
     )
     parser.add_argument("--container-preflight-attempts", type=int, default=3)

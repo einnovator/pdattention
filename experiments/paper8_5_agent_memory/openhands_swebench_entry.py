@@ -15,8 +15,10 @@ import urllib.request
 from pydantic import SecretStr
 
 from openhands.sdk import Agent, Conversation, LLM
+from openhands.sdk.tool import Tool
 from openhands.sdk.llm.utils import telemetry as openhands_telemetry
 from openhands.tools.preset.default import get_default_tools
+from openhands.tools.terminal import TerminalTool
 
 from execution_receipts import build_execution_receipt, capture_execution_snapshot
 
@@ -220,6 +222,16 @@ def main() -> int:
             "protocol instructions remain present when examples are disabled."
         ),
     )
+    parser.add_argument(
+        "--tool-set",
+        choices=("default", "terminal"),
+        default="default",
+        help=(
+            "OpenHands tool surface. 'terminal' exposes the same generic shell "
+            "abstraction used by mini-swe-agent; 'default' also exposes the "
+            "file editor and task tracker."
+        ),
+    )
     args = parser.parse_args()
 
     prompt = Path(args.prompt_file).read_text(encoding="utf-8").strip()
@@ -246,9 +258,14 @@ def main() -> int:
         timeout=args.request_timeout_seconds,
         num_retries=args.request_retries,
     )
+    tools = (
+        [Tool(name=TerminalTool.name)]
+        if args.tool_set == "terminal"
+        else get_default_tools(enable_browser=False, enable_sub_agents=False)
+    )
     agent = Agent(
         llm=llm,
-        tools=get_default_tools(enable_browser=False, enable_sub_agents=False),
+        tools=tools,
         system_prompt_kwargs={"cli_mode": True},
         condenser=None,
     )
@@ -293,6 +310,7 @@ def main() -> int:
             "execution_status": str(conversation.state.execution_status),
             "conversation_id": str(conversation.state.id),
             "condenser": None,
+            "tool_set": args.tool_set,
             "execution_receipts_emitted": receipt_bridge.emitted,
             "execution_receipts_delivered": receipt_bridge.delivered,
             "execution_receipt_delivery_failures": receipt_bridge.failed_delivery,
