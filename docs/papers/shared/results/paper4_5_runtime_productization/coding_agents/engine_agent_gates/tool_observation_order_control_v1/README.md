@@ -1,6 +1,6 @@
 # Tool-observation order prerequisite for agent parity
 
-Paper 8.5 commit `3974b027` isolates a cross-runtime agent confound using
+Paper 8.5 commit `2a18268b` isolates a cross-runtime agent confound using
 mini-swe-agent, Qwen2.5-Coder-14B revision `29efdbab55a1`, temperature zero,
 and SWE-bench Verified `django__django-15277`.
 
@@ -11,6 +11,11 @@ observation differs only in line order. The next assistant response diverges.
 The two fresh failures are byte-identical over seven actions and submit the
 same malformed patch. An opt-in lexicographic normalization removes this
 ordering variance but does not restore task success.
+
+A paired frozen-prefix replay on the same current endpoint reproduces each
+ordering's recorded second assistant action byte for byte. This establishes
+that observation order alone is sufficient for the immediate fork. It does
+not establish that the one-turn intervention determines final task outcome.
 
 Consequently, cross-engine exact-action parity requires equality of the full
 ordered model-visible observation stream. If observation hashes differ first,

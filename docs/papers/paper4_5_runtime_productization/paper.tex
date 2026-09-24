@@ -511,7 +511,11 @@ recursive-search command, return code, and set of six matches fixed, but
 changes only the filesystem enumeration order of those matches.  The next
 assistant action diverges at temperature zero; two fresh controls reproduce
 the same seven-call failure exactly.  Canonicalizing this simple unordered
-search removes that source of variance but does not restore task success.
+search removes that source of variance but does not restore task success.  A
+paired frozen-prefix replay on the same current endpoint reproduces each
+ordering's recorded second assistant action byte for byte.  Observation order
+is therefore sufficient for the immediate fork, although this one-turn
+intervention does not establish the final task outcome.
 Consequently, an engine-induced trajectory fork is admissible only when the
 ordered observation hashes still match at the preceding turn.  Otherwise the
 fork is environmental rather than evidence about K/V consumption.  The
@@ -4640,7 +4644,7 @@ agent rows cannot be pooled with these results.
 Cross-engine action-trajectory comparison now has an additional prerequisite:
 the model-visible tool observations must match, not merely the task image,
 workspace revision, prompt, and decoding parameters.  Paper~8.5 commit
-\texttt{3974b027} compares this paper's successful direct-MLX
+\texttt{2a18268b} compares this paper's successful direct-MLX
 Qwen2.5-Coder-14B Task~01 control with two fresh ordinary-MLX \textsc{Full}
 controls.  System text, task text, first assistant response, recursive
 \texttt{grep} command, return code, and the set of six matches are identical;
@@ -4648,7 +4652,11 @@ only filesystem enumeration order differs.  The next assistant action forks
 at temperature zero, and both fresh controls then repeat the same seven-call
 failure byte for byte.  Lexicographically canonicalizing simple unordered
 search results removes that variance source but still produces a failed
-seven-call trajectory.  Thus tool-order normalization is not a capability fix,
+seven-call trajectory.  A paired same-endpoint frozen-prefix replay then
+reproduces both competing second actions byte for byte from their respective
+observation orderings.  Ordering is sufficient for the immediate action fork,
+but the one-turn intervention does not establish final task resolution.  Thus
+tool-order normalization is not a capability fix,
 but observation-sequence hashes are required to distinguish an environment
 fork from a cache-consumer numerical fork.  Exact action parity is henceforth
 claimed only through the first unequal model-visible observation; official
