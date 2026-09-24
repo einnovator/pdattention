@@ -262,6 +262,9 @@ def build_agent_command(
             "-c",
             "environment.require_unified_diff_submission="
             f"{str(bool(getattr(args, 'require_unified_diff_submission', False))).lower()}",
+            "-c",
+            "environment.canonicalize_unordered_search_output="
+            f"{str(bool(getattr(args, 'canonicalize_unordered_search_output', False))).lower()}",
         ))
     command.extend((
         "-c",
@@ -1140,6 +1143,9 @@ def run(args: argparse.Namespace) -> Path:
         "workspace_source_identity_sha256": None,
         "pythonpath": args.pythonpath,
         "instrument_observations": args.instrument_observations,
+        "canonicalize_unordered_search_output": bool(
+            args.canonicalize_unordered_search_output
+        ),
         "instrumentation_output_root": str(args.instrumentation_output_root),
         "agent_command_template": agent_command,
         "agent_behavior_sha256": agent_behavior_digest(agent_command),
@@ -1605,6 +1611,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Reject a terminal mini-swe-agent payload that is not structurally "
             "a Git diff and return a recoverable protocol-error observation."
+        ),
+    )
+    parser.add_argument(
+        "--canonicalize-unordered-search-output",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Lexicographically order independent lines from simple recursive "
+            "find/grep searches. This evaluation control is recorded separately "
+            "from PRA selection and is disabled by default."
         ),
     )
     parser.add_argument("--skip-grading", action="store_true")

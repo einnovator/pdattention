@@ -43,6 +43,14 @@ _VERIFY = re.compile(
 _SED_SPAN = re.compile(r"sed\s+-n\s+['\"]?(\d+)\s*,\s*(\d+)p")
 _HEAD_SPAN = re.compile(r"head(?:\s+-n)?\s+(\d+)\b")
 _GREP_PATTERN = re.compile(r"(?:grep|rg)\s+(?:-[^\s]+\s+)*(['\"]?[^\s'\"]+['\"]?)")
+_UNORDERED_SEARCH = re.compile(
+    r"^\s*(?:find\b|fd\b|rg\s+--files\b|"
+    r"grep\b[^\n]*(?:\s-[^\s]*[Rr][^\s]*\b|\s--recursive\b))"
+)
+_ORDER_SENSITIVE_SEARCH = re.compile(
+    r"(?:^|\s)(?:-[ABC]\d*|--(?:after|before-)?context(?:=|\s)|"
+    r"-[z0]|--null\b|--null-data\b|--json\b)"
+)
 
 
 def normalize_resource(value: str) -> str:
@@ -115,6 +123,29 @@ def search_signature(command: str) -> str:
     return "search:" + hashlib.sha256(normalized.encode()).hexdigest()[:12]
 
 
+def canonicalize_unordered_search_output(command: str, output: str) -> tuple[str, bool]:
+    """Sort independent search-result lines for repeatable evaluation.
+
+    Only a single, context-free recursive search command is admitted.  Shell
+    composition, redirection, NUL/JSON output and grep context options are
+    rejected because their line order can carry semantics.  The transform is
+    opt-in at the evaluation environment and is not a PRA selection policy.
+    """
+
+    if not output or "\x00" in output:
+        return output, False
+    if any(token in command for token in ("\n", "\r", "&&", "||", ";", "|", ">", "<", "`", "$(")):
+        return output, False
+    if not _UNORDERED_SEARCH.search(command) or _ORDER_SENSITIVE_SEARCH.search(command):
+        return output, False
+    trailing_newline = output.endswith("\n")
+    lines = output.splitlines()
+    if len(lines) < 2:
+        return output, False
+    canonical = "\n".join(sorted(lines)) + ("\n" if trailing_newline else "")
+    return canonical, canonical != output
+
+
 def resource_span(command: str, resource: str) -> ResourceAccess:
     if re.search(r"(?:^|[;&|]\s*)cat\b", command):
         return ResourceAccess(resource, "unknown", "whole")
@@ -184,6 +215,7 @@ __all__ = [
     "bash_semantics_are_certifiable",
     "classify_bash_effect",
     "classify_bash_operation",
+    "canonicalize_unordered_search_output",
     "declared_turn_metadata",
     "extract_resource_ids",
     "normalize_resource",

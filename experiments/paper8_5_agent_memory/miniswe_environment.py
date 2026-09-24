@@ -21,6 +21,7 @@ from .observation_instrumentation import (
     stable_environment_fingerprint,
 )
 from .miniswe_semantics import extract_resource_ids
+from .miniswe_semantics import canonicalize_unordered_search_output
 from .submission_protocol import (
     submission_recovery_observation,
     validate_unified_git_diff,
@@ -32,6 +33,7 @@ class InstrumentedDockerEnvironmentConfig(DockerEnvironmentConfig):
     capture_workspace_checkpoints: bool = True
     visible_output_limit: int = 10_000
     require_unified_diff_submission: bool = False
+    canonicalize_unordered_search_output: bool = False
 
 
 class InstrumentedDockerEnvironment(DockerEnvironment):
@@ -118,6 +120,23 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
         effective_cwd = str(pre_state.get("cwd") or effective_cwd)
         checkpoint = self._capture_checkpoint(step, command, effective_cwd, pre_state)
         output = super().execute(action, cwd=cwd, timeout=timeout)
+        normalization = None
+        if (
+            self.config.canonicalize_unordered_search_output
+            and int(output.get("returncode", -1)) == 0
+        ):
+            raw_output = str(output.get("output", ""))
+            canonical, changed = canonicalize_unordered_search_output(
+                command, raw_output
+            )
+            output["output"] = canonical
+            normalization = {
+                "schema_version": 1,
+                "kind": "unordered_search_lines_lexicographic",
+                "changed": changed,
+                "original_sha256": hashlib.sha256(raw_output.encode()).hexdigest(),
+                "visible_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
+            }
         post_state = self._capture_state(effective_cwd, resources)
         metadata = build_bash_observation_metadata(
             command=command,
@@ -135,6 +154,8 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
             "paper8_5_execution_step": step,
             "paper8_5_pre_action_checkpoint": checkpoint,
         })
+        if normalization is not None:
+            metadata["paper8_5_observation_normalization"] = normalization
         output["extra"] = {**dict(output.get("extra") or {}), **metadata}
         self._write_receipt(step, command, pre_state, post_state, metadata)
         return output
