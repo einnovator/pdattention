@@ -18,6 +18,10 @@ _MINISWE_COMMAND_BLOCK = re.compile(
     r"^```mswea_bash_command[ \t]*\r?\n(.*?)\r?\n^```[ \t]*$",
     re.DOTALL | re.MULTILINE,
 )
+_MINISWE_XML_COMMAND = re.compile(
+    r"<mswea_bash_command>(.*?)</mswea_bash_command>",
+    re.DOTALL,
+)
 _COMMAND_BLOCK = re.compile(
     r"^```(?:bash)?[ \t]*\r?\n(.*?)\r?\n^```[ \t]*$",
     re.DOTALL | re.MULTILINE,
@@ -56,12 +60,34 @@ def _content(message: Mapping[str, Any]) -> str:
     return value if isinstance(value, str) else str(value)
 
 
-def _command(content: str) -> str | None:
+def extract_miniswe_command(content: str) -> str | None:
+    """Return the one action accepted by mini-swe-agent's text protocols.
+
+    mini-swe-agent ships both fenced and XML action scaffolds.  They are two
+    encodings of the same Bash action contract, so record identity and receipt
+    joins must not depend on which scaffold rendered the command.  Requiring
+    exactly one recognized action also mirrors the harness parser and prevents
+    an illustrative block in the reasoning text from being treated as the
+    executed action.
+    """
+
     # mini-swe-agent executes only its tagged action block.  Prefer that exact
     # protocol marker so an explanatory Python/Bash fence earlier in the
     # response cannot be mistaken for the command that changed the workspace.
-    match = _MINISWE_COMMAND_BLOCK.search(content) or _COMMAND_BLOCK.search(content)
-    return match.group(1).strip() if match else None
+    tagged = [
+        *_MINISWE_COMMAND_BLOCK.findall(content),
+        *_MINISWE_XML_COMMAND.findall(content),
+    ]
+    if len(tagged) == 1:
+        return tagged[0].strip()
+    if tagged:
+        return None
+    fallback = _COMMAND_BLOCK.findall(content)
+    return fallback[0].strip() if len(fallback) == 1 else None
+
+
+def _command(content: str) -> str | None:
+    return extract_miniswe_command(content)
 
 
 def _return_code(content: str, message: Mapping[str, Any]) -> int | None:

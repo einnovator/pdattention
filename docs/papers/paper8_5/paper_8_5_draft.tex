@@ -2194,6 +2194,21 @@ points; no selection occurred.  They show that cross-model claims must first
 qualify action encoding and termination semantics, and that a correct final
 workspace cannot replace the primary submission metric.  The compact evidence
 is in \path{cross_model_admission_diagnostics_v1}.
+A latest-code repeat strengthens this diagnosis.  After three identical health
+probes, its first 11 assistant-response and executed-command hashes reproduce
+the earlier Task~3 diagnostic exactly, including the correct edit at action~3
+and the identical failing command--observation pair at actions 10--11.  We stop
+the repeat there rather than spend 39 further actions on the reproduced
+no-progress cycle; it remains a diagnostic rather than an official failure.
+The audit also found a separate adapter defect: the selector-side command
+decoder recognized mini-swe-agent's fenced Bash action encoding but not its
+official XML encoding.  XML commands were executed by the environment while
+their receipts were marked unparseable, so a selective XML treatment would
+have failed closed to \textsc{Full}.  The decoder now accepts either syntax,
+requires exactly one action across both, and is regression-tested for exact
+receipt joins and ambiguous-action rejection.  This cannot explain the
+\textsc{Full} loop, because no history was removed, but it invalidates any
+selective XML evidence captured before the repair; none is admitted here.
 A subsequent Task~1 diagnostic tests the corrected positive progress-spine
 implementation.  It protects the latest source, mutation, verification,
 progress, and error turns and no longer mistakes redirected patch capture for

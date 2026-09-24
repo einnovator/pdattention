@@ -21,3 +21,27 @@ from the primary submission metric.
 These are stopped diagnostics, not official task failures and not evidence
 about a selective policy. A selective arm is correctly withheld until the same
 agent/model/scaffold produces a repeat-qualified FULL submission.
+
+## Latest-code Task-3 repeat and protocol-adapter audit
+
+A fresh immutable repeat on the latest branch used the same Qwen2.5-Coder-14B
+revision, tokenizer, XML scaffold, temperature zero, top-p one, seed zero and
+FULL policy. Three preceding endpoint probes returned identical response
+hashes. The first 11 assistant-content hashes and executed-command hashes then
+reproduced the earlier stopped diagnostic exactly. The correct source edit was
+again present after action 3. Actions 10 and 11 repeated the same failing
+command and received the same observation while the workspace fingerprint was
+unchanged. The repeat was investigator-stopped at that point rather than
+spending the remaining 39 actions on a deterministic no-progress loop. It is
+therefore another diagnostic, not an official failure or policy point.
+
+This audit exposed an independent harness defect. The selector-side command
+decoder and execution-receipt join recognized mini-swe-agent's fenced action
+syntax but not its official XML action syntax. The environment still executed
+the XML commands, while the policy layer marked their sidecars unparseable and
+would have failed closed to FULL. The decoder now accepts either encoding,
+requires exactly one action across both, and has regression coverage for exact
+XML receipt joins and mixed/multiple-action rejection. This defect did not
+cause the FULL no-progress loop because FULL does not remove records; it would
+have invalidated any later selective XML run, so no such run is admitted from
+the earlier code.

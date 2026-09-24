@@ -1605,6 +1605,60 @@ def test_sidecar_join_accepts_intercepted_terminal_submission(tmp_path):
     assert "extra" not in enriched[5]
 
 
+def test_sidecar_join_accepts_miniswe_xml_action_protocol(tmp_path):
+    command = "sed -n '1,80p' foo.py"
+    messages = [
+        {"role": "system", "content": "Use one XML-wrapped Bash action."},
+        {"role": "user", "content": "Fix foo.py."},
+        {
+            "role": "assistant",
+            "content": (
+                "THOUGHT: inspect the source\n"
+                f"<mswea_bash_command>{command}</mswea_bash_command>"
+            ),
+        },
+        {
+            "role": "user",
+            "content": "<returncode>0</returncode>\n<output>source</output>",
+        },
+    ]
+    _write_receipt(tmp_path, 0, command, {
+        "return_code": 0,
+        "output_complete": True,
+        "resource_version_fingerprints": {"foo.py": "v1"},
+    })
+
+    enriched, audit = join_instrumentation_sidecars(messages, tmp_path)
+
+    assert audit == {
+        "status": "exact",
+        "commands": 1,
+        "receipts": 1,
+        "joined": 1,
+    }
+    assert enriched[3]["extra"]["return_code"] == 0
+
+
+def test_sidecar_join_rejects_mixed_or_multiple_miniswe_actions(tmp_path):
+    messages = [
+        {"role": "system", "content": "Use one action."},
+        {"role": "user", "content": "Fix foo.py."},
+        {
+            "role": "assistant",
+            "content": (
+                "```mswea_bash_command\ncat foo.py\n```\n"
+                "<mswea_bash_command>cat foo.py</mswea_bash_command>"
+            ),
+        },
+        {"role": "user", "content": "<returncode>0</returncode>"},
+    ]
+
+    _, audit = join_instrumentation_sidecars(messages, tmp_path)
+
+    assert audit["status"] == "assistant_command_unparseable"
+    assert audit["joined"] == 0
+
+
 def test_sidecar_join_does_not_forgive_nonterminal_missing_receipt(tmp_path):
     messages = [
         {"role": "system", "content": "Use bash."},

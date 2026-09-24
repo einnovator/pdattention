@@ -51,7 +51,12 @@ from .negative_receipts import (
     realize_negative_receipts,
 )
 from .oracle import restore_causal_groups
-from .recordizer import active_task_content, annotate_minisweagent_messages, extract_resource_ids
+from .recordizer import (
+    active_task_content,
+    annotate_minisweagent_messages,
+    extract_miniswe_command,
+    extract_resource_ids,
+)
 from pra_hf.agent_history import OpenAIRecordizer
 from pra_hf.deployment import PRAEngineCapabilities, PRAWireRequest
 from pra_hf.mediation import RequestMediator, WireAgentMemoryPlan
@@ -74,7 +79,6 @@ from .selectors import (
 from .serialization import serialize_materialized_messages
 
 
-_COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
 AUTONOMOUS_POSITIVE_POLICIES = (
     "head_tail_recency",
     "head_tail_progress_spine",
@@ -145,8 +149,7 @@ def _assistant_command(response_body: bytes) -> str | None:
     content = _assistant_content(response_body)
     if content is None:
         return None
-    matches = _COMMAND.findall(content)
-    return matches[0].strip() if len(matches) == 1 else None
+    return extract_miniswe_command(content)
 
 
 def _assistant_content(response_body: bytes) -> str | None:
@@ -198,15 +201,15 @@ def join_instrumentation_sidecars(
         if message.get("role") != "assistant":
             continue
         content = message.get("content", "")
-        matches = _COMMAND.findall(content) if isinstance(content, str) else []
-        if len(matches) != 1:
+        command = extract_miniswe_command(content) if isinstance(content, str) else None
+        if command is None:
             return copied, {
                 "status": "assistant_command_unparseable",
                 "commands": len(assistant_rows),
                 "receipts": 0,
                 "joined": 0,
             }
-        assistant_rows.append((index, matches[0].strip()))
+        assistant_rows.append((index, command))
     if not assistant_rows:
         return copied, {"status": "empty_exact", "commands": 0, "receipts": 0, "joined": 0}
     if instrumentation_root is None:
