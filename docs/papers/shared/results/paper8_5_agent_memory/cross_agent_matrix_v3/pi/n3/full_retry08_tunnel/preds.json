@@ -1,0 +1,17 @@
+{
+  "django__django-15277": {
+    "instance_id": "django__django-15277",
+    "model_name_or_path": "pi-0.75.3-qwen3-coder:30b-ctx131k-full",
+    "model_patch": "diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py\nindex f30b523346..88c9ca9f28 100644\n--- a/django/db/models/fields/__init__.py\n+++ b/django/db/models/fields/__init__.py\n@@ -1010,7 +1010,8 @@ class CharField(Field):\n     def __init__(self, *args, db_collation=None, **kwargs):\n         super().__init__(*args, **kwargs)\n         self.db_collation = db_collation\n-        self.validators.append(validators.MaxLengthValidator(self.max_length))\n+        if self.max_length is not None:\n+            self.validators.append(validators.MaxLengthValidator(self.max_length))\n \n     def check(self, **kwargs):\n         databases = kwargs.get('databases') or []\n"
+  },
+  "django__django-15368": {
+    "instance_id": "django__django-15368",
+    "model_name_or_path": "pi-0.75.3-qwen3-coder:30b-ctx131k-full",
+    "model_patch": "diff --git a/django/db/models/query.py b/django/db/models/query.py\nindex f8d848e926..6b5b738935 100644\n--- a/django/db/models/query.py\n+++ b/django/db/models/query.py\n@@ -670,7 +670,7 @@ class QuerySet:\n                 when_statements = []\n                 for obj in batch_objs:\n                     attr = getattr(obj, field.attname)\n-                    if not isinstance(attr, Expression):\n+                    if not hasattr(attr, \"resolve_expression\"):\n                         attr = Value(attr, output_field=field)\n                     when_statements.append(When(pk=obj.pk, then=attr))\n                 case_statement = Case(*when_statements, output_field=field)\n"
+  },
+  "scikit-learn__scikit-learn-13135": {
+    "instance_id": "scikit-learn__scikit-learn-13135",
+    "model_name_or_path": "pi-0.75.3-qwen3-coder:30b-ctx131k-full",
+    "model_patch": ""
+  }
+}

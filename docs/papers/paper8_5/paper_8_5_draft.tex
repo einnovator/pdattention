@@ -57,7 +57,11 @@ separates patch quality, autonomous completion, action cost, and token work.
 On one locked identity, Pi and PRA Agent preserve the Full solve while reducing
 calls and candidate-own input; OpenCode adds four calls, and Kilo requires an
 external stop after producing a resolving patch.  These are admission tests,
-not cross-agent accuracy estimates.
+not cross-agent accuracy estimates.  In the first prospective persistent Pi
+pair, M2/P1 preserves both Full successes (2/2), loses none, saves 20.05\%
+against its own three-task trajectory, and uses 107 versus 115 calls.  A third
+success occurs only where Full fails and is therefore labeled a recovery
+diagnostic rather than a preservation win.
 
 Finally, per-request omission can reverse end-to-end: one six-issue policy
 resolves 6/6 and omits 55.34\% against its own trajectory, yet expands from 60
@@ -764,8 +768,24 @@ after the final verified patch makes autonomous completion false, while the
 fresh contemporaneous Full control fails Task~1 in a repeated
 inspection-budget recovery loop.  A historical 3/3 Full control is retained
 as a stability observation but cannot supply paired economics because its
-trajectory differs before selection acts.  Pi $N=3$ Full is running at the
-cutoff; no agent has yet passed the gate for $N=6$.
+trajectory differs before selection acts.
+
+Pi now supplies the first completed prospective $N=3$ pair.  Both arms share
+the exact 49-request Task~1 prefix.  Full resolves the two Django tasks but
+exports an empty patch for Scikit-learn (2/3; 115 calls); M2/P1 resolves all
+three (3/3; 107 calls).  The policy preserves both Full successes, so the
+baseline-conditional result is 2/2 with zero losses.  Its 2,042,277
+materialized tokens are 20.05\% below its own 2,554,440-token whole-history
+counterfactual.  Relative to Full's different 2,847,310-token trajectory the
+paired saving is 28.27\%, but this mixes selection with eight avoided calls.
+M2/P1 correctly abstains on Tasks~1--2 because the last two instruction epochs
+cover the complete session.  On Task~3 it retires 49 Task~1 causal groups,
+saves 52.34\% against its own trajectory, and uses 27 rather than 35 calls.
+Because Full fails that task after Pi's structured-edit arguments trigger a
+recovery loop, the Task~3 success is a selective-recovery diagnostic, not a
+paired-preservation win.  This single repeat admits the frozen mechanism to a
+repeat and $N=6$ gate; it is not a population accuracy estimate or a production
+default.
 
 The auditable manifests and fail-closed reduction are under
 \path{docs/papers/shared/results/paper8_5_agent_memory/cross_agent_matrix_v3/}.
@@ -797,6 +817,7 @@ Matched Recency H2/T4 & Pi post-fix & 1 & 1/1; 0/1 & 28/28 & 464,135/424,805 & 0
 Declared-safe H2/T8 & Pi repair audit & 1 & 1/1; 1/1 & 28/39 & 464,135/409,335 & 41.53/11.81\% & same patch; $+11$ calls \\
 Declared-safe H2/T4 & Kilo pairing audit & 1 & 1/1; 1/1 & 20/19 & 146,013/376,980 & 7.30/$-158.2$\% & preselection fork; noncausal \\
 Recent Frontier M2/P1 & OpenHands single epoch & 1 & 1/1; 1/1 & 25/33 & 186,635/287,257 & 0.00/$-53.91$\% & exact abstention; divergence before selection \\
+Recent Frontier M2/P1 & Pi prospective $N=3$ & 3 & 2/3; 3/3 & 115/107 & 2,847,310/2,042,277 & 20.05/28.27\% & preserves 2/2; one recovery diagnostic \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
@@ -824,6 +845,16 @@ paired cost increase follows a response-9 fork under identical selected
 message content and therefore cannot be attributed to selection.  This
 control prevents the persistent-session policy from being misreported as a
 single-task compressor and reinforces task-clustered repeat controls.
+
+The Pi prospective row applies the same rule across three uninterrupted tasks.
+Its first two exact abstentions and Task~3 retirement demonstrate the expected
+session-length geometry: a two-epoch frontier cannot save earlier-task history
+until a third instruction epoch exists.  The table reports candidate-own and
+paired savings separately; only the former isolates logical selection.
+Complete traces, official grader reports, hashes, and the fail-closed pair
+reduction are under
+\path{cross_agent_matrix_v3/pi/n3/}, with the aggregate ledger in
+\path{pair_evidence.json}.
 
 The held-out rows make the uncertainty visible rather than inflating the
 denominator.  In the first order, exact-prefix \textsc{Full} resolves only 3/8
