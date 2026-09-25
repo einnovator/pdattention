@@ -233,6 +233,9 @@ def run(args: argparse.Namespace) -> Path:
                 "continuation_id": continuation_id,
                 "patch_bytes": manifest.get("patch_bytes"),
                 "event_summary": manifest.get("event_summary"),
+                "native_completion_observed": manifest.get(
+                    "native_completion_observed", True
+                ),
             })
     except BaseException as exc:
         error = exc
@@ -277,6 +280,10 @@ def run(args: argparse.Namespace) -> Path:
             1.0 - selected_tokens / full_tokens if full_tokens else 0.0
         ),
         "episodes": episodes,
+        "autonomous_completion": all(
+            row.get("native_completion_observed") is not False
+            for row in episodes
+        ),
         "predictions": None if predictions_path is None else str(predictions_path),
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),

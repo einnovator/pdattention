@@ -126,7 +126,8 @@ def _row(root: Path) -> dict[str, Any] | None:
         "own_saving_fraction": saving,
         "paired_saving_fraction": None,
         "lost_full_success_ids": [],
-        "autonomous_completion": not (
+        "autonomous_completion": bool(value.get("autonomous_completion", True))
+        and not (
             termination is not None
             and termination.get("semantic_completion_observed") is False
         ),

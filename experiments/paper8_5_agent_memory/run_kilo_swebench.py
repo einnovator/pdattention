@@ -67,6 +67,25 @@ def _event_inventory(path: Path) -> tuple[int, dict[str, int]]:
     return rows, counts
 
 
+def _native_completion_observed(path: Path) -> bool:
+    """Require Kilo's terminal non-tool step, not merely transport exit zero."""
+    last: Mapping[str, Any] | None = None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, Mapping):
+            last = value
+    part = None if last is None else last.get("part")
+    return bool(
+        last
+        and last.get("type") == "step_finish"
+        and isinstance(part, Mapping)
+        and part.get("reason") not in {None, "tool-calls"}
+    )
+
+
 def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
@@ -187,6 +206,7 @@ def run(args: argparse.Namespace) -> Path:
     })
 
     event_count, event_types = _event_inventory(events)
+    native_completion_observed = _native_completion_observed(events)
     if event_count:
         reduce_events(events, output)
     manifest: dict[str, Any] = {
@@ -228,6 +248,7 @@ def run(args: argparse.Namespace) -> Path:
         "timed_out": timed_out,
         "event_count": event_count,
         "event_types": event_types,
+        "native_completion_observed": native_completion_observed,
         "workspace_status_sha256": _sha256(status.stdout),
         "patch_sha256": _sha256(patch.stdout),
         "patch_bytes": len(patch.stdout),

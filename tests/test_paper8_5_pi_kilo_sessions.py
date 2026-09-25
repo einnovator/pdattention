@@ -4,8 +4,28 @@ import pytest
 
 from experiments.paper8_5_agent_memory.run_kilo_swebench import (
     KILO_DATA_PATH,
+    _native_completion_observed,
     _session_arguments as kilo_session_arguments,
 )
+
+
+def test_kilo_native_completion_requires_terminal_non_tool_step(
+    tmp_path: Path,
+) -> None:
+    complete = tmp_path / "complete.jsonl"
+    complete.write_text(
+        '{"type":"tool_use","part":{"type":"tool"}}\n'
+        '{"type":"step_finish","part":{"reason":"stop"}}\n',
+        encoding="utf-8",
+    )
+    partial = tmp_path / "partial.jsonl"
+    partial.write_text(
+        '{"type":"step_finish","part":{"reason":"tool-calls"}}\n'
+        '{"type":"tool_use","part":{"type":"tool"}}\n',
+        encoding="utf-8",
+    )
+    assert _native_completion_observed(complete) is True
+    assert _native_completion_observed(partial) is False
 from experiments.paper8_5_agent_memory.run_pi_swebench import (
     PI_SESSION_PATH,
     _session_arguments as pi_session_arguments,
