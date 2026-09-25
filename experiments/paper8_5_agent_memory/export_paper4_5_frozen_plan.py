@@ -16,6 +16,8 @@ from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
 
+from pra_hf.agent_history import OpenAIRecordizer
+
 from .multi_issue_session import BoundaryMode, compose_multi_issue_session
 from .run_autonomous_swebench import load_persistent_prefix
 
@@ -35,6 +37,12 @@ def _digest(value: Any) -> str:
 
 def _content_digest(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _message_content_digest(content: Any) -> str:
+    if isinstance(content, str):
+        return _content_digest(content)
+    return _digest(content)
 
 
 def _selection_digest(rows: Sequence[tuple[str, str]]) -> str:
@@ -129,9 +137,58 @@ def _selected_indices(
     return indices
 
 
+def _wire_record_message_indices(
+    messages: Sequence[Mapping[str, Any]],
+    trace: Mapping[str, Any],
+    record_ids: Sequence[str],
+) -> dict[str, int]:
+    """Resolve legacy positional IDs and native stable record IDs.
+
+    Native OpenAI-tool campaigns use the common runtime recordizer's stable
+    ``r-*`` identities. Re-running recordization is deterministic and does not
+    rerun selection: the frozen wire plan remains authoritative.
+    """
+
+    positional: dict[str, int] = {}
+    native: list[str] = []
+    for record_id in record_ids:
+        match = re.fullmatch(r"record-(\d+)", record_id)
+        if match is None:
+            native.append(record_id)
+            continue
+        index = int(match.group(1))
+        if index >= len(messages):
+            raise ValueError(f"selected record is outside the request: {record_id}")
+        positional[record_id] = index
+    if not native:
+        return positional
+    if positional:
+        raise ValueError("wire plan mixes positional and stable record identities")
+    session_id = str(trace.get("session_id") or "")
+    if not session_id:
+        raise ValueError("stable record identities require a session identity")
+    result = OpenAIRecordizer().recordize(
+        messages,
+        request_metadata={"session_id": session_id},
+    )
+    if not result.exact:
+        raise ValueError(
+            "captured request cannot be recordized exactly: "
+            + ", ".join(result.ambiguity_reasons)
+        )
+    mapping = {row.record_id: row.message_index for row in result.history.records}
+    missing = [record_id for record_id in native if record_id not in mapping]
+    if missing:
+        raise ValueError(
+            "wire plan contains records absent from the captured request: "
+            + ", ".join(missing)
+        )
+    return mapping
+
+
 def _selected_materialized_messages(
     messages: Sequence[Mapping[str, Any]], trace: Mapping[str, Any],
-) -> tuple[list[int], list[dict[str, str]]]:
+) -> tuple[list[int], list[dict[str, Any]]]:
     """Resolve an exact selected subsequence, including wire replacements.
 
     Older fixtures selected unchanged records and can be recovered from their
@@ -149,10 +206,7 @@ def _selected_materialized_messages(
     if not isinstance(wire_plan, Mapping):
         indices = _selected_indices(messages, selected_hashes)
         return indices, [
-            {
-                "role": str(messages[index].get("role", "")),
-                "content": str(messages[index].get("content", "")),
-            }
+            dict(messages[index])
             for index in indices
         ]
 
@@ -166,31 +220,310 @@ def _selected_materialized_messages(
     if not isinstance(replacements, Mapping):
         raise ValueError("wire plan record replacements are not an object")
 
+    record_id_values = [str(value) for value in record_ids]
+    replacement_ids = [str(value) for value in replacements]
+    record_to_index = _wire_record_message_indices(
+        messages,
+        trace,
+        (*record_id_values, *replacement_ids),
+    )
+
     indices: list[int] = []
-    selected_messages: list[dict[str, str]] = []
+    selected_messages: list[dict[str, Any]] = []
     previous = -1
-    for record_id_value, expected_hash in zip(record_ids, selected_hashes):
-        record_id = str(record_id_value)
-        match = re.fullmatch(r"record-(\d+)", record_id)
-        if match is None:
-            raise ValueError(f"unsupported selected record identity: {record_id}")
-        index = int(match.group(1))
+    for record_id, expected_hash in zip(record_id_values, selected_hashes):
+        index = record_to_index[record_id]
         if index <= previous or index >= len(messages):
             raise ValueError("wire plan selected records are not an ordered request subset")
         source = messages[index]
-        content = str(replacements.get(record_id, source.get("content", "")))
-        if _content_digest(content) != expected_hash:
+        content: Any = (
+            replacements[record_id]
+            if record_id in replacements
+            else source.get("content", "")
+        )
+        stable_content_hashes = (
+            trace.get("message_content_digest_scheme")
+            == "raw-string-or-canonical-json-v1"
+        )
+        if (
+            (stable_content_hashes or isinstance(content, str))
+            and _message_content_digest(content) != expected_hash
+        ):
             raise ValueError(
                 f"wire materialization for {record_id} does not match the "
                 "recorded selected-message hash"
             )
         indices.append(index)
-        selected_messages.append({
-            "role": str(source.get("role", "")),
-            "content": content,
-        })
+        selected = dict(source)
+        selected["content"] = content
+        selected_messages.append(selected)
         previous = index
     return indices, selected_messages
+
+
+def _assistant_text_from_event(message: Mapping[str, Any]) -> str:
+    """Project a native agent assistant event to OpenAI ``content`` text."""
+
+    content = message.get("content", "")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return "".join(
+        str(item.get("text", ""))
+        for item in content
+        if isinstance(item, Mapping) and item.get("type") == "text"
+    )
+
+
+def _expected_assistant_message(
+    native_events: Path,
+    *,
+    native_request_index: int,
+) -> dict[str, Any]:
+    if native_request_index <= 0:
+        raise ValueError("native request index must be positive")
+    by_type: dict[str, list[Mapping[str, Any]]] = {
+        "message_end": [],
+        "message": [],
+    }
+    for line in native_events.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        event_type = str(event.get("type") or "")
+        if event_type not in by_type:
+            continue
+        message = event.get("message")
+        if not isinstance(message, Mapping) or message.get("role") != "assistant":
+            continue
+        by_type[event_type].append(message)
+    events = by_type["message_end"] or by_type["message"]
+    if native_request_index > len(events):
+        raise ValueError(
+            "native event stream has fewer assistant actions than the captured "
+            f"request index: {len(events)} < {native_request_index}"
+        )
+    source = events[native_request_index - 1]
+    result: dict[str, Any] = {
+        "role": "assistant",
+        "content": _assistant_text_from_event(source),
+    }
+    parts = source.get("content")
+    if isinstance(parts, list):
+        tool_calls = []
+        for part in parts:
+            if not isinstance(part, Mapping) or part.get("type") != "toolCall":
+                continue
+            tool_calls.append({
+                "id": str(part.get("id") or ""),
+                "type": "function",
+                "function": {
+                    "name": str(part.get("name") or ""),
+                    "arguments": json.dumps(
+                        part.get("arguments", {}),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                },
+            })
+        if tool_calls:
+            result["tool_calls"] = tool_calls
+    return result
+
+
+def export_captured_request_fixture(
+    *,
+    captured_request: Path,
+    request_selection: Path,
+    native_events: Path,
+    output: Path,
+    request_replay_output: Path,
+    segment_tokens: int = 256,
+) -> dict[str, Any]:
+    """Export one agent-neutral captured request without rerunning selection.
+
+    Native OpenAI-tool agents already carry their persistent history in the
+    request itself.  Their first request after an audited campaign continuation
+    is therefore a complete, immutable handoff point; unlike mini-swe-agent it
+    needs no harness-specific episode reconstruction.  Tool schemas and native
+    message fields remain part of the logical payload.
+    """
+
+    if segment_tokens <= 0:
+        raise ValueError("segment_tokens must be positive")
+    payload = json.loads(captured_request.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("captured request is not an object")
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not all(
+        isinstance(message, Mapping) for message in messages
+    ):
+        raise ValueError("captured request has no canonical message list")
+    request_digest = _digest(messages)
+    trace_rows = [
+        json.loads(line)
+        for line in request_selection.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    matches = [
+        row for row in trace_rows
+        if row.get("request_input_sha256") == request_digest
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            "captured request identity is not unique in selection trace: "
+            f"observed {len(matches)} matches"
+        )
+    trace = matches[0]
+    roles = [str(message.get("role", "")) for message in messages]
+    content_hashes = [
+        _message_content_digest(message.get("content", "")) for message in messages
+    ]
+    if roles != trace.get("request_message_roles"):
+        raise ValueError("captured request role sequence disagrees with trace")
+    recorded_content_hashes = trace.get("request_message_content_sha256")
+    stable_content_hashes = (
+        trace.get("message_content_digest_scheme")
+        == "raw-string-or-canonical-json-v1"
+    )
+    if stable_content_hashes:
+        if content_hashes != recorded_content_hashes:
+            raise ValueError("captured request content identities disagree with trace")
+    else:
+        # Legacy traces used ``str(value)`` for structured content, which is
+        # sensitive to JSON key insertion order. The canonical full-request
+        # digest above remains authoritative; retain scalar checks here.
+        for message, observed, expected in zip(
+            messages, content_hashes, recorded_content_hashes or ()
+        ):
+            if isinstance(message.get("content", ""), str) and observed != expected:
+                raise ValueError(
+                    "captured scalar-content identity disagrees with trace"
+                )
+
+    selected_indices, selected_messages = _selected_materialized_messages(
+        messages, trace,
+    )
+    if _digest(selected_messages) != trace.get("selected_messages_sha256"):
+        raise ValueError("captured selected-message identity disagrees with trace")
+    mandatory = _mandatory_indices(messages, current_episode_start=0)
+    if not mandatory.issubset(selected_indices):
+        raise ValueError("captured plan omits mandatory native current state")
+
+    selected_by_index = dict(zip(selected_indices, selected_messages))
+    resources: list[tuple[str, str]] = []
+    for index in selected_indices:
+        if index in mandatory:
+            continue
+        role = str(selected_by_index[index].get("role", ""))
+        content = str(selected_by_index[index].get("content", ""))
+        for child, text in enumerate(_split_record_text(
+            content,
+            segment_tokens,
+            natural=role in {"tool", "user"},
+        )):
+            resources.append((f"m{index}-{child}-{role}", text))
+
+    wire_plan = trace.get("wire_plan")
+    replacements = (
+        wire_plan.get("record_replacements", {})
+        if isinstance(wire_plan, Mapping) else {}
+    )
+    if not isinstance(replacements, Mapping):
+        raise ValueError("captured wire replacements are not an object")
+    record_to_index = _wire_record_message_indices(
+        messages,
+        trace,
+        [str(value) for value in replacements],
+    )
+    materialized_replacements: list[dict[str, Any]] = []
+    for record_id_value, replacement_value in replacements.items():
+        record_id = str(record_id_value)
+        index = record_to_index[record_id]
+        if index not in selected_by_index:
+            raise ValueError(f"replacement record is not selected: {record_id}")
+        content = str(replacement_value)
+        if str(selected_by_index[index].get("content", "")) != content:
+            raise ValueError(f"replacement content disagrees for {record_id}")
+        materialized_replacements.append({
+            "record_id": record_id,
+            "message_index": index,
+            "role": str(selected_by_index[index].get("role", "")),
+            "content": content,
+            "content_sha256": _content_digest(content),
+        })
+
+    fixture = {
+        "schema_version": 1,
+        "contract": "frozen-agent-memory-plan-v1",
+        "source_policy": str(trace.get("plan_policy") or trace.get("policy")),
+        "source_plan_digest": trace.get("plan_digest"),
+        "source_wire_plan_digest": trace.get("wire_plan_digest"),
+        "request_index": 1,
+        "source_request_index": int(trace.get("request_index") or 0),
+        "request_input_sha256": request_digest,
+        "session_id": str(trace.get("session_id") or ""),
+        "segment_tokens": segment_tokens,
+        "mandatory_message_indices": sorted(mandatory),
+        "selected_message_indices": selected_indices,
+        "materialized_message_replacements": materialized_replacements,
+        "selected_resource_digest": _selection_digest(resources),
+        "resources": [
+            {"resource_id": resource_id, "text": text}
+            for resource_id, text in resources
+        ],
+    }
+    logical_payload = dict(payload)
+    logical_payload["messages"] = [dict(message) for message in messages]
+    logical_payload["stream"] = False
+    logical_payload.pop("stream_options", None)
+    logical_payload.pop("store", None)
+    native_request_index = int(
+        trace.get("native_request_index") or trace.get("request_index") or 0
+    )
+    expected_message = _expected_assistant_message(
+        native_events,
+        native_request_index=native_request_index,
+    )
+    expected = str(expected_message.get("content") or "")
+    replay = {
+        "schema_version": 1,
+        "contract": "paper8.5-frozen-agent-request-replay-v1",
+        "request_index": 1,
+        "source_request_index": int(trace.get("request_index") or 0),
+        "request_input_sha256": request_digest,
+        "logical_payload_sha256": _digest(logical_payload),
+        "session_id": str(trace.get("session_id") or ""),
+        "logical_payload": logical_payload,
+        "expected_assistant_content": expected,
+        "expected_assistant_content_sha256": _content_digest(expected),
+        "expected_assistant_message": expected_message,
+        "expected_assistant_message_sha256": _digest(expected_message),
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(fixture, sort_keys=True) + "\n", encoding="utf-8")
+    request_replay_output.parent.mkdir(parents=True, exist_ok=True)
+    request_replay_output.write_text(
+        json.dumps(replay, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return {
+        "schema_version": 1,
+        "contract": "paper8.5-to-paper4.5-captured-request-export-v1",
+        "captured_request_sha256": hashlib.sha256(
+            captured_request.read_bytes()
+        ).hexdigest(),
+        "request_selection_sha256": hashlib.sha256(
+            request_selection.read_bytes()
+        ).hexdigest(),
+        "native_events_sha256": hashlib.sha256(native_events.read_bytes()).hexdigest(),
+        "fixture_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "request_replay_sha256": hashlib.sha256(
+            request_replay_output.read_bytes()
+        ).hexdigest(),
+        "source_request_index": int(trace.get("request_index") or 0),
+        "source_policy": fixture["source_policy"],
+    }
 
 
 def _request_messages(
@@ -437,8 +770,10 @@ def export_fixture(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--persistent-prefix", type=Path, required=True)
-    parser.add_argument("--trajectory", type=Path, required=True)
+    parser.add_argument("--persistent-prefix", type=Path)
+    parser.add_argument("--trajectory", type=Path)
+    parser.add_argument("--captured-request", type=Path)
+    parser.add_argument("--native-events", type=Path)
     parser.add_argument("--request-selection", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path)
@@ -450,19 +785,43 @@ def main() -> None:
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--segment-tokens", type=int, default=256)
     args = parser.parse_args()
-    result = export_fixture(
-        persistent_prefix=args.persistent_prefix,
-        trajectory=args.trajectory,
-        request_selection=args.request_selection,
-        output=args.output,
-        segment_tokens=args.segment_tokens,
-        request_replay_output=args.request_replay_output,
-        model=args.model,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        seed=args.seed,
-        max_completion_tokens=args.max_completion_tokens,
-    )
+    if args.captured_request is not None:
+        if args.persistent_prefix is not None or args.trajectory is not None:
+            parser.error(
+                "--captured-request cannot be combined with "
+                "--persistent-prefix/--trajectory"
+            )
+        if args.native_events is None or args.request_replay_output is None:
+            parser.error(
+                "captured-request export requires --native-events and "
+                "--request-replay-output"
+            )
+        result = export_captured_request_fixture(
+            captured_request=args.captured_request,
+            request_selection=args.request_selection,
+            native_events=args.native_events,
+            output=args.output,
+            request_replay_output=args.request_replay_output,
+            segment_tokens=args.segment_tokens,
+        )
+    else:
+        if args.persistent_prefix is None or args.trajectory is None:
+            parser.error(
+                "trajectory export requires --persistent-prefix and --trajectory"
+            )
+        result = export_fixture(
+            persistent_prefix=args.persistent_prefix,
+            trajectory=args.trajectory,
+            request_selection=args.request_selection,
+            output=args.output,
+            segment_tokens=args.segment_tokens,
+            request_replay_output=args.request_replay_output,
+            model=args.model,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            seed=args.seed,
+            max_completion_tokens=args.max_completion_tokens,
+        )
     if args.manifest:
         args.manifest.parent.mkdir(parents=True, exist_ok=True)
         args.manifest.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

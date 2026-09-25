@@ -108,6 +108,12 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _message_content_digest(value: Any) -> str:
+    if isinstance(value, str):
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+    return _digest(value)
+
+
 def _query(messages: list[Mapping[str, Any]]) -> str:
     task = active_task_content(messages)
     active = str(messages[-1].get("content", "")) if messages else ""
@@ -1055,13 +1061,14 @@ def transform_autonomous_payload(
         "selected_messages_sha256": _digest(selected_messages),
         "request_message_roles": [str(row.get("role", "")) for row in messages],
         "request_message_content_sha256": [
-            hashlib.sha256(str(row.get("content", "")).encode("utf-8")).hexdigest()
+            _message_content_digest(row.get("content", ""))
             for row in messages
         ],
         "selected_message_content_sha256": [
-            hashlib.sha256(str(row.get("content", "")).encode("utf-8")).hexdigest()
+            _message_content_digest(row.get("content", ""))
             for row in selected_messages
         ],
+        "message_content_digest_scheme": "raw-string-or-canonical-json-v1",
         "exact_request_passthrough": bool(
             config.policy == "full" or exact_logical_noop
         ),

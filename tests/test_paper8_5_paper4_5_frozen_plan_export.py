@@ -6,8 +6,10 @@ from pathlib import Path
 
 from experiments.paper8_5_agent_memory.export_paper4_5_frozen_plan import (
     _selection_digest,
+    export_captured_request_fixture,
     export_fixture,
 )
+from pra_hf.agent_history import OpenAIRecordizer
 
 
 def _digest(value) -> str:
@@ -17,6 +19,136 @@ def _digest(value) -> str:
 
 def _content_digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def test_captured_native_request_preserves_tools_and_stable_records(
+    tmp_path: Path,
+) -> None:
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "old task"},
+        {
+            "role": "assistant",
+            "content": "checking",
+            "tool_calls": [{
+                "id": "call-old",
+                "type": "function",
+                "function": {"name": "bash", "arguments": "{\"command\":\"pwd\"}"},
+            }],
+        },
+        {"role": "tool", "tool_call_id": "call-old", "content": "/testbed"},
+        {"role": "user", "content": [{"type": "text", "text": "new task"}]},
+    ]
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "bash",
+            "description": "run command",
+            "parameters": {"type": "object"},
+        },
+    }]
+    payload = {
+        "model": "qwen",
+        "messages": messages,
+        "tools": tools,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "store": False,
+    }
+    session_id = "native-session"
+    recordization = OpenAIRecordizer().recordize(
+        messages, request_metadata={"session_id": session_id}
+    )
+    assert recordization.exact
+    record_ids = [row.record_id for row in recordization.history.records]
+    trace = {
+        "request_index": 2,
+        "native_request_index": 2,
+        "session_id": session_id,
+        "policy": "full",
+        "plan_policy": "full",
+        "plan_digest": "logical",
+        "wire_plan_digest": "wire",
+        "request_input_sha256": _digest(messages),
+        "request_message_roles": [row["role"] for row in messages],
+        "request_message_content_sha256": [
+            _content_digest(str(row.get("content", ""))) for row in messages
+        ],
+        "selected_message_content_sha256": [
+            _content_digest(str(row.get("content", ""))) for row in messages
+        ],
+        "selected_messages_sha256": _digest(messages),
+        "wire_plan": {
+            "selected_record_ids": record_ids,
+            "record_replacements": {},
+        },
+    }
+    native_events = [
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "old answer"}],
+            },
+        },
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "inspect"},
+                    {
+                        "type": "toolCall",
+                        "id": "call-new",
+                        "name": "bash",
+                        "arguments": {"command": "git diff"},
+                    },
+                ],
+            },
+        },
+    ]
+    captured = tmp_path / "request.json"
+    selection = tmp_path / "selection.jsonl"
+    events = tmp_path / "events.jsonl"
+    output = tmp_path / "fixture.jsonl"
+    replay = tmp_path / "replay.jsonl"
+    captured.write_text(json.dumps(payload), encoding="utf-8")
+    selection.write_text(json.dumps(trace) + "\n", encoding="utf-8")
+    events.write_text(
+        "".join(json.dumps(row) + "\n" for row in native_events),
+        encoding="utf-8",
+    )
+
+    manifest = export_captured_request_fixture(
+        captured_request=captured,
+        request_selection=selection,
+        native_events=events,
+        output=output,
+        request_replay_output=replay,
+    )
+
+    fixture = json.loads(output.read_text(encoding="utf-8"))
+    assert fixture["selected_message_indices"] == [0, 1, 2, 3, 4]
+    assert fixture["mandatory_message_indices"] == [0, 2, 3, 4]
+    request = json.loads(replay.read_text(encoding="utf-8"))
+    assert request["logical_payload"]["messages"] == messages
+    assert request["logical_payload"]["tools"] == tools
+    assert request["logical_payload"]["stream"] is False
+    assert "stream_options" not in request["logical_payload"]
+    assert "store" not in request["logical_payload"]
+    assert request["expected_assistant_message"] == {
+        "role": "assistant",
+        "content": "inspect",
+        "tool_calls": [{
+            "id": "call-new",
+            "type": "function",
+            "function": {
+                "name": "bash",
+                "arguments": "{\"command\":\"git diff\"}",
+            },
+        }],
+    }
+    assert manifest["source_request_index"] == 2
 
 
 def test_exporter_reconstructs_and_validates_frozen_request(tmp_path: Path) -> None:
