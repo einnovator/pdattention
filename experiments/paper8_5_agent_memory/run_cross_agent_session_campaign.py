@@ -207,7 +207,13 @@ def _prepare_resume(
     output: Path,
     tasks: list[dict[str, str]],
 ) -> tuple[list[dict[str, Any]], str | None, int, int]:
-    """Copy a failed partial campaign into a new immutable retry directory."""
+    """Copy an exact campaign prefix into a new immutable continuation.
+
+    The source may be an incomplete retry of the same declared cohort or a
+    completed shorter cohort whose declared task order is an exact prefix of
+    the new one.  The latter is what lets an audited N=3 native session advance
+    to N=6 without replaying or reconstructing its first three tasks.
+    """
 
     carry_full_prefix_from = getattr(args, "carry_full_prefix_from", None)
     if args.resume_from and carry_full_prefix_from:
@@ -239,8 +245,6 @@ def _prepare_resume(
     identity = {
         "agent": args.agent,
         "session_id": args.session_id,
-        "task_count_declared": len(tasks),
-        "task_order": [row["instance_id"] for row in tasks],
     }
     if carry_full_prefix:
         # A paired selective arm may start from an already completed FULL
@@ -269,9 +273,28 @@ def _prepare_resume(
     }
     if mismatches:
         raise ValueError(f"resume campaign identity mismatch: {mismatches}")
+    source_task_order = state.get("task_order")
+    source_task_count = int(state.get("task_count_declared") or 0)
+    target_task_order = [row["instance_id"] for row in tasks]
+    if (
+        not isinstance(source_task_order, list)
+        or source_task_count != len(source_task_order)
+        or source_task_count > len(target_task_order)
+        or source_task_order != target_task_order[:source_task_count]
+    ):
+        raise ValueError(
+            "resume campaign task order is not an exact declared prefix: "
+            f"source={source_task_order!r}, target={target_task_order!r}"
+        )
     completed = int(state.get("task_count_completed") or 0)
     source_episodes = state.get("episodes") or []
-    if completed < 1 or completed >= len(tasks) or len(source_episodes) != completed:
+    if (
+        completed < 1
+        or completed > source_task_count
+        or completed >= len(tasks)
+        or len(source_episodes) != completed
+        or (source_task_count < len(tasks) and completed != source_task_count)
+    ):
         raise ValueError("resume source has no valid incomplete task prefix")
 
     episodes: list[dict[str, Any]] = []
@@ -521,7 +544,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-timeout-seconds", type=int, default=3600)
     parser.add_argument(
         "--resume-from",
-        help="copy and continue a validated incomplete campaign in a new output directory",
+        help=(
+            "copy and continue a validated incomplete campaign, or a completed "
+            "shorter exact task prefix, in a new output directory"
+        ),
     )
     parser.add_argument(
         "--carry-full-prefix-from",

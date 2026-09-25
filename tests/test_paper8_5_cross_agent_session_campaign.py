@@ -162,9 +162,9 @@ def test_prepare_resume_copies_completed_prefix_and_preserves_counters(
         "agent": "pi",
         "arm": "FULL",
         "session_id": "session",
-        "task_count_declared": 3,
+        "task_count_declared": 1,
         "task_count_completed": 1,
-        "task_order": ["t1", "t2", "t3"],
+        "task_order": ["t1"],
         "policy": "full",
         "policy_parameters": parameters,
         "episodes": [{
@@ -228,9 +228,9 @@ def test_prepare_resume_carries_only_exact_full_prefix_into_selective_arm(
         "agent": "pi",
         "arm": "FULL",
         "session_id": "session-1",
-        "task_count_declared": 3,
+        "task_count_declared": 1,
         "task_count_completed": 1,
-        "task_order": ["t1", "t2", "t3"],
+        "task_order": ["t1"],
         "policy": "full",
         "episodes": [{
             "ordinal": 1,
