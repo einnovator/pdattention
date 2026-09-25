@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -29,9 +30,31 @@ def test_kilo_native_completion_requires_terminal_non_tool_step(
 from experiments.paper8_5_agent_memory.run_pi_swebench import (
     PI_SESSION_PATH,
     _completion_evidence,
+    _run as run_pi_command,
     _settings_arguments,
     _session_arguments as pi_session_arguments,
 )
+
+
+def test_pi_absolute_docker_adds_sibling_helpers_to_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = {}
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["env"] = kwargs["env"]
+        return object()
+
+    monkeypatch.setattr(
+        "experiments.paper8_5_agent_memory.run_pi_swebench.subprocess.run",
+        fake_run,
+    )
+    docker = (tmp_path / "docker-bin" / "docker").resolve()
+    run_pi_command((str(docker), "version"), check=False)
+
+    assert observed["command"] == [str(docker), "version"]
+    assert observed["env"]["PATH"].split(os.pathsep)[0] == str(docker.parent)
 
 
 def test_pi_persistent_session_uses_one_dedicated_store(tmp_path: Path) -> None:

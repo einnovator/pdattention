@@ -12,6 +12,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -183,8 +184,22 @@ def _run(
     timeout: int | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[bytes]:
+    env = os.environ.copy()
+    executable = Path(str(command[0]))
+    if executable.is_absolute():
+        # Docker may invoke sibling credential helpers by basename. A caller
+        # that supplied an absolute Docker binary must not still depend on the
+        # non-interactive SSH PATH containing that binary's directory.
+        parent = str(executable.parent)
+        path_entries = env.get("PATH", "").split(os.pathsep)
+        if parent not in path_entries:
+            env["PATH"] = os.pathsep.join((parent, *path_entries))
     return subprocess.run(
-        list(command), capture_output=True, timeout=timeout, check=check
+        list(command),
+        capture_output=True,
+        timeout=timeout,
+        check=check,
+        env=env,
     )
 
 
