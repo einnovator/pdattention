@@ -57,6 +57,7 @@ def _session_arguments(
     return docker_args, pi_args, store
 
 from .model_identity import fetch_ollama_model_identity
+from .reduce_pi_events import reduce_events as reduce_pi_events
 
 _PR_DESCRIPTION = re.compile(
     r"<pr_description>\s*(.*?)\s*</pr_description>", re.DOTALL | re.IGNORECASE
@@ -290,6 +291,7 @@ def run(args: argparse.Namespace) -> Path:
     for row in event_rows:
         name = str(row.get("type") or "unknown")
         event_types[name] = event_types.get(name, 0) + 1
+    reduced_event_summary = reduce_pi_events(output / "pi_events.jsonl", output)
 
     manifest = {
         "schema_version": 1,
@@ -330,6 +332,7 @@ def run(args: argparse.Namespace) -> Path:
         "timed_out": timed_out,
         "event_count": len(event_rows),
         "event_types": event_types,
+        "event_summary": reduced_event_summary,
         "workspace_status_sha256": _sha256(status.stdout),
         "patch_sha256": _sha256(patch.stdout),
         "patch_bytes": len(patch.stdout),
