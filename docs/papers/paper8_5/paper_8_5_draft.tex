@@ -52,9 +52,12 @@ floors the materializer did not consume.  Corrected mini-swe-agent H2/T4
 preserves 3/3 solves but saves only 6.03\% as whole causal groups and adds three
 calls.  Corrected exact-token OpenHands transfer preserves 3/3 solves, uses 74
 versus 77 actions, and saves 22.67\% against its own-trajectory counterfactual
-and 29.76\% against paired Full.  Pi and Kilo preserve selected controls under
-a declared-safe materializer, but recovery or trajectory variance erases the
-paired economic benefit.
+and 29.76\% against paired Full.  A prospective common-model admission then
+separates patch quality, autonomous completion, action cost, and token work.
+On one locked identity, Pi and PRA Agent preserve the Full solve while reducing
+calls and candidate-own input; OpenCode adds four calls, and Kilo requires an
+external stop after producing a resolving patch.  These are admission tests,
+not cross-agent accuracy estimates.
 
 Finally, per-request omission can reverse end-to-end: one six-issue policy
 resolves 6/6 and omits 55.34\% against its own trajectory, yet expands from 60
@@ -704,6 +707,55 @@ whole-record counterfactual but materializes 376,980 selected tokens versus
 146,013 in Full, or $-158.18$\% paired saving.  We therefore reject causal
 attribution and promotion: temperature zero and identical first inputs do not
 guarantee a repeatable backend trajectory.
+
+\subsection{Prospective cross-agent session-length admission}
+
+The v3 matrix restarts agent transfer prospectively with one exact model,
+tokenizer, task order, and reducer.  It also makes official resolution and
+autonomous semantic completion independent outcomes: a resolving patch does
+not qualify an agent that hangs or is externally stopped.  Table~\ref{tab:agent-n1-v3}
+reports the locked $N=1$ admission cell before any $N=3$ or $N=6$ expansion.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrl}
+\toprule
+Agent & Full solve/calls & Tail solve/calls & Autonomous & Own save & Paired save & Decision \\
+\midrule
+OpenCode & 1/1; 15 & 1/1; 19 & yes & 12.48\% & 59.86\% & reject: $+4$ calls \\
+Pi & 1/1; 49 & 1/1; 27 & yes & 52.68\% & 77.03\% & admit to $N=3$ \\
+Kilo & 1/1; 24 & 1/1; 13 & no & 9.14\% & 82.74\% & reject: external stop \\
+PRA Agent & 1/1; 19 & 1/1; 16 & yes & 20.53\% & 23.95\% & admit to $N=3$ \\
+\bottomrule
+\end{tabular}
+\caption{Prospective common-model $N=1$ admission on
+\texttt{django\_\_django-15277}.  All rows use Qwen3-Coder-30B, temperature
+zero, seed zero, and the same tokenizer revision.  Tail-90 is a hard ceiling
+over complete causal groups, so realized retention can be below 90\%.  One
+identity admits a mechanism to the next gate; it is not an accuracy estimate.}
+\label{tab:agent-n1-v3}
+\end{table}
+
+Pi's 52.68\% own saving is not evidence that an exact 10\% removal produced a
+large gain.  One oversized early causal group cannot fit under the 90\% ceiling
+without unsafe post-cache rewriting, so realized retention falls to roughly
+29--41\% on later requests.  The correct remedy is to define stable child spans
+before their first materialization, not to compact already encoded K/V.
+
+The first PRA-Agent $N=3$ Recent-Frontier M2/P1 execution produces resolving
+patches for all three tasks in 39 requests and omits 33.19\% of its own
+full-history counterfactual.  It remains unpaired and unpromoted.  An HTTP 500
+after the final verified patch makes autonomous completion false, while the
+fresh contemporaneous Full control fails Task~1 in a repeated
+inspection-budget recovery loop.  A historical 3/3 Full control is retained
+as a stability observation but cannot supply paired economics because its
+trajectory differs before selection acts.  Pi $N=3$ Full is running at the
+cutoff; no agent has yet passed the gate for $N=6$.
+
+The auditable manifests and fail-closed reduction are under
+\path{docs/papers/shared/results/paper8_5_agent_memory/cross_agent_matrix_v3/}.
 
 \subsection{Task-clustered headline comparison}
 

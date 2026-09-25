@@ -1,0 +1,10 @@
+Perfect! The fix is working correctly:
+
+1. When `max_length` is `None` (as in the case of `Value`), no `MaxLengthValidator` is added, avoiding the TypeError.
+2. When `max_length` is a valid integer, the `MaxLengthValidator` is properly added.
+
+This matches exactly what was requested in the issue description. The fix ensures that:
+- `Value('test')` with no explicit max_length will not add an invalid MaxLengthValidator
+- Regular CharField usage with max_length will continue to work as expected
+
+The change is minimal and targeted, addressing exactly the performance and correctness issue described in the problem statement.

@@ -1,0 +1,47 @@
+I've successfully implemented the fix for the Django issue. Here's a summary of what was accomplished:
+
+## Problem Analysis
+The issue was in `Value._resolve_output_field()` method which would create a `CharField` instance when dealing with string values. The original `CharField.__init__` method always added a `MaxLengthValidator` regardless of whether `max_length` was `None`, causing a TypeError when the validator tried to compare against `None`.
+
+## Solution Implemented
+I modified the `CharField.__init__` method in `/testbed/django/db/models/fields/__init__.py` to only add the `MaxLengthValidator` when `self.max_length is not None`:
+
+**Before:**
+```python
+def __init__(self, *args, db_collation=None, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.db_collation = db_collation
+    self.validators.append(validators.MaxLengthValidator(self.max_length))
+```
+
+**After:**
+```python
+def __init__(self, *args, db_collation=None, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.db_collation = db_collation
+    if self.max_length is not None:
+        self.validators.append(validators.MaxLengthValidator(self.max_length))
+```
+
+## Verification
+I verified the fix works correctly by running:
+```python
+from django.db.models import Value
+x = Value('test')
+y = x._resolve_output_field()
+print('Success: No TypeError occurred')
+print('Validators:', y.validators)
+```
+
+The output confirmed that:
+1. No TypeError occurs anymore
+2. The validators list is empty (as expected for Value objects)
+3. The fix prevents unnecessary validator creation
+
+## Benefits
+- Eliminates the TypeError that occurred when using `Value('test')` with string values
+- Provides approximately 2µs performance improvement as mentioned in the issue
+- Follows the same pattern already used in `BinaryField.__init__`
+- Is a minimal, targeted fix that doesn't affect any other functionality
+
+The fix addresses exactly what was described in the issue and maintains backward compatibility while improving performance.

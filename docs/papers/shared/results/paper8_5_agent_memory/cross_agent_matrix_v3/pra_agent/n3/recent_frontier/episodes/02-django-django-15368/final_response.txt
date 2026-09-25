@@ -1,0 +1,14 @@
+The fix has been applied successfully. Let me verify that the change is correct by examining what we changed:
+
+1. We identified the issue in `bulk_update()` method in `django/db/models/query.py` around line 673
+2. The problem was that the type check `isinstance(attr, Expression)` didn't properly handle F() expressions
+3. We changed it to `isinstance(attr, (Expression, F))` to include F() expressions in the proper handling
+
+This is exactly what was suggested in the issue description - testing for F() expressions explicitly rather than relying on a too narrow type check.
+
+The fix ensures that:
+- F() expressions are properly handled in bulk_update operations
+- Regular Expression objects continue to work as before  
+- The SQL generation will now correctly resolve F() expressions to column references instead of string representations
+
+This is a minimal, targeted fix that addresses the exact issue described without breaking existing functionality.
