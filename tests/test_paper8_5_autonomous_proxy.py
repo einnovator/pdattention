@@ -70,6 +70,27 @@ def test_default_typed_tool_semantics_use_portable_resource_arguments():
     assert DEFAULT_TOOL_SEMANTICS["replace_text"]["operation_kind"] == "write"
 
 
+def test_proxy_resume_counters_are_explicit_and_validated(tmp_path: Path):
+    config = AutonomousSelectionConfig(policy="full", task_id="task-1")
+    proxy = AutonomousSelectionProxy(
+        "http://127.0.0.1:9/v1",
+        config=config,
+        trace_path=tmp_path / "trace.jsonl",
+        initial_request_count=7,
+        initial_successful_request_count=6,
+    )
+    assert proxy.health()["request_count"] == 7
+    assert proxy.health()["successful_request_count"] == 6
+    with pytest.raises(ValueError, match="cannot exceed"):
+        AutonomousSelectionProxy(
+            "http://127.0.0.1:9/v1",
+            config=config,
+            trace_path=tmp_path / "invalid.jsonl",
+            initial_request_count=1,
+            initial_successful_request_count=2,
+        )
+
+
 def test_proxy_joins_generic_execution_receipt_without_changing_tool_text(
     tmp_path: Path,
 ):

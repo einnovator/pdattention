@@ -11,6 +11,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import shutil
 from typing import Any, Callable
 
 from .autonomous_proxy import AutonomousSelectionConfig, AutonomousSelectionProxy
@@ -190,14 +191,114 @@ def _continuation_id(agent: str, manifest: dict[str, Any], ordinal: int) -> str:
     return value
 
 
+def _prepare_resume(
+    args: argparse.Namespace,
+    *,
+    output: Path,
+    tasks: list[dict[str, str]],
+) -> tuple[list[dict[str, Any]], str | None, int, int]:
+    """Copy a failed partial campaign into a new immutable retry directory."""
+
+    if not args.resume_from:
+        return [], None, 0, 0
+    source = Path(args.resume_from).resolve()
+    if source == output or not source.is_dir():
+        raise ValueError("--resume-from must name a different campaign directory")
+    state_path = source / "campaign_state.json"
+    if not state_path.is_file():
+        raise ValueError("resume source has no campaign_state.json")
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    expected_parameters = {
+        "budget_fraction": args.budget_fraction,
+        "protected_head_turns": args.protected_head_turns,
+        "protected_tail_turns": args.protected_tail_turns,
+        "frontier_recent_user_prompts": args.frontier_recent_user_prompts,
+        "frontier_protocol_exemplars": args.frontier_protocol_exemplars,
+        "frontier_allow_heuristic": args.frontier_allow_heuristic,
+    }
+    identity = {
+        "agent": args.agent,
+        "arm": args.arm,
+        "session_id": args.session_id,
+        "task_count_declared": len(tasks),
+        "task_order": [row["instance_id"] for row in tasks],
+        "policy": args.policy,
+        "policy_parameters": expected_parameters,
+    }
+    mismatches = {
+        key: {"expected": value, "observed": state.get(key)}
+        for key, value in identity.items()
+        if state.get(key) != value
+    }
+    if mismatches:
+        raise ValueError(f"resume campaign identity mismatch: {mismatches}")
+    completed = int(state.get("task_count_completed") or 0)
+    source_episodes = state.get("episodes") or []
+    if completed < 1 or completed >= len(tasks) or len(source_episodes) != completed:
+        raise ValueError("resume source has no valid incomplete task prefix")
+
+    episodes: list[dict[str, Any]] = []
+    for ordinal, row in enumerate(source_episodes, 1):
+        expected_id = tasks[ordinal - 1]["instance_id"]
+        if row.get("ordinal") != ordinal or row.get("instance_id") != expected_id:
+            raise ValueError("resume episode prefix identity mismatch")
+        source_episode = source / f"episode-{ordinal:02d}"
+        target_episode = output / f"episode-{ordinal:02d}"
+        manifest_path = source_episode / "run_manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError(f"resume episode lacks manifest: {source_episode}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        observed_model = str(
+            manifest.get("served_model") or manifest.get("model") or ""
+        )
+        if observed_model.split("/", 1)[-1] != args.model:
+            raise ValueError(
+                f"resume model mismatch: expected {args.model!r}, "
+                f"observed {observed_model!r}"
+            )
+        if str(manifest.get("model_revision") or "") != args.model_revision:
+            raise ValueError("resume model revision mismatch")
+        shutil.copytree(source_episode, target_episode)
+        copied = dict(row)
+        copied["output"] = str(target_episode)
+        episodes.append(copied)
+
+    source_store = source / "native_session"
+    if not source_store.is_dir():
+        raise ValueError("resume source has no native session store")
+    shutil.copytree(source_store, output / "native_session")
+    source_trace = source / "proxy_trace.jsonl"
+    if not source_trace.is_file():
+        raise ValueError("resume source has no proxy trace")
+    shutil.copy2(source_trace, output / "proxy_trace.jsonl")
+    trace_rows = [
+        json.loads(line)
+        for line in source_trace.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    indices = [int(row.get("request_index") or 0) for row in trace_rows]
+    if indices != list(range(1, len(trace_rows) + 1)):
+        raise ValueError("resume trace request indices are not contiguous")
+    successful = sum(
+        200 <= int(row.get("upstream_status") or 0) < 300 for row in trace_rows
+    )
+    continuation_id = str(source_episodes[-1].get("continuation_id") or "")
+    if not continuation_id:
+        raise ValueError("resume source has no continuation identity")
+    return episodes, continuation_id, len(trace_rows), successful
+
+
 def run(args: argparse.Namespace) -> Path:
     if args.agent != "openhands" and not args.model_config:
         raise ValueError(f"--model-config is required for {args.agent}")
     repository = Path(__file__).resolve().parents[2]
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
-    session_store = output / "native_session"
     tasks = _tasks(Path(args.task_registry).resolve(), args.task_count, repository)
+    episodes, continuation_id, initial_requests, initial_successes = _prepare_resume(
+        args, output=output, tasks=tasks
+    )
+    session_store = output / "native_session"
     count_tokens, tokenizer_identity = _exact_token_counter(
         args.tokenizer, args.tokenizer_revision, allow_whitespace=False
     )
@@ -209,14 +310,14 @@ def run(args: argparse.Namespace) -> Path:
         trace_path=trace,
         count_tokens=count_tokens,
         timeout_seconds=args.upstream_timeout_seconds,
+        initial_request_count=initial_requests,
+        initial_successful_request_count=initial_successes,
     )
     proxy.start("0.0.0.0", args.proxy_port)
     started = datetime.now(timezone.utc)
-    episodes: list[dict[str, Any]] = []
-    continuation_id: str | None = None
     error: BaseException | None = None
     try:
-        for ordinal, task in enumerate(tasks, 1):
+        for ordinal, task in enumerate(tasks[len(episodes):], len(episodes) + 1):
             episode = output / f"episode-{ordinal:02d}"
             runner, runner_args = _agent_arguments(
                 args, task, episode, session_store, continuation_id
@@ -290,6 +391,9 @@ def run(args: argparse.Namespace) -> Path:
         "elapsed_seconds": (finished - started).total_seconds(),
         "error_type": None if error is None else type(error).__name__,
         "error_detail": None if error is None else str(error),
+        "resumed_from": (
+            None if not args.resume_from else str(Path(args.resume_from).resolve())
+        ),
     }
     _write_json(output / "campaign_state.json", state)
     if error is not None:
@@ -328,6 +432,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--agent-timeout-seconds", type=int, default=3600)
     parser.add_argument("--upstream-timeout-seconds", type=int, default=3600)
+    parser.add_argument(
+        "--resume-from",
+        help="copy and continue a validated incomplete campaign in a new output directory",
+    )
     return parser
 
 

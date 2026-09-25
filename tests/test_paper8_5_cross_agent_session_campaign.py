@@ -1,9 +1,11 @@
+import json
 from pathlib import Path
 
 from experiments.paper8_5_agent_memory.run_cross_agent_session_campaign import (
     _aggregate_predictions,
     _agent_arguments,
     _policy,
+    _prepare_resume,
     _tasks,
     build_parser,
 )
@@ -108,3 +110,74 @@ def test_registry_uses_prefix_without_exposing_boundaries(tmp_path: Path) -> Non
         "org__task-0", "org__task-1",
     ]
     assert "task_id" not in tasks[0]
+
+
+def test_prepare_resume_copies_completed_prefix_and_preserves_counters(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "failed"
+    source.mkdir()
+    episode = source / "episode-01"
+    episode.mkdir()
+    (episode / "run_manifest.json").write_text(json.dumps({
+        "model": "qwen3-coder:30b-ctx131k",
+        "model_revision": "revision",
+    }), encoding="utf-8")
+    (episode / "preds.json").write_text("{}", encoding="utf-8")
+    (source / "native_session").mkdir()
+    (source / "native_session" / "state.json").write_text("{}", encoding="utf-8")
+    trace_rows = [
+        {"request_index": 1, "upstream_status": 200},
+        {"request_index": 2, "upstream_status": 500},
+    ]
+    (source / "proxy_trace.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in trace_rows),
+        encoding="utf-8",
+    )
+    parameters = {
+        "budget_fraction": 1.0,
+        "protected_head_turns": 2,
+        "protected_tail_turns": 4,
+        "frontier_recent_user_prompts": 2,
+        "frontier_protocol_exemplars": 1,
+        "frontier_allow_heuristic": False,
+    }
+    (source / "campaign_state.json").write_text(json.dumps({
+        "agent": "pi",
+        "arm": "FULL",
+        "session_id": "session",
+        "task_count_declared": 3,
+        "task_count_completed": 1,
+        "task_order": ["t1", "t2", "t3"],
+        "policy": "full",
+        "policy_parameters": parameters,
+        "episodes": [{
+            "ordinal": 1,
+            "instance_id": "t1",
+            "output": str(episode),
+            "continuation_id": "dedicated-store-episode-1",
+        }],
+    }), encoding="utf-8")
+    output = tmp_path / "retry"
+    output.mkdir()
+    args = build_parser().parse_args([
+        "--agent", "pi", "--task-registry", "tasks.json",
+        "--task-count", "3", "--output", str(output), "--arm", "FULL",
+        "--session-id", "session", "--upstream", "http://model/v1",
+        "--ollama-tags-url", "http://model/api/tags",
+        "--model", "qwen3-coder:30b-ctx131k", "--model-revision", "revision",
+        "--tokenizer", "tokenizer", "--tokenizer-revision", "tokenizer-revision",
+        "--model-config", "model.json", "--resume-from", str(source),
+    ])
+    tasks = [{"instance_id": row} for row in ("t1", "t2", "t3")]
+
+    episodes, continuation_id, requests, successes = _prepare_resume(
+        args, output=output, tasks=tasks
+    )
+
+    assert [row["instance_id"] for row in episodes] == ["t1"]
+    assert Path(episodes[0]["output"]).parent == output
+    assert continuation_id == "dedicated-store-episode-1"
+    assert (output / "native_session" / "state.json").is_file()
+    assert requests == 2
+    assert successes == 1

@@ -1216,6 +1216,8 @@ class AutonomousSelectionProxy:
         native_request_builder: Callable[..., Mapping[str, Any]] | None = None,
         first_request_capture_path: Path | None = None,
         request_content_normalizations: Sequence[tuple[str, str]] = (),
+        initial_request_count: int = 0,
+        initial_successful_request_count: int = 0,
     ) -> None:
         if upstream_connect_attempts < 1:
             raise ValueError("upstream connect attempts must be positive")
@@ -1223,6 +1225,12 @@ class AutonomousSelectionProxy:
             raise ValueError("upstream connect retry seconds cannot be negative")
         if upstream_qualification_path is not None and not upstream_qualification_path.startswith("/"):
             raise ValueError("upstream qualification path must be absolute")
+        if initial_request_count < 0 or initial_successful_request_count < 0:
+            raise ValueError("initial request counters cannot be negative")
+        if initial_successful_request_count > initial_request_count:
+            raise ValueError(
+                "initial successful requests cannot exceed initial requests"
+            )
         self.upstream_base_url = upstream_base_url.rstrip("/")
         self.config = config
         self.trace_path = Path(trace_path)
@@ -1250,8 +1258,8 @@ class AutonomousSelectionProxy:
         self._lock = threading.Lock()
         self._upstream_io_lock = threading.Lock()
         self._persistent_upstream: http.client.HTTPConnection | None = None
-        self._request_count = 0
-        self._successful_request_count = 0
+        self._request_count = initial_request_count
+        self._successful_request_count = initial_successful_request_count
         self._pending_reacquisition_count = 0
         self._pending_reacquisition_resources: tuple[str, ...] = ()
         self._execution_receipts: dict[tuple[str, str], dict[str, Any]] = {}
