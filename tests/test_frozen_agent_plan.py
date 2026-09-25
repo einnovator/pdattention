@@ -55,7 +55,11 @@ def test_openai_text_parts_are_projected_without_losing_tool_fields() -> None:
     assert normalized == [{
         "role": "assistant",
         "content": "one two",
-        "tool_calls": tool_calls,
+        "tool_calls": [{
+            "id": "call-1",
+            "type": "function",
+            "function": {"name": "bash", "arguments": {}},
+        }],
     }]
     with pytest.raises(ValueError, match="only text content parts"):
         _template_messages([{

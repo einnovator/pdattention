@@ -119,6 +119,33 @@ def _template_messages(
             message["content"] = ""
         elif not isinstance(content, str):
             raise ValueError(f"message {index} has unsupported content")
+        calls = message.get("tool_calls")
+        if isinstance(calls, list):
+            normalized_calls: list[dict[str, Any]] = []
+            for call in calls:
+                if not isinstance(call, Mapping):
+                    raise ValueError(f"message {index} has malformed tool call")
+                normalized_call = dict(call)
+                function = normalized_call.get("function")
+                if not isinstance(function, Mapping):
+                    raise ValueError(f"message {index} has malformed tool function")
+                normalized_function = dict(function)
+                arguments = normalized_function.get("arguments", {})
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError as error:
+                        raise ValueError(
+                            f"message {index} has non-JSON tool arguments"
+                        ) from error
+                if not isinstance(arguments, Mapping):
+                    raise ValueError(
+                        f"message {index} tool arguments are not an object"
+                    )
+                normalized_function["arguments"] = dict(arguments)
+                normalized_call["function"] = normalized_function
+                normalized_calls.append(normalized_call)
+            message["tool_calls"] = normalized_calls
         result.append(message)
     return result
 
