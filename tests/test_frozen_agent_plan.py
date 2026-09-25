@@ -11,6 +11,7 @@ from experiments.paper4_5_agent.context_treatment import (
     _selection_input_digest,
 )
 from experiments.paper4_5_agent.frozen_agent_plan import (
+    _template_messages,
     frozen_live_kv_geometry,
     load_frozen_agent_decisions,
 )
@@ -33,6 +34,34 @@ class CharacterTemplate:
     def encode(rendered, *, add_special_tokens):
         assert not add_special_tokens
         return [ord(char) for char in rendered]
+
+
+def test_openai_text_parts_are_projected_without_losing_tool_fields() -> None:
+    tool_calls = [{
+        "id": "call-1",
+        "type": "function",
+        "function": {"name": "bash", "arguments": "{}"},
+    }]
+    normalized = _template_messages([
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "one"},
+                {"type": "text", "text": " two"},
+            ],
+            "tool_calls": tool_calls,
+        }
+    ])
+    assert normalized == [{
+        "role": "assistant",
+        "content": "one two",
+        "tool_calls": tool_calls,
+    }]
+    with pytest.raises(ValueError, match="only text content parts"):
+        _template_messages([{
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "x"}}],
+        }])
 
 
 def _write_pair(tmp_path: Path) -> tuple[Path, Path]:

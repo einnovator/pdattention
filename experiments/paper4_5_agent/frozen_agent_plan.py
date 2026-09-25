@@ -96,6 +96,33 @@ def _chat_template_kwargs(payload: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _template_messages(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Normalize OpenAI text parts without discarding native tool fields."""
+
+    result: list[dict[str, Any]] = []
+    for index, source in enumerate(messages):
+        message = dict(source)
+        content = message.get("content", "")
+        if isinstance(content, list):
+            parts: list[str] = []
+            for part in content:
+                if not isinstance(part, Mapping) or part.get("type") != "text":
+                    raise ValueError(
+                        "direct engine bridge supports only text content parts; "
+                        f"message {index} contains an unsupported part"
+                    )
+                parts.append(str(part.get("text", "")))
+            message["content"] = "".join(parts)
+        elif content is None:
+            message["content"] = ""
+        elif not isinstance(content, str):
+            raise ValueError(f"message {index} has unsupported content")
+        result.append(message)
+    return result
+
+
 def _render_prompt(
     tokenizer,
     messages: Sequence[Mapping[str, Any]],
@@ -260,7 +287,7 @@ def frozen_live_kv_geometry(
 ) -> FrozenLiveKVGeometry:
     """Split one exact request into resident historical K/V and a wire tail."""
 
-    messages = list(decision.logical_payload["messages"])
+    messages = _template_messages(decision.logical_payload["messages"])
     template_kwargs = _chat_template_kwargs(decision.logical_payload)
     prompt_ids = _render_prompt(
         tokenizer, messages, chat_template_kwargs=template_kwargs
