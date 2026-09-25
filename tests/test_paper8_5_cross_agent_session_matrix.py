@@ -131,3 +131,30 @@ def test_matrix_marks_post_patch_transport_error_non_autonomous(
     row = reduce_matrix(tmp_path)["rows"][0]
     assert row["resolved"] == 3
     assert row["autonomous_completion"] is False
+
+
+def test_matrix_refuses_partial_full_pairing(tmp_path: Path) -> None:
+    full = tmp_path / "pra_agent" / "n3" / "full"
+    candidate = tmp_path / "pra_agent" / "n3" / "recent_frontier"
+    _write(full / "run_manifest.json", {
+        "task_count_completed": 1,
+        "task_order": ["a", "b", "c"],
+        "request_count": 25,
+        "cumulative_full_history_tokens": 300,
+        "cumulative_materialized_history_tokens": 300,
+        "own_saving_fraction": 0.0,
+        "history_policy": "full",
+        "error_type": "HTTPError",
+    })
+    _write(candidate / "run_manifest.json", {
+        "task_count_completed": 3,
+        "task_order": ["a", "b", "c"],
+        "request_count": 39,
+        "cumulative_full_history_tokens": 800,
+        "cumulative_materialized_history_tokens": 500,
+        "own_saving_fraction": 0.375,
+        "history_policy": "frontier_dag_retirement",
+    })
+    rows = reduce_matrix(tmp_path)["rows"]
+    row = next(value for value in rows if value["arm"] == "recent_frontier")
+    assert row["paired_saving_fraction"] is None

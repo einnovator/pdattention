@@ -116,6 +116,7 @@ def _row(root: Path) -> dict[str, Any] | None:
         "policy": policy,
         "status": status,
         "tasks_completed": task_count,
+        "task_order": list(value.get("task_order") or ()),
         "resolved": None if official is None else len(official[0]),
         "unresolved": None if official is None else len(official[1]),
         "resolved_ids": [] if official is None else sorted(official[0]),
@@ -151,11 +152,22 @@ def reduce_matrix(root: Path) -> dict[str, Any]:
         for row in rows if row["arm"].lower() == "full"
     }
     for row in rows:
-        if row["arm"].lower() == "full":
+        if row["arm"].lower().startswith("full"):
             row["paired_saving_fraction"] = 0.0
             continue
         full = full_by_key.get((row["agent"], row["n"]))
-        if full and full["materialized_tokens"]:
+        comparable = bool(
+            full
+            and full["materialized_tokens"]
+            and full["tasks_completed"] == row["tasks_completed"]
+            and full["tasks_completed"] > 0
+            and (
+                not full["task_order"]
+                or not row["task_order"]
+                or full["task_order"] == row["task_order"]
+            )
+        )
+        if comparable:
             row["paired_saving_fraction"] = (
                 1.0 - row["materialized_tokens"] / full["materialized_tokens"]
             )
