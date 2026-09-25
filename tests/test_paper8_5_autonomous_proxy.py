@@ -2115,6 +2115,48 @@ def test_proxy_optionally_captures_unmodified_first_request(tmp_path):
     )
 
 
+def test_proxy_captures_first_logical_request_with_real_exclusions(tmp_path):
+    upstream = _Upstream()
+    capture = tmp_path / "first-selective-request.json"
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="h4_working_set",
+            expected_model="locked-model",
+            protected_head_turns=0,
+            protected_tail_turns=1,
+            working_set_resources=2,
+            max_calls=1,
+            task_id="task-1",
+            require_exact_sidecars=False,
+        ),
+        trace_path=tmp_path / "trace.jsonl",
+        first_selective_request_capture_path=capture,
+        request_content_normalizations=(
+            (r"Message time: [^\n]+", "Message time: FROZEN"),
+        ),
+    )
+    payload = _payload()
+    payload["messages"][-1]["content"] += (
+        "\nMessage time: 2026-09-23T00:46:17Z"
+    )
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", payload)[0] == 200
+    finally:
+        proxy.close()
+        upstream.close()
+
+    captured = json.loads(capture.read_text())
+    assert len(captured["messages"]) == len(payload["messages"])
+    assert captured["messages"][-1]["content"].endswith(
+        "Message time: FROZEN"
+    )
+    assert len(upstream.requests[0]["messages"]) < len(captured["messages"])
+    row = json.loads((tmp_path / "trace.jsonl").read_text())
+    assert row["excluded_tokens"] > 0
+
+
 def test_proxy_forwards_ordinary_selected_text_and_logs_reacquisition(tmp_path):
     upstream = _Upstream()
     trace = tmp_path / "trace.jsonl"

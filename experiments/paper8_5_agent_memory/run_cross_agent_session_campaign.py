@@ -391,6 +391,9 @@ def run(args: argparse.Namespace) -> Path:
         initial_request_count=initial_requests,
         initial_successful_request_count=initial_successes,
         first_request_capture_path=output / "first_new_request.json",
+        first_selective_request_capture_path=(
+            output / "first_selective_request.json"
+        ),
     )
     proxy.start("0.0.0.0", args.proxy_port)
     started = datetime.now(timezone.utc)

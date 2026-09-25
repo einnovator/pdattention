@@ -1222,6 +1222,7 @@ class AutonomousSelectionProxy:
         curl_runner: Callable[..., Any] = subprocess.run,
         native_request_builder: Callable[..., Mapping[str, Any]] | None = None,
         first_request_capture_path: Path | None = None,
+        first_selective_request_capture_path: Path | None = None,
         request_content_normalizations: Sequence[tuple[str, str]] = (),
         initial_request_count: int = 0,
         initial_successful_request_count: int = 0,
@@ -1257,6 +1258,10 @@ class AutonomousSelectionProxy:
         self.first_request_capture_path = (
             Path(first_request_capture_path)
             if first_request_capture_path is not None else None
+        )
+        self.first_selective_request_capture_path = (
+            Path(first_selective_request_capture_path)
+            if first_selective_request_capture_path is not None else None
         )
         self.request_content_normalizations = tuple(
             (re.compile(pattern), replacement)
@@ -1673,6 +1678,29 @@ class AutonomousSelectionProxy:
                 instrumentation_root=self.instrumentation_root,
                 prior_episodes=self.prior_episodes,
             )
+            if (
+                self.first_selective_request_capture_path is not None
+                and int(transformation.trace.get("excluded_tokens") or 0) > 0
+            ):
+                with self._lock:
+                    if not self.first_selective_request_capture_path.exists():
+                        self.first_selective_request_capture_path.parent.mkdir(
+                            parents=True, exist_ok=True
+                        )
+                        # Capture the exact full logical input from which the
+                        # frozen wire plan was selected.  This is deliberately
+                        # not ``transformation.payload``: the latter already
+                        # contains the selected ordinary-text materialization
+                        # and cannot prove sparse engine equivalence against
+                        # the same full-history source state.
+                        self.first_selective_request_capture_path.write_text(
+                            json.dumps(
+                                transformation.logical_payload,
+                                indent=2,
+                                sort_keys=True,
+                            ) + "\n",
+                            encoding="utf-8",
+                        )
             transformation.trace["execution_receipt_sidecar_join"] = {
                 "stored": len(self._execution_receipts),
                 "joined": joined_execution_receipts,
