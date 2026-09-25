@@ -1,11 +1,47 @@
 from pathlib import Path
 
 from experiments.paper8_5_agent_memory.run_cross_agent_session_campaign import (
+    _aggregate_predictions,
     _agent_arguments,
     _policy,
     _tasks,
     build_parser,
 )
+
+
+def test_aggregate_predictions_preserves_all_episode_identities(tmp_path: Path) -> None:
+    import json
+
+    episodes = []
+    for index in range(3):
+        instance_id = f"org__task-{index}"
+        output = tmp_path / f"episode-{index}"
+        output.mkdir()
+        (output / "preds.json").write_text(
+            json.dumps({instance_id: {"instance_id": instance_id, "model_patch": "x"}}),
+            encoding="utf-8",
+        )
+        episodes.append({"instance_id": instance_id, "output": str(output)})
+    path = _aggregate_predictions(tmp_path, episodes)
+    assert list(json.loads(path.read_text(encoding="utf-8"))) == [
+        "org__task-0", "org__task-1", "org__task-2",
+    ]
+
+
+def test_aggregate_predictions_rejects_partial_identity(tmp_path: Path) -> None:
+    import json
+    import pytest
+
+    output = tmp_path / "episode"
+    output.mkdir()
+    (output / "preds.json").write_text(
+        json.dumps({"wrong__task": {"model_patch": "x"}}), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="identity mismatch"):
+        _aggregate_predictions(
+            tmp_path,
+            [{"instance_id": "org__task", "output": str(output)}],
+        )
 
 
 def _args(tmp_path: Path, agent: str):

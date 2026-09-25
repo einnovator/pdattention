@@ -36,6 +36,30 @@ def _write_json(path: Path, value: Any) -> None:
     )
 
 
+def _aggregate_predictions(output: Path, episodes: list[dict[str, Any]]) -> Path:
+    """Create the single immutable prediction file consumed by SWE-bench.
+
+    Each agent runner writes one episode-local mapping.  Session campaigns must
+    be graded as one declared cohort, so fail closed on missing, malformed or
+    duplicate predictions rather than silently grading a partial session.
+    """
+    predictions: dict[str, Any] = {}
+    for episode in episodes:
+        instance_id = str(episode["instance_id"])
+        path = Path(str(episode["output"])) / "preds.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict) or set(value) != {instance_id}:
+            raise ValueError(
+                f"episode prediction identity mismatch for {instance_id}: {path}"
+            )
+        if instance_id in predictions:
+            raise ValueError(f"duplicate prediction identity: {instance_id}")
+        predictions[instance_id] = value[instance_id]
+    path = output / "preds.json"
+    _write_json(path, predictions)
+    return path
+
+
 def _tasks(path: Path, count: int, repository: Path) -> list[dict[str, str]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     rows = payload.get("tasks")
@@ -215,6 +239,12 @@ def run(args: argparse.Namespace) -> Path:
     finally:
         proxy.close()
     finished = datetime.now(timezone.utc)
+    predictions_path: Path | None = None
+    if error is None:
+        try:
+            predictions_path = _aggregate_predictions(output, episodes)
+        except BaseException as exc:
+            error = exc
     rows = [
         json.loads(line)
         for line in trace.read_text(encoding="utf-8").splitlines()
@@ -247,6 +277,7 @@ def run(args: argparse.Namespace) -> Path:
             1.0 - selected_tokens / full_tokens if full_tokens else 0.0
         ),
         "episodes": episodes,
+        "predictions": None if predictions_path is None else str(predictions_path),
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
         "elapsed_seconds": (finished - started).total_seconds(),
