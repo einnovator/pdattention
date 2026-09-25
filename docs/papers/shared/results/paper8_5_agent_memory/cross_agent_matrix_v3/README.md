@@ -1,6 +1,6 @@
 # Cross-agent persistent-session matrix v3
 
-This directory is the immutable evidence root for the prospective agent-by-session-length campaign. The common model is `qwen3-coder:30b-ctx131k` (digest `4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f`), decoded with temperature 0, seed 0 and top-p 1. The tokenizer revision is `06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca`. N=1 uses SWE-bench Verified task `django__django-15277`; N=3 adds `django__django-15368` and `scikit-learn__scikit-learn-13135` in that order.
+This directory is the immutable evidence root for the prospective agent-by-session-length campaign. Every paired cell freezes its model artifact and decoding controls at temperature 0, seed 0 and top-p 1. The N=1 admissions use `qwen3-coder:30b-ctx64k` (digest `13cd851c8a123721a1b448f47d94733d63966757363e002dae4a0ef8a0eb9253`). Persistent N=3 uses the same Qwen3-Coder-30B model family with the 131K runtime alias (digest `4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f`), so results are comparable within an N/agent pair but are not a byte-identical cross-N model control. The tokenizer revision is `06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca`. N=1 uses SWE-bench Verified task `django__django-15277`; N=3 adds `django__django-15368` and `scikit-learn__scikit-learn-13135` in that order.
 
 The campaign separates four gates:
 

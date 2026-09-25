@@ -710,8 +710,11 @@ guarantee a repeatable backend trajectory.
 
 \subsection{Prospective cross-agent session-length admission}
 
-The v3 matrix restarts agent transfer prospectively with one exact model,
-tokenizer, task order, and reducer.  It also makes official resolution and
+The v3 matrix restarts agent transfer prospectively with an exact model artifact
+within each paired cell, one tokenizer, one task order, and one reducer.  The
+$N=1$ admissions use the 64K Qwen3-Coder-30B runtime alias; persistent $N=3$
+uses the same model family with a separately digested 131K alias and therefore
+does not support byte-identical cross-$N$ comparisons.  The matrix also makes official resolution and
 autonomous semantic completion independent outcomes: a resolving patch does
 not qualify an agent that hangs or is externally stopped.  Table~\ref{tab:agent-n1-v3}
 reports the locked $N=1$ admission cell before any $N=3$ or $N=6$ expansion.
@@ -731,7 +734,8 @@ PRA Agent & 1/1; 19 & 1/1; 16 & yes & 20.53\% & 23.95\% & admit to $N=3$ \\
 \bottomrule
 \end{tabular}
 \caption{Prospective common-model $N=1$ admission on
-\texttt{django\_\_django-15277}.  All rows use Qwen3-Coder-30B, temperature
+\texttt{django\_\_django-15277}.  All rows use the same 64K
+Qwen3-Coder-30B artifact, temperature
 zero, seed zero, and the same tokenizer revision.  Tail-90 is a hard ceiling
 over complete causal groups, so realized retention can be below 90\%.  One
 identity admits a mechanism to the next gate; it is not an accuracy estimate.}
