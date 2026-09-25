@@ -183,3 +183,118 @@ def test_prepare_resume_copies_completed_prefix_and_preserves_counters(
     assert (output / "native_session" / "state.json").is_file()
     assert requests == 2
     assert successes == 1
+
+
+def test_prepare_resume_carries_only_exact_full_prefix_into_selective_arm(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "full-prefix"
+    source.mkdir()
+    episode = source / "episode-01"
+    episode.mkdir()
+    (episode / "run_manifest.json").write_text(json.dumps({
+        "model": "qwen3-coder:30b-ctx131k",
+        "model_revision": "revision",
+    }), encoding="utf-8")
+    (episode / "preds.json").write_text("{}", encoding="utf-8")
+    (source / "native_session").mkdir()
+    (source / "native_session" / "state.json").write_text("{}", encoding="utf-8")
+    full_row = {
+        "request_index": 1,
+        "policy": "full",
+        "exact_request_passthrough": True,
+        "full_tokens": 100,
+        "materialized_tokens": 100,
+        "upstream_status": 200,
+    }
+    (source / "proxy_trace.jsonl").write_text(
+        json.dumps(full_row) + "\n", encoding="utf-8"
+    )
+    (source / "campaign_state.json").write_text(json.dumps({
+        "agent": "pi",
+        "arm": "FULL",
+        "session_id": "session-1",
+        "task_count_declared": 3,
+        "task_count_completed": 1,
+        "task_order": ["t1", "t2", "t3"],
+        "policy": "full",
+        "episodes": [{
+            "ordinal": 1,
+            "instance_id": "t1",
+            "output": str(episode),
+            "continuation_id": "dedicated-store-episode-1",
+        }],
+    }), encoding="utf-8")
+    output = tmp_path / "selective"
+    output.mkdir()
+    args = build_parser().parse_args([
+        "--agent", "pi", "--task-registry", "tasks.json",
+        "--task-count", "3", "--output", str(output),
+        "--arm", "RECENT_FRONTIER_M2_P1", "--session-id", "session-1",
+        "--upstream", "http://model/v1",
+        "--ollama-tags-url", "http://model/api/tags",
+        "--model", "qwen3-coder:30b-ctx131k", "--model-revision", "revision",
+        "--tokenizer", "tokenizer", "--tokenizer-revision", "tokenizer-revision",
+        "--model-config", "model.json", "--policy", "frontier_dag_retirement",
+        "--frontier-allow-heuristic", "--carry-full-prefix-from", str(source),
+    ])
+    tasks = [{"instance_id": row} for row in ("t1", "t2", "t3")]
+
+    episodes, continuation_id, requests, successes = _prepare_resume(
+        args, output=output, tasks=tasks
+    )
+
+    assert episodes[0]["carried_full_prefix"] is True
+    assert continuation_id == "dedicated-store-episode-1"
+    assert requests == successes == 1
+    assert json.loads((output / "proxy_trace.jsonl").read_text()) == full_row
+
+
+def test_prepare_resume_rejects_nonexact_carried_full_prefix(tmp_path: Path) -> None:
+    import pytest
+
+    source = tmp_path / "full-prefix"
+    source.mkdir()
+    episode = source / "episode-01"
+    episode.mkdir()
+    (episode / "run_manifest.json").write_text(json.dumps({
+        "model": "qwen3-coder:30b-ctx131k",
+        "model_revision": "revision",
+    }), encoding="utf-8")
+    (episode / "preds.json").write_text("{}", encoding="utf-8")
+    (source / "native_session").mkdir()
+    (source / "native_session" / "state.json").write_text("{}", encoding="utf-8")
+    (source / "proxy_trace.jsonl").write_text(json.dumps({
+        "request_index": 1,
+        "policy": "full",
+        "exact_request_passthrough": False,
+        "full_tokens": 100,
+        "materialized_tokens": 90,
+        "upstream_status": 200,
+    }) + "\n", encoding="utf-8")
+    (source / "campaign_state.json").write_text(json.dumps({
+        "agent": "pi", "arm": "FULL", "session_id": "session-1",
+        "task_count_declared": 3, "task_count_completed": 1,
+        "task_order": ["t1", "t2", "t3"], "policy": "full",
+        "episodes": [{
+            "ordinal": 1, "instance_id": "t1", "output": str(episode),
+            "continuation_id": "dedicated-store-episode-1",
+        }],
+    }), encoding="utf-8")
+    output = tmp_path / "selective"
+    output.mkdir()
+    args = build_parser().parse_args([
+        "--agent", "pi", "--task-registry", "tasks.json",
+        "--task-count", "3", "--output", str(output),
+        "--arm", "RECENT_FRONTIER_M2_P1", "--session-id", "session-1",
+        "--upstream", "http://model/v1",
+        "--ollama-tags-url", "http://model/api/tags",
+        "--model", "qwen3-coder:30b-ctx131k", "--model-revision", "revision",
+        "--tokenizer", "tokenizer", "--tokenizer-revision", "tokenizer-revision",
+        "--model-config", "model.json", "--policy", "frontier_dag_retirement",
+        "--frontier-allow-heuristic", "--carry-full-prefix-from", str(source),
+    ])
+    tasks = [{"instance_id": row} for row in ("t1", "t2", "t3")]
+
+    with pytest.raises(ValueError, match="selected or failed requests"):
+        _prepare_resume(args, output=output, tasks=tasks)

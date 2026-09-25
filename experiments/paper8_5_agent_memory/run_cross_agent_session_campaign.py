@@ -200,11 +200,20 @@ def _prepare_resume(
 ) -> tuple[list[dict[str, Any]], str | None, int, int]:
     """Copy a failed partial campaign into a new immutable retry directory."""
 
-    if not args.resume_from:
+    carry_full_prefix_from = getattr(args, "carry_full_prefix_from", None)
+    if args.resume_from and carry_full_prefix_from:
+        raise ValueError(
+            "--resume-from and --carry-full-prefix-from are mutually exclusive"
+        )
+    if not args.resume_from and not carry_full_prefix_from:
         return [], None, 0, 0
-    source = Path(args.resume_from).resolve()
+    carry_full_prefix = bool(carry_full_prefix_from)
+    source = Path(args.resume_from or carry_full_prefix_from).resolve()
     if source == output or not source.is_dir():
-        raise ValueError("--resume-from must name a different campaign directory")
+        option = (
+            "--carry-full-prefix-from" if carry_full_prefix else "--resume-from"
+        )
+        raise ValueError(f"{option} must name a different campaign directory")
     state_path = source / "campaign_state.json"
     if not state_path.is_file():
         raise ValueError("resume source has no campaign_state.json")
@@ -219,13 +228,23 @@ def _prepare_resume(
     }
     identity = {
         "agent": args.agent,
-        "arm": args.arm,
         "session_id": args.session_id,
         "task_count_declared": len(tasks),
         "task_order": [row["instance_id"] for row in tasks],
-        "policy": args.policy,
-        "policy_parameters": expected_parameters,
     }
+    if carry_full_prefix:
+        # A paired selective arm may start from an already completed FULL
+        # episode, but this is deliberately not a generic cross-arm resume.
+        # The source must be an exact, unselected FULL prefix.  Subsequent
+        # requests are then selected by the target arm and appended to the
+        # copied immutable trace.
+        identity.update({"arm": "FULL", "policy": "full"})
+    else:
+        identity.update({
+            "arm": args.arm,
+            "policy": args.policy,
+            "policy_parameters": expected_parameters,
+        })
     mismatches = {
         key: {"expected": value, "observed": state.get(key)}
         for key, value in identity.items()
@@ -262,6 +281,8 @@ def _prepare_resume(
         shutil.copytree(source_episode, target_episode)
         copied = dict(row)
         copied["output"] = str(target_episode)
+        if carry_full_prefix:
+            copied["carried_full_prefix"] = True
         episodes.append(copied)
 
     source_store = source / "native_session"
@@ -280,6 +301,21 @@ def _prepare_resume(
     indices = [int(row.get("request_index") or 0) for row in trace_rows]
     if indices != list(range(1, len(trace_rows) + 1)):
         raise ValueError("resume trace request indices are not contiguous")
+    if carry_full_prefix:
+        invalid_full_rows = [
+            int(row.get("request_index") or 0)
+            for row in trace_rows
+            if row.get("policy") != "full"
+            or row.get("exact_request_passthrough") is not True
+            or int(row.get("materialized_tokens") or 0)
+            != int(row.get("full_tokens") or 0)
+            or not (200 <= int(row.get("upstream_status") or 0) < 300)
+        ]
+        if invalid_full_rows:
+            raise ValueError(
+                "carried FULL prefix contains selected or failed requests: "
+                f"{invalid_full_rows}"
+            )
     successful = sum(
         200 <= int(row.get("upstream_status") or 0) < 300 for row in trace_rows
     )
@@ -400,6 +436,19 @@ def run(args: argparse.Namespace) -> Path:
         "resumed_from": (
             None if not args.resume_from else str(Path(args.resume_from).resolve())
         ),
+        "carried_full_prefix_from": (
+            None
+            if not getattr(args, "carry_full_prefix_from", None)
+            else str(Path(args.carry_full_prefix_from).resolve())
+        ),
+        "carried_full_prefix_task_count": (
+            0
+            if not getattr(args, "carry_full_prefix_from", None)
+            else len([
+                row for row in episodes
+                if row.get("carried_full_prefix") is True
+            ])
+        ),
     }
     _write_json(output / "campaign_state.json", state)
     if error is not None:
@@ -447,6 +496,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--resume-from",
         help="copy and continue a validated incomplete campaign in a new output directory",
+    )
+    parser.add_argument(
+        "--carry-full-prefix-from",
+        help=(
+            "start a selective campaign from a validated completed FULL prefix; "
+            "unlike --resume-from, the source must be exact pass-through"
+        ),
     )
     return parser
 
