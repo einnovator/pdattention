@@ -154,6 +154,35 @@ def test_sparse_span_builder_uses_the_same_template_kwargs_as_prompt() -> None:
     ] * 3
 
 
+def test_sparse_span_cache_isolated_by_tool_schema() -> None:
+    calls = []
+
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            calls.append(kwargs["tools"])
+            return list(range(1, len(messages) + 1))
+
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "assistant", "content": "action"},
+        {"role": "tool", "content": "observation"},
+    ]
+    cache = {}
+    for name in ("bash", "read"):
+        causal_message_spans(
+            Tokenizer(),
+            messages,
+            [1, 2, 3],
+            source_tokens=3,
+            prefix_ids_cache=cache,
+            chat_template_kwargs={"tools": [{"function": {"name": name}}]},
+        )
+
+    assert len(calls) == 6
+    assert calls[:3] == [[{"function": {"name": "bash"}}]] * 3
+    assert calls[3:] == [[{"function": {"name": "read"}}]] * 3
+
+
 def test_mlx_sparse_gate_rejects_vacuous_exactness() -> None:
     assert not _qualification_passed(
         0.9, all_exact=True, sparse_position_gate_valid=False
