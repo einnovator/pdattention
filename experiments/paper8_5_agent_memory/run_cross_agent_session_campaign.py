@@ -133,6 +133,7 @@ def _agent_arguments(
         "--model-revision", args.model_revision,
         "--ollama-tags-url", args.ollama_tags_url,
         "--docker", args.docker,
+        "--build-timeout-seconds", str(args.build_timeout_seconds),
         "--agent-timeout-seconds", str(args.agent_timeout_seconds),
     ]
     if args.agent == "openhands":
@@ -540,6 +541,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--proxy-port", type=int, default=18185)
     parser.add_argument("--container-proxy-url", default="http://host.docker.internal:18185/v1")
     parser.add_argument("--docker", default="docker")
+    parser.add_argument("--build-timeout-seconds", type=int, default=3600)
     parser.add_argument("--agent-timeout-seconds", type=int, default=3600)
     parser.add_argument("--upstream-timeout-seconds", type=int, default=3600)
     parser.add_argument(

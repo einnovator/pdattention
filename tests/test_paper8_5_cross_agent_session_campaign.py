@@ -102,6 +102,7 @@ def test_pi_continuation_is_native_and_task_id_is_not_passed(tmp_path: Path) -> 
     assert later.continue_session is True
     assert Path(first.settings_config).name == "pi_controlled_settings_v1.json"
     assert first.settings_config == later.settings_config
+    assert first.build_timeout_seconds == later.build_timeout_seconds == 3600
     assert not hasattr(later, "task_id")
 
 
