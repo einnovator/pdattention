@@ -11,6 +11,8 @@ The campaign separates four gates:
 
 ## Locked N=1 admissions
 
+This incremental table covers the agents that lacked a current declared-safe N=1 pair. mini-swe-agent and OpenHands remain the established reference agents in their existing exact-token cohorts. Codex has an officially resolving native FULL Task-1 artifact, but is not listed as a paired admission because Codex 0.153 carries history through the Responses `previous_response_id` state. A Responses-native selector/reference path is required before a selective result can be called comparable; a Chat-Completions translation would change the treatment.
+
 | Agent | FULL resolved / calls | tail-90 resolved / calls | Autonomous treatment | Own saving | Paired saving | N=3 decision |
 |---|---:|---:|---|---:|---:|---|
 | OpenCode | 1/1 / 15 | 1/1 / 19 | yes | 12.48% | 59.86% | reject: +4 calls |
