@@ -1,0 +1,43 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "pra/qwen3-coder:30b-ctx64k",
+  "small_model": "pra/qwen3-coder:30b-ctx64k",
+  "enabled_providers": ["pra"],
+  "provider": {
+    "pra": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Paper 8.5 controlled proxy",
+      "options": {
+        "apiKey": "paper85-local",
+        "baseURL": "http://host.docker.internal:18185/v1",
+        "timeout": 3600000
+      },
+      "models": {
+        "qwen3-coder:30b-ctx64k": {
+          "name": "Qwen3-Coder-30B controlled 64K",
+          "tool_call": true,
+          "limit": {"context": 65536, "output": 1024}
+        }
+      }
+    }
+  },
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "model": "pra/qwen3-coder:30b-ctx64k",
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "seed": 0,
+      "permission": {
+        "read": "allow", "edit": "allow", "glob": "allow",
+        "grep": "allow", "list": "allow", "bash": "allow",
+        "task": "deny", "todowrite": "allow", "webfetch": "deny",
+        "websearch": "deny", "lsp": "deny", "skill": "deny",
+        "question": "deny", "doom_loop": "allow"
+      }
+    }
+  },
+  "share": "disabled",
+  "autoupdate": false,
+  "experimental": {"openTelemetry": false}
+}

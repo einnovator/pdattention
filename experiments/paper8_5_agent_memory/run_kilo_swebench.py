@@ -16,6 +16,29 @@ import subprocess
 import time
 from typing import Any, Mapping, Sequence
 
+
+KILO_DATA_PATH = "/root/.local/share/kilo"
+
+
+def _session_arguments(
+    session_store: str | None,
+    continue_session: bool,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], Path | None]:
+    """Build an isolated native Kilo session shared by fresh task sandboxes."""
+
+    if continue_session and not session_store:
+        raise ValueError("--continue-session requires --session-store")
+    if not session_store:
+        return (), ("--env", "KILO_DB=:memory:"), (), None
+    store = Path(session_store).expanduser().resolve()
+    store.mkdir(parents=True, exist_ok=True)
+    return (
+        ("--mount", f"type=bind,source={store},target={KILO_DATA_PATH}"),
+        ("--env", f"KILO_DB={KILO_DATA_PATH}/kilo.db"),
+        (("--continue",) if continue_session else ()),
+        store,
+    )
+
 from .reduce_kilo_events import reduce_events
 from .run_pi_swebench import (
     _run,
@@ -52,6 +75,12 @@ def run(args: argparse.Namespace) -> Path:
     model_config = Path(args.model_config).resolve()
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
+    (
+        session_docker_args,
+        session_env_args,
+        session_kilo_args,
+        session_store,
+    ) = _session_arguments(args.session_store, args.continue_session)
 
     prompt = task_prompt(trajectory, instance_id)
     (output / "task_prompt.txt").write_text(prompt + "\n", encoding="utf-8")
@@ -94,17 +123,19 @@ def run(args: argparse.Namespace) -> Path:
         "run",
         "--name", container,
         "--platform", "linux/amd64",
+        *session_docker_args,
         "--volume", f"{model_config}:/root/.config/kilo/kilo.json:ro",
         "--env", "KILO_TELEMETRY_LEVEL=off",
         "--env", "KILO_DISABLE_DEFAULT_PLUGINS=true",
         "--env", "KILO_DISABLE_PROJECT_CONFIG=true",
-        "--env", "KILO_DB=:memory:",
+        *session_env_args,
         "--entrypoint", "kilo",
         image,
         "--pure",
         "run",
         "--format", "json",
         "--auto",
+        *session_kilo_args,
         "--model", args.model,
         "--dir", "/testbed",
         prompt,
@@ -176,6 +207,15 @@ def run(args: argparse.Namespace) -> Path:
         "model_revision": getattr(args, "model_revision", None),
         "observed_model_identity": model_identity,
         "model_config_sha256": _sha256(model_config.read_bytes()),
+        "native_session": {
+            "data_path": KILO_DATA_PATH,
+            "host_store": None if session_store is None else str(session_store),
+            "continued": bool(args.continue_session),
+            "continuity_mode": (
+                "dedicated-persistent-database"
+                if session_store is not None else "ephemeral-memory-database"
+            ),
+        },
         "source_image": source_image,
         "derived_image": image,
         "image_build_skipped": bool(args.skip_build),
@@ -227,6 +267,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-revision")
     parser.add_argument("--ollama-tags-url")
     parser.add_argument("--agent-version", default="7.7.5")
+    parser.add_argument(
+        "--session-store",
+        help=(
+            "Dedicated host directory mounted as Kilo's native data store. "
+            "Reuse it across fresh task containers for a persistent session."
+        ),
+    )
+    parser.add_argument(
+        "--continue-session",
+        action="store_true",
+        help="Continue the sole native session in --session-store.",
+    )
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")
     parser.add_argument("--skip-build", action="store_true")

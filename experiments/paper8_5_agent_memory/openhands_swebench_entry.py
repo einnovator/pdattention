@@ -11,6 +11,7 @@ import traceback
 from typing import Any
 import urllib.error
 import urllib.request
+import uuid
 
 from pydantic import SecretStr
 
@@ -197,6 +198,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompt-file", required=True)
     parser.add_argument("--session-id", required=True)
+    parser.add_argument(
+        "--persistence-dir",
+        default="/tmp/paper85-openhands-conversation",
+    )
+    parser.add_argument("--conversation-id")
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", default="openai/qwen3-coder:30b")
     parser.add_argument("--max-iterations", type=int, default=50)
@@ -298,7 +304,12 @@ def main() -> int:
             agent=agent,
             workspace="/testbed",
             callbacks=[emit],
-            persistence_dir="/tmp/paper85-openhands-conversation",
+            persistence_dir=args.persistence_dir,
+            conversation_id=(
+                uuid.UUID(args.conversation_id)
+                if args.conversation_id else None
+            ),
+            delete_on_close=False,
             max_iteration_per_run=args.max_iterations,
             visualizer=None,
         )

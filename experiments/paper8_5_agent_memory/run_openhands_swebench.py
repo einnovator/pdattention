@@ -12,6 +12,46 @@ import subprocess
 import time
 from typing import Any, Mapping, Sequence
 
+
+OPENHANDS_PERSISTENCE_PATH = "/paper85/conversation"
+
+
+def _session_arguments(
+    session_store: str | None,
+    conversation_id: str | None,
+) -> tuple[tuple[str, ...], tuple[str, ...], Path | None]:
+    if conversation_id and not session_store:
+        raise ValueError("--conversation-id requires --session-store")
+    if not session_store:
+        return (), (), None
+    store = Path(session_store).expanduser().resolve()
+    store.mkdir(parents=True, exist_ok=True)
+    docker_args = (
+        "--mount",
+        f"type=bind,source={store},target={OPENHANDS_PERSISTENCE_PATH}",
+    )
+    entry_args = ("--persistence-dir", OPENHANDS_PERSISTENCE_PATH)
+    if conversation_id:
+        entry_args += ("--conversation-id", conversation_id)
+    return docker_args, entry_args, store
+
+
+def _conversation_id(path: Path) -> str | None:
+    values: set[str] = set()
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, Mapping) or row.get("type") != "paper85_run_summary":
+            continue
+        value = row.get("conversation_id")
+        if isinstance(value, str) and value:
+            values.add(value)
+    if len(values) > 1:
+        raise ValueError("OpenHands trace contains multiple conversation IDs")
+    return next(iter(values), None)
+
 from .model_identity import fetch_ollama_model_identity
 
 from .run_pi_swebench import (
@@ -252,6 +292,9 @@ def run(args: argparse.Namespace) -> Path:
     )
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
+    session_docker_args, session_entry_args, session_store = _session_arguments(
+        args.session_store, args.conversation_id
+    )
     prompt = task_prompt(trajectory, instance_id)
     prompt_path = output / "task_prompt.txt"
     prompt_path.write_text(prompt + "\n", encoding="utf-8")
@@ -327,6 +370,7 @@ def run(args: argparse.Namespace) -> Path:
         "run",
         "--name", container,
         "--platform", "linux/amd64",
+        *session_docker_args,
         "--volume", f"{prompt_path}:/paper85/task_prompt.txt:ro",
         "--env", "OPENHANDS_SUPPRESS_BANNER=1",
         "--env", "OTEL_SDK_DISABLED=true",
@@ -337,6 +381,7 @@ def run(args: argparse.Namespace) -> Path:
         "/opt/paper85/openhands_swebench_entry.py",
         "--prompt-file", "/paper85/task_prompt.txt",
         "--session-id", instance_id,
+        *session_entry_args,
         "--base-url", args.base_url,
         "--model", args.model,
         "--max-iterations", str(args.max_iterations),
@@ -363,6 +408,17 @@ def run(args: argparse.Namespace) -> Path:
     finished = datetime.now(timezone.utc)
     events = output / "openhands_events.jsonl"
     events.write_bytes(execution.stdout)
+    observed_conversation_id = _conversation_id(events)
+    if session_store is not None and observed_conversation_id is None:
+        raise RuntimeError("persistent OpenHands run emitted no conversation ID")
+    if (
+        args.conversation_id
+        and observed_conversation_id != args.conversation_id
+    ):
+        raise RuntimeError(
+            "OpenHands conversation continuity failed: requested "
+            f"{args.conversation_id!r}, observed {observed_conversation_id!r}"
+        )
     (output / "openhands_stderr.log").write_bytes(execution.stderr)
 
     snapshot = f"{image.rsplit(':', 1)[0]}-snapshot:{int(time.time())}"
@@ -409,6 +465,19 @@ def run(args: argparse.Namespace) -> Path:
         "prompt_mock_examples": bool(args.prompt_mock_examples),
         "tool_set": args.tool_set,
         "native_context_management": "disabled_condenser_none",
+        "native_session": {
+            "data_path": OPENHANDS_PERSISTENCE_PATH,
+            "host_store": None if session_store is None else str(session_store),
+            "requested_conversation_id": args.conversation_id,
+            "observed_conversation_id": observed_conversation_id,
+            "continuity_validated": bool(
+                observed_conversation_id
+                and (
+                    args.conversation_id is None
+                    or observed_conversation_id == args.conversation_id
+                )
+            ),
+        },
         "instance_id": instance_id,
         "task_index": task_index,
         "benchmark_card": str(benchmark),
@@ -501,6 +570,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional native curl used for model-identity lookup on LAN hosts.",
     )
     parser.add_argument("--agent-version", default="1.49.2")
+    parser.add_argument(
+        "--session-store",
+        help=(
+            "Dedicated host directory for the native OpenHands conversation. "
+            "Reuse it across fresh task containers."
+        ),
+    )
+    parser.add_argument(
+        "--conversation-id",
+        help="Native conversation UUID emitted by the preceding task.",
+    )
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--request-timeout-seconds", type=int, default=1200)

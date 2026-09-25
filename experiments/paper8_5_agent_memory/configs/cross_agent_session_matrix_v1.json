@@ -1,0 +1,90 @@
+{
+  "schema_version": "paper8.5.cross-agent-session-matrix.v1",
+  "status": "frozen_before_execution",
+  "purpose": "Fill the agent-by-session-length saving matrix without agent-specific selection policies.",
+  "ordered_instance_ids": [
+    "django__django-15277",
+    "django__django-15368",
+    "scikit-learn__scikit-learn-13135",
+    "django__django-15741",
+    "pytest-dev__pytest-7982",
+    "django__django-16145"
+  ],
+  "tiers": [
+    {
+      "n": 1,
+      "model": "qwen3-coder:30b-ctx64k",
+      "model_revision": "13cd851c8a123721a1b448f47d94733d63966757363e002dae4a0ef8a0eb9253",
+      "arms": ["FULL", "TAIL90_CAUSAL_H2T4_DECLARED_SAFE_V4"]
+    },
+    {
+      "n": 3,
+      "model": "qwen3-coder:30b-ctx131k",
+      "model_revision": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+      "arms": ["FULL", "RECENT_FRONTIER_M2_P1"]
+    },
+    {
+      "n": 6,
+      "model": "qwen3-coder:30b-ctx131k",
+      "model_revision": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+      "arms": ["FULL", "RECENT_FRONTIER_M2_P1"]
+    }
+  ],
+  "agents": [
+    "openhands@1.49.2",
+    "pi@0.75.3",
+    "kilo@7.7.5",
+    "pra-agent@locked-revision",
+    "opencode@1.18.31",
+    "codex@0.153.0"
+  ],
+  "policies": {
+    "TAIL90_CAUSAL_H2T4_DECLARED_SAFE_V4": {
+      "implementation": "matched_token_tail",
+      "budget_fraction": 0.9,
+      "protected_head_turns": 2,
+      "protected_tail_turns": 4,
+      "keep_all_genuine_user_prompts": true,
+      "causal_group_atomicity": true,
+      "boundary_compaction": "declared_safe"
+    },
+    "RECENT_FRONTIER_M2_P1": {
+      "implementation": "frontier_dag_retirement",
+      "boundary_mode": "boundary_free",
+      "frontier_recent_user_prompts": 2,
+      "frontier_protocol_exemplars": 1,
+      "frontier_allow_heuristic": true,
+      "keep_all_genuine_user_prompts": true
+    }
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "gates": {
+    "advance_agent_to_next_n_only_after": [
+      "FULL officially resolves every paired-success denominator task or failures are reported unconditionally",
+      "candidate loses no contemporaneous FULL success",
+      "candidate does not increase aggregate calls or normalized actions",
+      "candidate trace binds model, tokenizer, workspace, session and selected-message identities"
+    ],
+    "report_even_when_rejected": [
+      "official resolution",
+      "own logical and materialized saving",
+      "paired cumulative saving",
+      "calls or normalized actions",
+      "first selection-active divergence",
+      "reacquisition"
+    ]
+  },
+  "session_contract": {
+    "task_boundary_signal_to_selector": false,
+    "preserve_all_genuine_user_prompts": true,
+    "fresh_official_workspace_per_issue": true,
+    "continuous_native_or_mediated_model_history": true,
+    "native_agent_condensation": "disabled",
+    "policy_parameters_agent_independent": true
+  }
+}

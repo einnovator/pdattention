@@ -4,12 +4,16 @@ import json
 from pathlib import Path
 
 from experiments.paper8_5_agent_memory.run_openhands_swebench import (
+    OPENHANDS_PERSISTENCE_PATH,
+    _conversation_id,
+    _session_arguments,
     _tool_calling_argument,
     _prompt_mock_examples_argument,
     _container_api_preflight,
     _event_summary,
     _prepare_build_context,
 )
+import pytest
 from experiments.paper8_5_agent_memory.openhands_receipts import (
     build_openhands_receipts,
     summarize_receipts,
@@ -207,3 +211,29 @@ def test_openhands_tool_protocol_is_explicit_and_fail_closed():
     assert _tool_calling_argument(False) == "--no-native-tool-calling"
     assert _prompt_mock_examples_argument(True) == "--prompt-mock-examples"
     assert _prompt_mock_examples_argument(False) == "--no-prompt-mock-examples"
+
+
+def test_openhands_native_conversation_continuity_is_explicit(tmp_path: Path):
+    with pytest.raises(ValueError, match="session-store"):
+        _session_arguments(None, "conversation-1")
+    docker_args, entry_args, store = _session_arguments(
+        str(tmp_path / "conversation"), "conversation-1"
+    )
+    assert store is not None and store.is_dir()
+    assert docker_args == (
+        "--mount",
+        f"type=bind,source={store},target={OPENHANDS_PERSISTENCE_PATH}",
+    )
+    assert entry_args[-2:] == ("--conversation-id", "conversation-1")
+
+
+def test_openhands_conversation_id_comes_from_native_summary(tmp_path: Path):
+    events = tmp_path / "events.jsonl"
+    events.write_text(
+        json.dumps({
+            "type": "paper85_run_summary",
+            "conversation_id": "conversation-1",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    assert _conversation_id(events) == "conversation-1"

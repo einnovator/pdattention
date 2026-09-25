@@ -26,6 +26,36 @@ import subprocess
 import time
 from typing import Any, Mapping, Sequence
 
+
+PI_SESSION_PATH = "/root/.pi/agent/sessions"
+
+
+def _session_arguments(
+    session_store: str | None,
+    continue_session: bool,
+) -> tuple[tuple[str, ...], tuple[str, ...], Path | None]:
+    """Return isolated native-session mounts and CLI arguments.
+
+    A dedicated store contains exactly one campaign session, so ``--continue``
+    cannot silently select history from another experiment.  The first episode
+    creates that session; later fresh task containers mount the same store and
+    continue it while retaining a fresh ``/testbed`` workspace.
+    """
+
+    if continue_session and not session_store:
+        raise ValueError("--continue-session requires --session-store")
+    if not session_store:
+        return (), ("--no-session",), None
+    store = Path(session_store).expanduser().resolve()
+    store.mkdir(parents=True, exist_ok=True)
+    docker_args = (
+        "--mount", f"type=bind,source={store},target={PI_SESSION_PATH}",
+    )
+    pi_args = ("--session-dir", PI_SESSION_PATH)
+    if continue_session:
+        pi_args += ("--continue",)
+    return docker_args, pi_args, store
+
 from .model_identity import fetch_ollama_model_identity
 
 _PR_DESCRIPTION = re.compile(
@@ -134,6 +164,9 @@ def run(args: argparse.Namespace) -> Path:
     model_config = Path(args.model_config).resolve()
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
+    session_docker_args, session_pi_args, session_store = _session_arguments(
+        args.session_store, args.continue_session
+    )
     prompt = task_prompt(trajectory, instance_id)
     (output / "task_prompt.txt").write_text(prompt + "\n", encoding="utf-8")
 
@@ -172,6 +205,7 @@ def run(args: argparse.Namespace) -> Path:
         "run",
         "--name", container,
         "--platform", "linux/amd64",
+        *session_docker_args,
         "--volume", f"{model_config}:/root/.pi/agent/models.json:ro",
         "--env", "PI_OFFLINE=1",
         image,
@@ -180,7 +214,7 @@ def run(args: argparse.Namespace) -> Path:
         "--model", args.model,
         "--mode", "json",
         "--print",
-        "--no-session",
+        *session_pi_args,
         "--no-context-files",
         "--no-skills",
         "--no-prompt-templates",
@@ -275,6 +309,15 @@ def run(args: argparse.Namespace) -> Path:
         "model_revision": getattr(args, "model_revision", None),
         "observed_model_identity": model_identity,
         "provider": args.provider,
+        "native_session": {
+            "data_path": PI_SESSION_PATH,
+            "host_store": None if session_store is None else str(session_store),
+            "continued": bool(args.continue_session),
+            "continuity_mode": (
+                "dedicated_single-session-store"
+                if session_store is not None else "ephemeral"
+            ),
+        },
         "source_image": source_image,
         "derived_image": image,
         "image_build_skipped": bool(args.skip_build),
@@ -322,6 +365,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-revision")
     parser.add_argument("--ollama-tags-url")
     parser.add_argument("--provider", default="paper85-ollama")
+    parser.add_argument(
+        "--session-store",
+        help=(
+            "Dedicated host directory mounted as Pi's native session store. "
+            "Reuse it across fresh task containers for a persistent session."
+        ),
+    )
+    parser.add_argument(
+        "--continue-session",
+        action="store_true",
+        help="Continue the sole native session in --session-store.",
+    )
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")
     parser.add_argument("--skip-build", action="store_true")
