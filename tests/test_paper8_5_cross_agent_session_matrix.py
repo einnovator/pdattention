@@ -66,3 +66,21 @@ def test_matrix_reads_pra_agent_native_manifest(tmp_path: Path) -> None:
     assert row["n"] == 1
     assert row["resolved"] == 1
     assert row["calls"] == 19
+
+
+def test_matrix_reads_native_tool_count_from_episode_manifest(tmp_path: Path) -> None:
+    root = tmp_path / "opencode" / "n1" / "full"
+    _write(root / "campaign_state.json", {
+        "status": "execution_complete_pending_grade",
+        "task_count_completed": 1,
+        "request_count": 9,
+        "cumulative_full_history_tokens": 100,
+        "cumulative_materialized_history_tokens": 100,
+        "own_saving_fraction": 0.0,
+        "policy": "full",
+    })
+    _write(root / "episode-01" / "run_manifest.json", {
+        "event_types": {"tool_use": 7, "text": 8},
+    })
+    row = reduce_matrix(tmp_path)["rows"][0]
+    assert row["calls"] == 7

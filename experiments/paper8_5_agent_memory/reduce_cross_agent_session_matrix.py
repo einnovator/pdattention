@@ -47,6 +47,26 @@ def _calls(root: Path) -> int | None:
             calls = value.get("distinct_llm_response_count")
         if isinstance(calls, int):
             values.append(calls)
+    if values:
+        return sum(values)
+    # Native-agent adapters may bind their normalized event inventory directly
+    # into the episode manifest. Prefer semantic action counts to transport
+    # requests so the cross-agent column remains interpretable.
+    for path in sorted(root.glob("episode-*/run_manifest.json")):
+        value = _json(path)
+        summary = value.get("event_summary")
+        calls = None
+        if isinstance(summary, dict):
+            calls = summary.get("assistant_model_calls")
+            if calls is None:
+                calls = summary.get("distinct_llm_response_count")
+            if calls is None:
+                calls = summary.get("tool_calls")
+        event_types = value.get("event_types")
+        if calls is None and isinstance(event_types, dict):
+            calls = event_types.get("tool_use")
+        if isinstance(calls, int):
+            values.append(calls)
     return sum(values) if values else None
 
 
