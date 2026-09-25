@@ -84,3 +84,29 @@ def test_matrix_reads_native_tool_count_from_episode_manifest(tmp_path: Path) ->
     })
     row = reduce_matrix(tmp_path)["rows"][0]
     assert row["calls"] == 7
+
+
+def test_matrix_separates_official_resolution_from_forced_termination(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "kilo" / "n1" / "tail90"
+    _write(root / "campaign_state.json", {
+        "status": "execution_complete_pending_grade",
+        "task_count_completed": 1,
+        "request_count": 14,
+        "cumulative_full_history_tokens": 100,
+        "cumulative_materialized_history_tokens": 90,
+        "own_saving_fraction": 0.1,
+        "policy": "matched_token_tail",
+    })
+    _write(root / "official_grade" / "report.json", {
+        "resolved_ids": ["org__task"], "unresolved_ids": [],
+    })
+    _write(root / "external_termination.json", {
+        "semantic_completion_observed": False,
+        "wall_time_valid": False,
+    })
+    row = reduce_matrix(tmp_path)["rows"][0]
+    assert row["resolved"] == 1
+    assert row["autonomous_completion"] is False
+    assert row["wall_time_valid"] is False

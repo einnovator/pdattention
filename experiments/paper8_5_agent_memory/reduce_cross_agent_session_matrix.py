@@ -104,6 +104,11 @@ def _row(root: Path) -> dict[str, Any] | None:
     else:
         return None
     official = _official_ids(root)
+    termination = (
+        _json(root / "external_termination.json")
+        if (root / "external_termination.json").is_file()
+        else None
+    )
     return {
         "agent": agent,
         "n": n,
@@ -121,6 +126,14 @@ def _row(root: Path) -> dict[str, Any] | None:
         "own_saving_fraction": saving,
         "paired_saving_fraction": None,
         "lost_full_success_ids": [],
+        "autonomous_completion": not (
+            termination is not None
+            and termination.get("semantic_completion_observed") is False
+        ),
+        "wall_time_valid": not (
+            termination is not None
+            and termination.get("wall_time_valid") is False
+        ),
         "evidence_root": str(root),
     }
 
@@ -154,6 +167,7 @@ def _write_csv(path: Path, rows: Iterable[dict[str, Any]]) -> None:
         "resolved", "calls", "requests", "full_history_tokens",
         "materialized_tokens", "own_saving_fraction",
         "paired_saving_fraction", "lost_full_success_ids", "evidence_root",
+        "autonomous_completion", "wall_time_valid",
     ]
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=columns, extrasaction="ignore")
@@ -174,8 +188,8 @@ def _write_markdown(path: Path, rows: Iterable[dict[str, Any]]) -> None:
         "",
         "Paired saving includes trajectory-length effects. Missing grades remain pending; they are not failures.",
         "",
-        "| Agent | N | Arm | Resolved | Calls | Own saving | Paired saving | Lost FULL successes |",
-        "|---|---:|---|---:|---:|---:|---:|---|",
+        "| Agent | N | Arm | Resolved | Autonomous | Calls | Own saving | Paired saving | Lost FULL successes |",
+        "|---|---:|---|---:|---|---:|---:|---:|---|",
     ]
     for row in rows:
         resolved = "---" if row["resolved"] is None else f"{row['resolved']}/{row['tasks_completed']}"
@@ -183,6 +197,7 @@ def _write_markdown(path: Path, rows: Iterable[dict[str, Any]]) -> None:
         lost = ", ".join(row["lost_full_success_ids"]) or "none"
         lines.append(
             f"| {row['agent']} | {row['n']} | {row['arm']} | {resolved} | "
+            f"{'yes' if row['autonomous_completion'] else 'no'} | "
             f"{calls} | {_percent(row['own_saving_fraction'])} | "
             f"{_percent(row['paired_saving_fraction'])} | {lost} |"
         )
