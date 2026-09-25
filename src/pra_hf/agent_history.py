@@ -551,6 +551,11 @@ class OpenAIRecordizer:
             elif role == "assistant":
                 calls = message.get("tool_calls")
                 calls = calls if isinstance(calls, (list, tuple)) else ()
+                terminal_after_typed_tool = (
+                    not calls
+                    and index > 0
+                    and str(messages[index - 1].get("role", "")) == "tool"
+                )
                 call_ids = tuple(
                     str(call.get("id")) for call in calls
                     if isinstance(call, Mapping) and call.get("id")
@@ -592,7 +597,11 @@ class OpenAIRecordizer:
                     call_id = str(call_declaration.get("id") or "")
                     if call_id:
                         pending_calls[call_id] = call_declaration
-                primary = AgentRecordRole.ASSISTANT_ACTION
+                primary = (
+                    AgentRecordRole.FINALIZATION
+                    if terminal_after_typed_tool
+                    else AgentRecordRole.ASSISTANT_ACTION
+                )
                 if (
                     len(call_declarations) == 1
                     and isinstance(call_declarations[0].get("declared_semantics"), Mapping)
@@ -602,14 +611,18 @@ class OpenAIRecordizer:
                             "operation_kind", "unknown"
                         )
                     )
-                semantic = _semantic_roles_for_operation(
-                    primary, operation_kind, outcome["semantic_status"]
+                semantic = (
+                    (AgentRecordRole.FINALIZATION, AgentRecordRole.PROGRESS)
+                    if terminal_after_typed_tool
+                    else _semantic_roles_for_operation(
+                        primary, operation_kind, outcome["semantic_status"]
+                    )
                 )
                 if open_failure_group and not outcome["depends_on"]:
                     outcome["depends_on"] = (open_failure_group,)
                 if content.strip() and AgentRecordRole.PROGRESS not in semantic:
                     semantic = (*semantic, AgentRecordRole.PROGRESS)
-                if not calls:
+                if not calls and not terminal_after_typed_tool:
                     ambiguity.append(f"assistant_without_typed_tool_call:{index}")
             elif role == "tool":
                 call_id = str(message.get("tool_call_id") or "")
@@ -710,7 +723,12 @@ class OpenAIRecordizer:
                 primary = AgentRecordRole.USER_INPUT
                 turn_id = group_id = f"input:{record_id}"
                 semantic = (primary,)
-                if role == "user" and records and records[-1].role == "assistant":
+                if (
+                    role == "user"
+                    and records
+                    and records[-1].role == "assistant"
+                    and not records[-1].has_role(AgentRecordRole.FINALIZATION)
+                ):
                     ambiguity.append(f"untyped_user_after_assistant:{index}")
 
             records.append(AgentRecord(
@@ -793,8 +811,13 @@ class OpenAIRecordizer:
                 record_ids=tuple(row.record_id for row in rows),
                 first_message_index=min(row.message_index for row in rows),
                 complete=(
-                    any(row.has_role(AgentRecordRole.ASSISTANT_ACTION) for row in rows)
-                    and any(row.has_role(AgentRecordRole.TOOL_OBSERVATION) for row in rows)
+                    (
+                        (
+                            any(row.has_role(AgentRecordRole.ASSISTANT_ACTION) for row in rows)
+                            and any(row.has_role(AgentRecordRole.TOOL_OBSERVATION) for row in rows)
+                        )
+                        or any(row.has_role(AgentRecordRole.FINALIZATION) for row in rows)
+                    )
                     and all(row.complete is not False for row in rows)
                 ),
             )

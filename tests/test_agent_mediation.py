@@ -282,6 +282,29 @@ def test_openai_recordizer_does_not_guess_nonstandard_user_observation():
     assert "untyped_user_after_assistant:3" in result.ambiguity_reasons
 
 
+def test_openai_recordizer_accepts_terminal_assistant_then_new_user_task():
+    result = OpenAIRecordizer().recordize([
+        {"role": "system", "content": "help"},
+        {"role": "user", "content": "fix task one"},
+        {"role": "assistant", "content": "", "tool_calls": [{
+            "id": "inspect", "type": "function",
+            "function": {"name": "bash", "arguments": "{\"command\":\"git diff\"}"},
+        }]},
+        {"role": "tool", "tool_call_id": "inspect", "content": "diff"},
+        {"role": "assistant", "content": "Task one is complete."},
+        {"role": "user", "content": "fix task two"},
+    ])
+
+    assert result.exact is True
+    assert result.ambiguity_reasons == ()
+    finalization = result.history.records[4]
+    assert finalization.primary_role == AgentRecordRole.FINALIZATION
+    assert finalization.causal_group_id != result.history.records[5].causal_group_id
+    assert result.history.records[5].primary_role == AgentRecordRole.USER_INPUT
+    finalization_turn = result.history.turn_by_id[finalization.turn_id]
+    assert finalization_turn.complete is True
+
+
 def test_explicit_records_make_nonstandard_transport_generic():
     messages = [
         {
