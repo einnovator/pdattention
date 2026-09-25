@@ -1265,6 +1265,7 @@ class AutonomousSelectionProxy:
         self._execution_receipts: dict[tuple[str, str], dict[str, Any]] = {}
         self._upstream_failure = threading.Event()
         self._upstream_failure_detail: dict[str, str] | None = None
+        self._internal_failure_detail: dict[str, str] | None = None
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -1282,6 +1283,7 @@ class AutonomousSelectionProxy:
                 except (urllib.error.URLError, TimeoutError) as error:
                     self._error(502, "selection_upstream_unavailable", error)
                 except Exception as error:  # pragma: no cover - defensive HTTP boundary
+                    proxy._record_internal_failure(error)
                     self._error(500, "selection_proxy_internal_error", error)
 
             def _error(self, status: int, code: str, error: Exception) -> None:
@@ -1355,8 +1357,23 @@ class AutonomousSelectionProxy:
             "successful_request_count": self._successful_request_count,
             "max_calls": self.config.max_calls,
             "upstream_failed": self._upstream_failure.is_set(),
+            "internal_failure": self._internal_failure_detail,
             "execution_receipt_count": len(self._execution_receipts),
         }
+
+    def _record_internal_failure(self, error: Exception) -> None:
+        detail = {
+            "error_type": type(error).__name__,
+            "error_detail": str(error),
+        }
+        self._internal_failure_detail = detail
+        path = self.trace_path.with_name(
+            self.trace_path.stem + ".internal_errors.jsonl"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(detail, sort_keys=True) + "\n")
 
     def _receive_execution_receipt(
         self, handler: BaseHTTPRequestHandler,

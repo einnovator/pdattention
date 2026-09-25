@@ -312,6 +312,7 @@ def run(args: argparse.Namespace) -> Path:
         timeout_seconds=args.upstream_timeout_seconds,
         initial_request_count=initial_requests,
         initial_successful_request_count=initial_successes,
+        first_request_capture_path=output / "first_new_request.json",
     )
     proxy.start("0.0.0.0", args.proxy_port)
     started = datetime.now(timezone.utc)
@@ -338,6 +339,10 @@ def run(args: argparse.Namespace) -> Path:
                     "native_completion_observed", True
                 ),
             })
+            if manifest.get("native_completion_observed") is False:
+                raise RuntimeError(
+                    f"{args.agent} episode {ordinal} ended without semantic completion"
+                )
     except BaseException as exc:
         error = exc
     finally:

@@ -75,6 +75,37 @@ def _write_json(path: Path, value: Mapping[str, Any]) -> None:
     )
 
 
+def _completion_evidence(
+    event_rows: Sequence[Mapping[str, Any]],
+    *,
+    exit_code: int,
+    timed_out: bool,
+) -> dict[str, Any]:
+    retry_exhausted = any(
+        row.get("type") == "auto_retry_end" and row.get("success") is False
+        for row in event_rows
+    )
+    successful_assistant_messages = sum(
+        row.get("type") == "message_end"
+        and isinstance(row.get("message"), Mapping)
+        and row["message"].get("role") == "assistant"
+        and row["message"].get("stopReason") != "error"
+        and int((row["message"].get("usage") or {}).get("totalTokens") or 0) > 0
+        for row in event_rows
+    )
+    return {
+        "native_completion_observed": bool(
+            exit_code == 0
+            and not timed_out
+            and not retry_exhausted
+            and successful_assistant_messages > 0
+        ),
+        "successful_assistant_messages": successful_assistant_messages,
+        "retry_exhausted": retry_exhausted,
+        "transport_exit_zero": exit_code == 0,
+    }
+
+
 def observed_model_identity(args: argparse.Namespace) -> dict[str, Any] | None:
     """Bind a typed-agent run to an observed endpoint digest when requested."""
 
@@ -291,6 +322,9 @@ def run(args: argparse.Namespace) -> Path:
     for row in event_rows:
         name = str(row.get("type") or "unknown")
         event_types[name] = event_types.get(name, 0) + 1
+    completion = _completion_evidence(
+        event_rows, exit_code=execution.returncode, timed_out=timed_out
+    )
     reduced_event_summary = reduce_pi_events(output / "pi_events.jsonl", output)
 
     manifest = {
@@ -332,6 +366,12 @@ def run(args: argparse.Namespace) -> Path:
         "timed_out": timed_out,
         "event_count": len(event_rows),
         "event_types": event_types,
+        "native_completion_observed": completion["native_completion_observed"],
+        "completion_evidence": {
+            key: value
+            for key, value in completion.items()
+            if key != "native_completion_observed"
+        },
         "event_summary": reduced_event_summary,
         "workspace_status_sha256": _sha256(status.stdout),
         "patch_sha256": _sha256(patch.stdout),

@@ -28,6 +28,7 @@ def test_kilo_native_completion_requires_terminal_non_tool_step(
     assert _native_completion_observed(partial) is False
 from experiments.paper8_5_agent_memory.run_pi_swebench import (
     PI_SESSION_PATH,
+    _completion_evidence,
     _session_arguments as pi_session_arguments,
 )
 
@@ -41,6 +42,27 @@ def test_pi_persistent_session_uses_one_dedicated_store(tmp_path: Path) -> None:
     assert store is not None and store.is_dir()
     assert docker_args[-1].endswith(f"target={PI_SESSION_PATH}")
     assert pi_args == ("--session-dir", PI_SESSION_PATH, "--continue")
+
+
+def test_pi_completion_rejects_exhausted_provider_retries() -> None:
+    error_rows = [{
+        "type": "auto_retry_end", "success": False, "finalError": "HTTP 500",
+    }]
+    assert _completion_evidence(
+        error_rows, exit_code=0, timed_out=False
+    )["native_completion_observed"] is False
+
+    success_rows = [{
+        "type": "message_end",
+        "message": {
+            "role": "assistant",
+            "stopReason": "stop",
+            "usage": {"totalTokens": 42},
+        },
+    }]
+    assert _completion_evidence(
+        success_rows, exit_code=0, timed_out=False
+    )["native_completion_observed"] is True
 
 
 def test_kilo_persistent_session_replaces_memory_database(tmp_path: Path) -> None:

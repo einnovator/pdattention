@@ -81,6 +81,11 @@ def test_proxy_resume_counters_are_explicit_and_validated(tmp_path: Path):
     )
     assert proxy.health()["request_count"] == 7
     assert proxy.health()["successful_request_count"] == 6
+    proxy._record_internal_failure(RuntimeError("diagnostic"))
+    assert proxy.health()["internal_failure"] == {
+        "error_type": "RuntimeError", "error_detail": "diagnostic",
+    }
+    assert (tmp_path / "trace.internal_errors.jsonl").is_file()
     with pytest.raises(ValueError, match="cannot exceed"):
         AutonomousSelectionProxy(
             "http://127.0.0.1:9/v1",
