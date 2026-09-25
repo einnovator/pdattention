@@ -82,6 +82,14 @@ def _tasks(path: Path, count: int, repository: Path) -> list[dict[str, str]]:
 
 
 def _policy(args: argparse.Namespace, tokenizer_identity: str) -> AutonomousSelectionConfig:
+    if args.allow_missing_sidecars and not (
+        args.policy == "frontier_dag_retirement"
+        and args.frontier_allow_heuristic
+    ):
+        raise ValueError(
+            "--allow-missing-sidecars requires the declared heuristic "
+            "frontier_dag_retirement policy"
+        )
     values: dict[str, Any] = {
         "policy": args.policy,
         "budget_fraction": args.budget_fraction,
@@ -104,6 +112,7 @@ def _policy(args: argparse.Namespace, tokenizer_identity: str) -> AutonomousSele
         "frontier_recent_user_prompts": args.frontier_recent_user_prompts,
         "frontier_protocol_exemplars": args.frontier_protocol_exemplars,
         "frontier_allow_heuristic": args.frontier_allow_heuristic,
+        "require_exact_sidecars": not args.allow_missing_sidecars,
         "keep_completed_task_statements": True,
     }
     return AutonomousSelectionConfig(**values)
@@ -225,6 +234,7 @@ def _prepare_resume(
         "frontier_recent_user_prompts": args.frontier_recent_user_prompts,
         "frontier_protocol_exemplars": args.frontier_protocol_exemplars,
         "frontier_allow_heuristic": args.frontier_allow_heuristic,
+        "allow_missing_sidecars": args.allow_missing_sidecars,
     }
     identity = {
         "agent": args.agent,
@@ -245,10 +255,17 @@ def _prepare_resume(
             "policy": args.policy,
             "policy_parameters": expected_parameters,
         })
+    observed_state = dict(state)
+    if not carry_full_prefix:
+        observed_parameters = dict(state.get("policy_parameters") or {})
+        # Campaigns written before this explicit safety switch are equivalent
+        # to the default fail-closed value.
+        observed_parameters.setdefault("allow_missing_sidecars", False)
+        observed_state["policy_parameters"] = observed_parameters
     mismatches = {
         key: {"expected": value, "observed": state.get(key)}
         for key, value in identity.items()
-        if state.get(key) != value
+        if observed_state.get(key) != value
     }
     if mismatches:
         raise ValueError(f"resume campaign identity mismatch: {mismatches}")
@@ -415,6 +432,7 @@ def run(args: argparse.Namespace) -> Path:
             "frontier_recent_user_prompts": args.frontier_recent_user_prompts,
             "frontier_protocol_exemplars": args.frontier_protocol_exemplars,
             "frontier_allow_heuristic": args.frontier_allow_heuristic,
+            "allow_missing_sidecars": args.allow_missing_sidecars,
         },
         "request_count": len(rows),
         "cumulative_full_history_tokens": full_tokens,
@@ -487,6 +505,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--frontier-recent-user-prompts", type=int, default=2)
     parser.add_argument("--frontier-protocol-exemplars", type=int, default=1)
     parser.add_argument("--frontier-allow-heuristic", action="store_true")
+    parser.add_argument(
+        "--allow-missing-sidecars",
+        action="store_true",
+        help=(
+            "permit a declared heuristic frontier arm to operate on typed "
+            "agent records without execution-receipt sidecars"
+        ),
+    )
     parser.add_argument("--max-calls", type=int, default=80)
     parser.add_argument("--proxy-port", type=int, default=18185)
     parser.add_argument("--container-proxy-url", default="http://host.docker.internal:18185/v1")

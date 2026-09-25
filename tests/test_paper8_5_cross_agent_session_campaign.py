@@ -63,6 +63,7 @@ def _args(tmp_path: Path, agent: str):
         "--model-config", str(tmp_path / "model.json"),
         "--policy", "frontier_dag_retirement",
         "--frontier-allow-heuristic",
+        "--allow-missing-sidecars",
     ])
 
 
@@ -72,7 +73,20 @@ def test_boundary_free_policy_budget_is_total_session_calls(tmp_path: Path) -> N
     assert config.boundary_mode.value == "boundary_free"
     assert config.frontier_recent_user_prompts == 2
     assert config.frontier_protocol_exemplars == 1
+    assert config.frontier_allow_heuristic is True
+    assert config.require_exact_sidecars is False
     assert config.max_calls == 240
+
+
+def test_missing_sidecars_are_allowed_only_for_declared_heuristic_frontier(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    args = _args(tmp_path, "pi")
+    args.frontier_allow_heuristic = False
+    with pytest.raises(ValueError, match="declared heuristic"):
+        _policy(args, "tokenizer@revision")
 
 
 def test_pi_continuation_is_native_and_task_id_is_not_passed(tmp_path: Path) -> None:
