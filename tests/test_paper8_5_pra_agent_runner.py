@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from pra_hf.agent_execution import ToolCall
+from pra_hf.context_records import ContextRecord, RecordType
 from experiments.paper8_5_agent_memory.run_pra_agent_swebench import (
     DockerWorkspaceTools,
     PRA_SWE_AGENT_BEHAVIOR,
@@ -25,11 +26,41 @@ from experiments.paper8_5_agent_memory.run_pra_agent_persistent_swebench import 
     build_parser as build_persistent_parser,
 )
 from experiments.paper8_5_agent_memory.pra_agent_policy import (
+    PRAAgentFrontierSelector,
     PRAAgentInstructionEpochSelector,
     PRAAgentMatchedTailSelector,
     recordize_pra_agent_records,
 )
-from pra_hf.context_records import ContextRecord, RecordType
+
+
+def test_pra_agent_frontier_selector_retires_disconnected_old_task_tools() -> None:
+    rows = (
+        _message("task1", "user", "fix repository one"),
+        _message("a1", "assistant", "inspect old.py"),
+        _observation("o1", "old result"),
+        _message("task2", "user", "fix repository two"),
+        _message("a2", "assistant", "inspect current.py"),
+        _observation("o2", "current result"),
+        _message("task3", "user", "fix repository three"),
+        _message("a3", "assistant", "inspect newest.py"),
+        _observation("o3", "newest result"),
+    )
+    selector = PRAAgentFrontierSelector(
+        count_tokens=lambda text: len(text.split()),
+        tokenizer_identity="unit-whitespace",
+        recent_user_prompts=2,
+        protocol_exemplars=0,
+        allow_heuristic=True,
+    )
+
+    selected = selector(rows, "continue")
+    selected_ids = {row.record_id for row in selected}
+
+    assert {"task1", "task2", "task3", "a2", "o2", "a3", "o3"}.issubset(
+        selected_ids
+    )
+    assert {"a1", "o1"}.isdisjoint(selected_ids)
+    assert selector.traces[0]["policy"].startswith("frontier_dag_m2_")
 
 
 def test_docker_workspace_rejects_absolute_and_parent_paths() -> None:

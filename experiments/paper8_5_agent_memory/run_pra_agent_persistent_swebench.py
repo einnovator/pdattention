@@ -29,6 +29,7 @@ from pra_hf import (
 from pra_hf.agent_transport import TEXT_TOOL_OBSERVATION_PROJECTION
 
 from .pra_agent_policy import (
+    PRAAgentFrontierSelector,
     PRAAgentInstructionEpochSelector,
     PRAAgentMatchedTailSelector,
 )
@@ -243,6 +244,15 @@ def run(args: argparse.Namespace) -> Path:
             prior_verification_turns=args.prior_verification_turns,
             prior_protocol_turns=args.prior_protocol_turns,
             prior_finalization_turns=args.prior_finalization_turns,
+        )
+    elif args.history_policy == "frontier_dag_retirement":
+        history_selector = PRAAgentFrontierSelector(
+            count_tokens=count_tokens,
+            tokenizer_identity=tokenizer_identity,
+            recent_user_prompts=args.frontier_recent_user_prompts,
+            protocol_exemplars=args.frontier_protocol_exemplars,
+            workflow_exemplars=args.frontier_workflow_exemplars,
+            allow_heuristic=args.frontier_allow_heuristic,
         )
     else:
         history_selector = PRAAgentMatchedTailSelector(
@@ -509,7 +519,7 @@ def run(args: argparse.Namespace) -> Path:
         "history_policy": args.history_policy,
         "retention_fraction": (
             retention_fraction
-            if args.history_policy != "instruction_epoch"
+            if args.history_policy == "matched_token_tail"
             else None
         ),
         "protected_head_turns": args.protected_head_turns,
@@ -520,6 +530,10 @@ def run(args: argparse.Namespace) -> Path:
         "prior_verification_turns": args.prior_verification_turns,
         "prior_protocol_turns": args.prior_protocol_turns,
         "prior_finalization_turns": args.prior_finalization_turns,
+        "frontier_recent_user_prompts": args.frontier_recent_user_prompts,
+        "frontier_protocol_exemplars": args.frontier_protocol_exemplars,
+        "frontier_workflow_exemplars": args.frontier_workflow_exemplars,
+        "frontier_allow_heuristic": args.frontier_allow_heuristic,
         "tokenizer": tokenizer_identity,
         "tokenizer_revision": args.tokenizer_revision,
         "started_at": session_started.isoformat(),
@@ -600,7 +614,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--curl-executable")
     parser.add_argument(
         "--history-policy",
-        choices=("full", "matched_token_tail", "instruction_epoch"),
+        choices=(
+            "full", "matched_token_tail", "instruction_epoch",
+            "frontier_dag_retirement",
+        ),
         default="full",
     )
     parser.add_argument("--retention-fraction", type=float, default=0.9)
@@ -612,6 +629,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prior-verification-turns", type=int, default=0)
     parser.add_argument("--prior-protocol-turns", type=int, default=0)
     parser.add_argument("--prior-finalization-turns", type=int, default=0)
+    parser.add_argument("--frontier-recent-user-prompts", type=int, default=2)
+    parser.add_argument("--frontier-protocol-exemplars", type=int, default=1)
+    parser.add_argument("--frontier-workflow-exemplars", type=int, default=0)
+    parser.add_argument("--frontier-allow-heuristic", action="store_true")
     parser.add_argument("--tokenizer", default="whitespace")
     parser.add_argument("--tokenizer-revision", default="diagnostic")
     parser.add_argument("--allow-whitespace-tokenizer", action="store_true")

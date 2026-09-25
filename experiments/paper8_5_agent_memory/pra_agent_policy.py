@@ -30,6 +30,7 @@ from .matched_token_tail import (
     matched_token_tail_full_floor_record_ids,
     materialize_matched_token_tail,
 )
+from .dag import FrontierDagRetirementSelector
 from .model import AgentMemoryBudget
 from .selectors import (
     PersistentInstructionEpochRetirementConfig,
@@ -389,6 +390,69 @@ class PRAAgentInstructionEpochSelector:
                     "causal_group_id": row.causal_group_id,
                     "record_ids": list(row.record_ids),
                     "rule_id": row.rule_id,
+                    "excluded_tokens": row.excluded_tokens,
+                }
+                for row in plan.exclusions
+            ],
+        })
+        return selected
+
+
+@dataclass
+class PRAAgentFrontierSelector:
+    """Identity-only recent-frontier policy for typed PRA Agent records."""
+
+    count_tokens: TokenCounter
+    tokenizer_identity: str
+    recent_user_prompts: int = 2
+    protocol_exemplars: int = 1
+    workflow_exemplars: int = 0
+    allow_heuristic: bool = True
+    traces: list[dict[str, object]] = field(default_factory=list, init=False)
+
+    def __post_init__(self) -> None:
+        self._selector = FrontierDagRetirementSelector(
+            recent_user_prompts=self.recent_user_prompts,
+            allow_heuristic=self.allow_heuristic,
+            valid_protocol_exemplars=self.protocol_exemplars,
+            valid_workflow_exemplars=self.workflow_exemplars,
+        )
+
+    def __call__(
+        self, records: Sequence[ContextRecord], query: str,
+    ) -> Sequence[ContextRecord]:
+        history = recordize_pra_agent_records(records)
+        full_tokens = sum(self.count_tokens(row.content) for row in history.records)
+        plan = self._selector.select(
+            history=history,
+            query=query,
+            budget=AgentMemoryBudget(max_tokens=max(1, full_tokens)),
+            count_tokens=self.count_tokens,
+        )
+        selected_ids = set(plan.selected_record_ids)
+        selected = tuple(row for row in records if row.record_id in selected_ids)
+        self.traces.append({
+            "request_index": len(self.traces) + 1,
+            "policy": plan.policy,
+            "tokenizer": self.tokenizer_identity,
+            "full_history_tokens": plan.full_history_tokens,
+            "selected_history_tokens": plan.selected_tokens,
+            "materialized_history_tokens": plan.selected_tokens,
+            "requested_budget_tokens": plan.requested_budget_tokens,
+            "mandatory_tokens": plan.mandatory_tokens,
+            "mandatory_overflow_tokens": plan.mandatory_overflow_tokens,
+            "full_record_ids": [row.record_id for row in records],
+            "selected_record_ids": [row.record_id for row in selected],
+            "excluded_record_ids": [
+                row.record_id for row in records
+                if row.record_id not in selected_ids
+            ],
+            "exclusions": [
+                {
+                    "causal_group_id": row.causal_group_id,
+                    "record_ids": list(row.record_ids),
+                    "rule_id": row.rule_id,
+                    "classification": row.classification,
                     "excluded_tokens": row.excluded_tokens,
                 }
                 for row in plan.exclusions
