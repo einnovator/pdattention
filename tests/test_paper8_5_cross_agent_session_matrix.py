@@ -110,3 +110,24 @@ def test_matrix_separates_official_resolution_from_forced_termination(
     assert row["resolved"] == 1
     assert row["autonomous_completion"] is False
     assert row["wall_time_valid"] is False
+
+
+def test_matrix_marks_post_patch_transport_error_non_autonomous(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "pra_agent" / "n3" / "recent_frontier"
+    _write(root / "run_manifest.json", {
+        "task_count_completed": 3,
+        "request_count": 39,
+        "cumulative_full_history_tokens": 857587,
+        "cumulative_materialized_history_tokens": 572963,
+        "own_saving_fraction": 0.3318,
+        "history_policy": "frontier_dag_retirement",
+        "error_type": "HTTPError",
+    })
+    _write(root / "official_grade" / "report.json", {
+        "resolved_ids": ["a", "b", "c"], "unresolved_ids": [],
+    })
+    row = reduce_matrix(tmp_path)["rows"][0]
+    assert row["resolved"] == 3
+    assert row["autonomous_completion"] is False
