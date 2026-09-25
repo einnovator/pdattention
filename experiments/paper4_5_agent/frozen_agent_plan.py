@@ -36,6 +36,7 @@ class FrozenAgentDecision:
     session_id: str
     logical_payload: Mapping[str, Any]
     expected_assistant_content: str
+    expected_assistant_message: Mapping[str, Any] | None
     selected_message_indices: tuple[int, ...]
     mandatory_message_indices: tuple[int, ...]
     source_policy: str
@@ -80,9 +81,32 @@ def _content_sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _render_prompt(tokenizer, messages: Sequence[Mapping[str, Any]]) -> list[int]:
+def _json_sha256(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _chat_template_kwargs(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Extract model-visible template inputs from the frozen request."""
+
+    result = dict(payload.get("chat_template_kwargs") or {})
+    for key in ("tools", "documents"):
+        if key in payload:
+            result[key] = payload[key]
+    return result
+
+
+def _render_prompt(
+    tokenizer,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    chat_template_kwargs: Mapping[str, Any] | None = None,
+) -> list[int]:
     rendered = tokenizer.apply_chat_template(
-        list(messages), tokenize=True, add_generation_prompt=True
+        list(messages),
+        tokenize=True,
+        add_generation_prompt=True,
+        **dict(chat_template_kwargs or {}),
     )
     if isinstance(rendered, str):
         rendered = tokenizer.encode(rendered, add_special_tokens=False)
@@ -131,6 +155,9 @@ def load_frozen_agent_decisions(
         messages = payload.get("messages")
         if not isinstance(messages, list):
             raise ValueError(f"request {ordinal} has no logical messages")
+        payload_sha256 = row.get("logical_payload_sha256")
+        if payload_sha256 is not None and _json_sha256(payload) != payload_sha256:
+            raise ValueError(f"request {ordinal} failed logical-payload identity")
         request_digest = _selection_input_digest(messages)
         if request_digest != row.get("request_input_sha256"):
             raise ValueError(f"request {ordinal} failed full-request identity")
@@ -139,6 +166,14 @@ def load_frozen_agent_decisions(
             "expected_assistant_content_sha256"
         ):
             raise ValueError(f"request {ordinal} failed response identity")
+        expected_message = row.get("expected_assistant_message")
+        if expected_message is not None:
+            if not isinstance(expected_message, Mapping):
+                raise ValueError(f"request {ordinal} has malformed assistant message")
+            if _json_sha256(expected_message) != row.get(
+                "expected_assistant_message_sha256"
+            ):
+                raise ValueError(f"request {ordinal} failed assistant-action identity")
         plan_row = plan_by_digest.get(request_digest)
         plan_entry = fixture.get(request_digest)
         if plan_row is None or plan_entry is None:
@@ -157,6 +192,7 @@ def load_frozen_agent_decisions(
         if not isinstance(raw_replacements, list):
             raise ValueError(f"request {ordinal} materialized replacements are not a list")
         replacements: list[FrozenMaterializedMessage] = []
+        replacement_record_ids: set[str] = set()
         resource_text_by_index: dict[int, str] = {}
         for resource in plan_row.get("resources", ()):
             if not isinstance(resource, Mapping):
@@ -177,8 +213,9 @@ def load_frozen_agent_decisions(
             role = str(replacement.get("role", ""))
             content = str(replacement.get("content", ""))
             content_sha256 = str(replacement.get("content_sha256", ""))
-            if record_id != f"record-{index:06d}":
+            if not record_id or record_id in replacement_record_ids:
                 raise ValueError(f"request {ordinal} replacement identity mismatch")
+            replacement_record_ids.add(record_id)
             if index not in selected or index in mandatory:
                 raise ValueError(f"request {ordinal} replacement is not selected history")
             if role != str(messages[index].get("role", "")):
@@ -200,6 +237,9 @@ def load_frozen_agent_decisions(
             session_id=str(row.get("session_id", "")),
             logical_payload=payload,
             expected_assistant_content=expected,
+            expected_assistant_message=(
+                dict(expected_message) if expected_message is not None else None
+            ),
             selected_message_indices=selected,
             mandatory_message_indices=mandatory,
             source_policy=str(plan_entry.source_policy or ""),
@@ -221,7 +261,10 @@ def frozen_live_kv_geometry(
     """Split one exact request into resident historical K/V and a wire tail."""
 
     messages = list(decision.logical_payload["messages"])
-    prompt_ids = _render_prompt(tokenizer, messages)
+    template_kwargs = _chat_template_kwargs(decision.logical_payload)
+    prompt_ids = _render_prompt(
+        tokenizer, messages, chat_template_kwargs=template_kwargs
+    )
     if not prompt_ids:
         raise ValueError("chat template produced an empty prompt")
     active = [
@@ -237,6 +280,7 @@ def frozen_live_kv_geometry(
         prompt_ids,
         source_tokens=len(prompt_ids),
         prefix_ids_cache=prefix_ids_cache,
+        chat_template_kwargs=template_kwargs,
     )
     span_by_index: dict[int, LiveKVInterval] = {}
     for span in full_spans:
@@ -292,13 +336,16 @@ def frozen_live_kv_geometry(
                 raise ValueError("materialized replacement is outside historical source")
             variant = [dict(message) for message in messages]
             variant[replacement.message_index]["content"] = replacement.content
-            variant_prompt_ids = _render_prompt(tokenizer, variant)
+            variant_prompt_ids = _render_prompt(
+                tokenizer, variant, chat_template_kwargs=template_kwargs
+            )
             variant_spans = causal_message_spans(
                 tokenizer,
                 variant,
                 variant_prompt_ids,
                 source_tokens=len(variant_prompt_ids),
                 prefix_ids_cache=prefix_ids_cache,
+                chat_template_kwargs=template_kwargs,
             )
             variant_span = next(
                 (

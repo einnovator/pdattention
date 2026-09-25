@@ -100,6 +100,57 @@ def test_frozen_plan_maps_exact_records_and_current_tail(tmp_path: Path) -> None
     assert full.plan.selected_tokens == len(full.source_ids)
 
 
+def test_frozen_plan_renders_native_tools_and_validates_full_action(
+    tmp_path: Path,
+) -> None:
+    replay_path, plan_path = _write_pair(tmp_path)
+    replay = json.loads(replay_path.read_text(encoding="utf-8"))
+    tools = [{
+        "type": "function",
+        "function": {"name": "bash", "parameters": {"type": "object"}},
+    }]
+    replay["logical_payload"]["tools"] = tools
+    replay["logical_payload_sha256"] = hashlib.sha256(json.dumps(
+        replay["logical_payload"],
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode()).hexdigest()
+    expected_message = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{
+            "id": "call-1",
+            "type": "function",
+            "function": {"name": "bash", "arguments": "{\"command\":\"pwd\"}"},
+        }],
+    }
+    replay["expected_assistant_message"] = expected_message
+    replay["expected_assistant_message_sha256"] = hashlib.sha256(json.dumps(
+        expected_message,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode()).hexdigest()
+    replay_path.write_text(json.dumps(replay) + "\n", encoding="utf-8")
+    calls = []
+
+    class ToolTemplate(CharacterTemplate):
+        def apply_chat_template(
+            self, messages, *, tokenize, add_generation_prompt, tools
+        ):
+            calls.append(tools)
+            rendered = json.dumps(tools, sort_keys=True)
+            rendered += self._render(messages, add_generation_prompt)
+            return [ord(char) for char in rendered] if tokenize else rendered
+
+    decision = load_frozen_agent_decisions(replay_path, plan_path)[0]
+    assert decision.expected_assistant_message == expected_message
+    frozen_live_kv_geometry(ToolTemplate(), decision)
+    assert calls
+    assert all(call == tools for call in calls)
+
+
 def test_frozen_plan_rejects_excluded_message_inside_wire_tail(tmp_path: Path) -> None:
     replay, plan = _write_pair(tmp_path)
     row = json.loads(plan.read_text(encoding="utf-8"))

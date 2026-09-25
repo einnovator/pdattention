@@ -66,7 +66,10 @@ def causal_message_spans(
     for index in range(len(messages)):
         prefix_messages = messages[: index + 1]
         cache_key = hashlib.sha256(json.dumps(
-            prefix_messages,
+            {
+                "messages": prefix_messages,
+                "chat_template_kwargs": dict(chat_template_kwargs or {}),
+            },
             sort_keys=True,
             separators=(",", ":"),
             default=str,
