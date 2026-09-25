@@ -29,6 +29,7 @@ def test_kilo_native_completion_requires_terminal_non_tool_step(
 from experiments.paper8_5_agent_memory.run_pi_swebench import (
     PI_SESSION_PATH,
     _completion_evidence,
+    _settings_arguments,
     _session_arguments as pi_session_arguments,
 )
 
@@ -63,6 +64,30 @@ def test_pi_completion_rejects_exhausted_provider_retries() -> None:
     assert _completion_evidence(
         success_rows, exit_code=0, timed_out=False
     )["native_completion_observed"] is True
+
+
+def test_pi_controlled_settings_mount_long_timeout_without_provider_retries(
+    tmp_path: Path,
+) -> None:
+    settings = tmp_path / "settings.json"
+    settings.write_text(
+        '{"retry":{"provider":{"timeoutMs":1800000,"maxRetries":0}}}',
+        encoding="utf-8",
+    )
+    docker_args, resolved, timeout_ms = _settings_arguments(settings)
+    assert resolved == settings.resolve()
+    assert timeout_ms == 1_800_000
+    assert docker_args == (
+        "--volume",
+        f"{settings.resolve()}:/root/.pi/agent/settings.json:ro",
+    )
+
+    settings.write_text(
+        '{"retry":{"provider":{"timeoutMs":30000,"maxRetries":1}}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="timeout"):
+        _settings_arguments(settings)
 
 
 def test_kilo_persistent_session_replaces_memory_database(tmp_path: Path) -> None:

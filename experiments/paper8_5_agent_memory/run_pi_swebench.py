@@ -188,12 +188,37 @@ def _run(
     )
 
 
+def _settings_arguments(
+    value: str | Path,
+) -> tuple[tuple[str, str], Path, int]:
+    """Validate the controlled Pi transport and return its read-only mount."""
+
+    settings_config = Path(value).resolve()
+    settings = json.loads(settings_config.read_text(encoding="utf-8"))
+    provider_retry = settings.get("retry", {}).get("provider", {})
+    provider_timeout_ms = int(provider_retry.get("timeoutMs") or 0)
+    if provider_timeout_ms < 60_000:
+        raise ValueError("Pi provider timeout must be at least 60000 ms")
+    if int(provider_retry.get("maxRetries") or 0) != 0:
+        raise ValueError(
+            "Pi provider retries must be disabled; agent retries are audited separately"
+        )
+    return (
+        ("--volume", f"{settings_config}:/root/.pi/agent/settings.json:ro"),
+        settings_config,
+        provider_timeout_ms,
+    )
+
+
 def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
     trajectory = Path(args.reference_trajectory).resolve()
     model_identity = observed_model_identity(args)
     model_config = Path(args.model_config).resolve()
+    settings_docker_args, settings_config, provider_timeout_ms = (
+        _settings_arguments(args.settings_config)
+    )
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     session_docker_args, session_pi_args, session_store = _session_arguments(
@@ -239,6 +264,7 @@ def run(args: argparse.Namespace) -> Path:
         "--platform", "linux/amd64",
         *session_docker_args,
         "--volume", f"{model_config}:/root/.pi/agent/models.json:ro",
+        *settings_docker_args,
         "--env", "PI_OFFLINE=1",
         image,
         "pi",
@@ -359,6 +385,12 @@ def run(args: argparse.Namespace) -> Path:
         "image_build_skipped": bool(args.skip_build),
         "capture_snapshot_image": snapshot,
         "container": container,
+        "pi_settings": {
+            "source": str(settings_config),
+            "sha256": _sha256(settings_config.read_bytes()),
+            "provider_timeout_ms": provider_timeout_ms,
+            "provider_max_retries": 0,
+        },
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
         "elapsed_seconds": (finished - started).total_seconds(),
@@ -401,6 +433,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--model-config", required=True)
+    parser.add_argument(
+        "--settings-config",
+        default=str(
+            Path(__file__).parent / "configs" / "pi_controlled_settings_v1.json"
+        ),
+        help=(
+            "Pi settings mounted read-only into the container. Controlled runs "
+            "use a long provider timeout and disable hidden provider retries."
+        ),
+    )
     parser.add_argument("--output", required=True)
     parser.add_argument("--arm", default="FULL")
     parser.add_argument("--model", default="qwen3-coder:30b")

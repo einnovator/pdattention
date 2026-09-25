@@ -157,6 +157,7 @@ def _agent_arguments(
         values = [
             *common,
             "--model-config", args.model_config,
+            "--settings-config", args.pi_settings_config,
             "--model", args.model,
             "--served-model", args.model,
             "--provider", "paper85-proxy",
@@ -423,6 +424,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--tokenizer-revision", required=True)
     parser.add_argument("--model-config")
+    parser.add_argument(
+        "--pi-settings-config",
+        default=str(
+            Path(__file__).parent / "configs" / "pi_controlled_settings_v1.json"
+        ),
+    )
     parser.add_argument("--tool-semantics", type=Path)
     parser.add_argument("--policy", default="full")
     parser.add_argument("--budget-fraction", type=float, default=1.0)
