@@ -4,11 +4,21 @@ from pathlib import Path
 from experiments.paper8_5_agent_memory.run_cross_agent_session_campaign import (
     _aggregate_predictions,
     _agent_arguments,
+    _docker_config_path,
     _policy,
     _prepare_resume,
     _tasks,
     build_parser,
 )
+
+
+def test_docker_config_requires_an_existing_directory(tmp_path: Path) -> None:
+    import pytest
+
+    assert _docker_config_path(None) is None
+    assert _docker_config_path(str(tmp_path)) == tmp_path.resolve()
+    with pytest.raises(ValueError, match="existing directory"):
+        _docker_config_path(str(tmp_path / "missing"))
 
 
 def test_aggregate_predictions_preserves_all_episode_identities(tmp_path: Path) -> None:

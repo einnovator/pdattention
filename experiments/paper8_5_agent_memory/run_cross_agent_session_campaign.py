@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import shutil
 from typing import Any, Callable
@@ -35,6 +36,24 @@ def _write_json(path: Path, value: Any) -> None:
         json.dumps(value, indent=2, sort_keys=True, default=str) + "\n",
         encoding="utf-8",
     )
+
+
+def _docker_config_path(value: str | None) -> Path | None:
+    """Resolve an optional isolated Docker client configuration directory.
+
+    Public benchmark images do not require credentials.  On unattended macOS
+    hosts, Docker Desktop's credential helper can nevertheless block forever
+    while trying to read the login keychain.  A declared empty configuration
+    directory bypasses that host-specific helper without changing the daemon,
+    image identity, or benchmark container.
+    """
+
+    if not value:
+        return None
+    path = Path(value).resolve()
+    if not path.is_dir():
+        raise ValueError("--docker-config must name an existing directory")
+    return path
 
 
 def _aggregate_predictions(output: Path, episodes: list[dict[str, Any]]) -> Path:
@@ -369,6 +388,9 @@ def _prepare_resume(
 def run(args: argparse.Namespace) -> Path:
     if args.agent != "openhands" and not args.model_config:
         raise ValueError(f"--model-config is required for {args.agent}")
+    docker_config = _docker_config_path(args.docker_config)
+    if docker_config is not None:
+        os.environ["DOCKER_CONFIG"] = str(docker_config)
     repository = Path(__file__).resolve().parents[2]
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -452,6 +474,9 @@ def run(args: argparse.Namespace) -> Path:
         "task_count_completed": len(episodes),
         "task_order": [row["instance_id"] for row in tasks],
         "policy": args.policy,
+        "docker_config": (
+            None if docker_config is None else str(docker_config)
+        ),
         "policy_parameters": {
             "budget_fraction": args.budget_fraction,
             "protected_head_turns": args.protected_head_turns,
@@ -544,6 +569,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--proxy-port", type=int, default=18185)
     parser.add_argument("--container-proxy-url", default="http://host.docker.internal:18185/v1")
     parser.add_argument("--docker", default="docker")
+    parser.add_argument(
+        "--docker-config",
+        help=(
+            "existing Docker client configuration directory; use an empty "
+            "directory for anonymous public-image pulls when a desktop "
+            "credential helper is unavailable or blocks unattended execution"
+        ),
+    )
     parser.add_argument("--build-timeout-seconds", type=int, default=3600)
     parser.add_argument("--agent-timeout-seconds", type=int, default=3600)
     parser.add_argument("--upstream-timeout-seconds", type=int, default=3600)
