@@ -33,3 +33,25 @@ These files prove logical identity and engine-token geometry only.  They do
 not yet prove zero re-encoding, zero-copy attention, lifecycle safety, logit
 equivalence, or runtime benefit.  Those gates must be produced by each native
 Paper 4.5 engine against `request_replay.json` and `selection_fixture.json`.
+
+## MLX lifecycle qualification
+
+`mlx_qwen3_06b_lifecycle_selective.json` applies this frozen selection to the
+corrected segmented MLX path using Qwen3-0.6B-4bit as a fast engine-mechanics
+probe.  The engine-prefixed geometry is 37,784 source tokens, 13,418 selected
+resident tokens, and a 2,144-token wire suffix: 35.51% historical retention
+and 38.98% total realized retention.
+
+The run qualifies the mechanism, not coding-agent model quality:
+
+- zero selected-history text re-encoding and zero selection-pack bytes;
+- exact same-subset, dense-engine-oracle, and restore logits (all reported
+  maximum absolute deltas are `0.0`);
+- no selected-K/V-sized consumer transient: 155,659 peak delta bytes versus
+  54,960,128 bytes of selected layer K/V (`0.283%`);
+- successful concurrent borrowing, cancellation, error cleanup, stale-fork
+  rejection, eviction/offload, exact restoration, termination, and source
+  tombstoning.
+
+The corresponding Qwen3-Coder-30B autonomous task run and the same lifecycle
+gate on HF, vLLM, SGLang, and llama.cpp remain separate required evidence.
