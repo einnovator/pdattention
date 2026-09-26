@@ -4,9 +4,11 @@ from pathlib import Path
 from experiments.paper8_5_agent_memory.run_cross_agent_session_campaign import (
     _aggregate_predictions,
     _agent_arguments,
+    _checkpoint_episode_state,
     _docker_config_path,
     _policy,
     _prepare_resume,
+    _restore_episode_state,
     _tasks,
     build_parser,
 )
@@ -19,6 +21,65 @@ def test_docker_config_requires_an_existing_directory(tmp_path: Path) -> None:
     assert _docker_config_path(str(tmp_path)) == tmp_path.resolve()
     with pytest.raises(ValueError, match="existing directory"):
         _docker_config_path(str(tmp_path / "missing"))
+
+
+def test_incomplete_episode_restores_resumable_session_and_trace(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "campaign"
+    output.mkdir()
+    session = output / "native_session"
+    session.mkdir()
+    (session / "events.jsonl").write_text("good-prefix\n", encoding="utf-8")
+    trace = output / "proxy_trace.jsonl"
+    trace.write_text('{"request_index": 1}\n', encoding="utf-8")
+
+    checkpoint = _checkpoint_episode_state(output, session, trace, 2)
+    (session / "events.jsonl").write_text(
+        "good-prefix\nfailed-task\n", encoding="utf-8"
+    )
+    with trace.open("a", encoding="utf-8") as handle:
+        handle.write('{"request_index": 2, "upstream_status": 0}\n')
+    failed_episode = output / "episode-02"
+    failed_episode.mkdir()
+
+    _restore_episode_state(
+        checkpoint,
+        session,
+        trace,
+        failed_trace=failed_episode / "failed_proxy_trace.jsonl",
+    )
+
+    assert (session / "events.jsonl").read_text(encoding="utf-8") == "good-prefix\n"
+    assert trace.read_text(encoding="utf-8") == '{"request_index": 1}\n'
+    assert (failed_episode / "failed_proxy_trace.jsonl").read_text(
+        encoding="utf-8"
+    ) == '{"request_index": 2, "upstream_status": 0}\n'
+    assert not checkpoint.exists()
+
+
+def test_first_incomplete_episode_removes_new_native_state(tmp_path: Path) -> None:
+    output = tmp_path / "campaign"
+    output.mkdir()
+    session = output / "native_session"
+    trace = output / "proxy_trace.jsonl"
+    checkpoint = _checkpoint_episode_state(output, session, trace, 1)
+    session.mkdir()
+    (session / "events.jsonl").write_text("failed-task\n", encoding="utf-8")
+    trace.write_text('{"request_index": 1, "upstream_status": 0}\n', encoding="utf-8")
+    failed_episode = output / "episode-01"
+    failed_episode.mkdir()
+
+    _restore_episode_state(
+        checkpoint,
+        session,
+        trace,
+        failed_trace=failed_episode / "failed_proxy_trace.jsonl",
+    )
+
+    assert not session.exists()
+    assert not trace.exists()
+    assert (failed_episode / "failed_proxy_trace.jsonl").is_file()
 
 
 def test_aggregate_predictions_preserves_all_episode_identities(tmp_path: Path) -> None:

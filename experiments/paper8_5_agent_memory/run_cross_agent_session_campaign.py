@@ -56,6 +56,66 @@ def _docker_config_path(value: str | None) -> Path | None:
     return path
 
 
+def _checkpoint_episode_state(
+    output: Path,
+    session_store: Path,
+    trace: Path,
+    ordinal: int,
+) -> Path:
+    """Snapshot the resumable state before one autonomous episode.
+
+    An agent can append a task prompt and transport-error messages to its
+    native session even when it never produces a successful assistant turn.
+    Such an episode is evidence, but it is not a completed task prefix.  Keep
+    a small private checkpoint so a failed attempt can be quarantined without
+    poisoning a later immutable retry.
+    """
+
+    checkpoint = output / f".episode-{ordinal:02d}-checkpoint"
+    checkpoint.mkdir(parents=False, exist_ok=False)
+    session_existed = session_store.is_dir()
+    trace_existed = trace.is_file()
+    if session_existed:
+        shutil.copytree(session_store, checkpoint / "native_session")
+    if trace_existed:
+        shutil.copy2(trace, checkpoint / "proxy_trace.jsonl")
+    _write_json(checkpoint / "state.json", {
+        "session_store_existed": session_existed,
+        "trace_existed": trace_existed,
+    })
+    return checkpoint
+
+
+def _restore_episode_state(
+    checkpoint: Path,
+    session_store: Path,
+    trace: Path,
+    *,
+    failed_trace: Path,
+) -> None:
+    """Roll back native-session and proxy state after an incomplete episode."""
+
+    state = json.loads((checkpoint / "state.json").read_text(encoding="utf-8"))
+    trace_before = checkpoint / "proxy_trace.jsonl"
+    before_size = trace_before.stat().st_size if trace_before.is_file() else 0
+    if trace.is_file():
+        appended = trace.read_bytes()[before_size:]
+        if appended:
+            failed_trace.write_bytes(appended)
+
+    if session_store.exists():
+        shutil.rmtree(session_store)
+    snapshot_store = checkpoint / "native_session"
+    if state["session_store_existed"]:
+        shutil.copytree(snapshot_store, session_store)
+
+    if state["trace_existed"]:
+        shutil.copy2(trace_before, trace)
+    elif trace.exists():
+        trace.unlink()
+    shutil.rmtree(checkpoint)
+
+
 def _aggregate_predictions(output: Path, episodes: list[dict[str, Any]]) -> Path:
     """Create the single immutable prediction file consumed by SWE-bench.
 
@@ -420,32 +480,53 @@ def run(args: argparse.Namespace) -> Path:
     proxy.start("0.0.0.0", args.proxy_port)
     started = datetime.now(timezone.utc)
     error: BaseException | None = None
+    failed_episode: dict[str, Any] | None = None
     try:
         for ordinal, task in enumerate(tasks[len(episodes):], len(episodes) + 1):
             episode = output / f"episode-{ordinal:02d}"
-            runner, runner_args = _agent_arguments(
-                args, task, episode, session_store, continuation_id
+            checkpoint = _checkpoint_episode_state(
+                output, session_store, trace, ordinal
             )
-            runner(runner_args)
-            manifest = json.loads(
-                (episode / "run_manifest.json").read_text(encoding="utf-8")
-            )
-            continuation_id = _continuation_id(args.agent, manifest, ordinal)
-            episodes.append({
-                "ordinal": ordinal,
-                "instance_id": task["instance_id"],
-                "output": str(episode),
-                "continuation_id": continuation_id,
-                "patch_bytes": manifest.get("patch_bytes"),
-                "event_summary": manifest.get("event_summary"),
-                "native_completion_observed": manifest.get(
-                    "native_completion_observed", True
-                ),
-            })
-            if manifest.get("native_completion_observed") is False:
-                raise RuntimeError(
-                    f"{args.agent} episode {ordinal} ended without semantic completion"
+            try:
+                runner, runner_args = _agent_arguments(
+                    args, task, episode, session_store, continuation_id
                 )
+                runner(runner_args)
+                manifest = json.loads(
+                    (episode / "run_manifest.json").read_text(encoding="utf-8")
+                )
+                candidate_continuation = _continuation_id(
+                    args.agent, manifest, ordinal
+                )
+                candidate_episode = {
+                    "ordinal": ordinal,
+                    "instance_id": task["instance_id"],
+                    "output": str(episode),
+                    "continuation_id": candidate_continuation,
+                    "patch_bytes": manifest.get("patch_bytes"),
+                    "event_summary": manifest.get("event_summary"),
+                    "native_completion_observed": manifest.get(
+                        "native_completion_observed", True
+                    ),
+                }
+                if manifest.get("native_completion_observed") is False:
+                    failed_episode = candidate_episode
+                    raise RuntimeError(
+                        f"{args.agent} episode {ordinal} ended without "
+                        "semantic completion"
+                    )
+            except BaseException:
+                _restore_episode_state(
+                    checkpoint,
+                    session_store,
+                    trace,
+                    failed_trace=episode / "failed_proxy_trace.jsonl",
+                )
+                raise
+            else:
+                shutil.rmtree(checkpoint)
+                continuation_id = candidate_continuation
+                episodes.append(candidate_episode)
     except BaseException as exc:
         error = exc
     finally:
@@ -503,6 +584,7 @@ def run(args: argparse.Namespace) -> Path:
         "elapsed_seconds": (finished - started).total_seconds(),
         "error_type": None if error is None else type(error).__name__,
         "error_detail": None if error is None else str(error),
+        "failed_episode": failed_episode,
         "resumed_from": (
             None if not args.resume_from else str(Path(args.resume_from).resolve())
         ),
