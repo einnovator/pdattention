@@ -1,0 +1,29 @@
+# Frozen Pi M2/P1 request 194
+
+This bundle transfers the final request of the completed Paper 8.5 Pi 0.75.3
+persistent `N=6` campaign into Paper 4.5 without rerunning selection.  The
+source policy is `frontier_dag_m2_heuristic_p1`; the model-visible request and
+selected-message identities are bound by the export and reconstruction
+manifests.
+
+The source request contains 388 messages.  Paper 8.5 counts 59,331 logical
+message-content tokens, materializes 16,756, and therefore omits 71.76% on
+this request.  The exported strict subset selects 122 messages, has three
+mandatory current-state messages, and contains no compacted or newly encoded
+replacement text.
+
+The exact Qwen3-Coder tokenizer audit maps the same frozen decision to:
+
+- 77,955 full prompt tokens;
+- 77,756 resident source-history tokens plus a 199-token wire tail;
+- 21,912 selected original-position resident K/V tokens;
+- 28.36% total realized retention, or 71.64% token/K/V opportunity;
+- 120 logical intervals coalesced into five physical spans.
+
+The full-retention control maps the same request to one 77,756-token resident
+source interval and the identical 199-token wire tail.  These artifacts prove
+request identity, strict-subset semantics, and tokenizer geometry only.  They
+do not prove engine correctness, zero-copy consumption, lifecycle safety,
+latency benefit, or autonomous task parity.  Each native engine must consume
+the frozen plan unchanged and report those gates independently.
+

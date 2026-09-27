@@ -246,6 +246,48 @@ def test_heldout_m2p1_task8_handoff_is_hash_bound_and_complete() -> None:
     assert max(row["realized_retention_fraction"] for row in audit["rows"]) < 0.39
 
 
+def test_pi_n6_request194_handoff_is_strict_hash_bound_subset() -> None:
+    root = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans/paper8_5_pi_n6_m2p1_request194_v1"
+    )
+    manifest = json.loads(
+        (root / "export_manifest.json").read_text(encoding="utf-8")
+    )
+    plan = root / "selection_fixture.json"
+    replay = root / "request_replay.json"
+    decisions = load_frozen_agent_decisions(replay, plan)
+
+    assert len(decisions) == 1
+    assert hashlib.sha256(plan.read_bytes()).hexdigest() == manifest["fixture_sha256"]
+    assert hashlib.sha256(replay.read_bytes()).hexdigest() == manifest[
+        "request_replay_sha256"
+    ]
+    decision = decisions[0]
+    assert decision.source_policy == "frontier_dag_m2_heuristic_p1"
+    assert len(decision.logical_payload["messages"]) == 388
+    assert len(decision.selected_message_indices) == 122
+    assert not decision.materialized_message_replacements
+
+    selective = json.loads(
+        (root / "tokenizer_audit_selective.json").read_text(encoding="utf-8")
+    )["rows"][0]
+    full = json.loads(
+        (root / "tokenizer_audit_full.json").read_text(encoding="utf-8")
+    )["rows"][0]
+    assert selective["prompt_tokens"] == full["prompt_tokens"] == 77_955
+    assert selective["resident_source_tokens"] == 77_756
+    assert selective["wire_tail_tokens"] == full["wire_tail_tokens"] == 199
+    assert selective["selected_kv_tokens"] == 21_912
+    assert selective["realized_retention_fraction"] == pytest.approx(
+        0.28363799627990505
+    )
+    assert len(selective["selection_plan"]["physical_intervals"]) == 5
+    assert full["selected_kv_tokens"] == 77_756
+    assert full["realized_retention_fraction"] == 1.0
+
+
 def test_materialized_receipt_fixture_exposes_mixed_kv_spans() -> None:
     root = (
         Path(__file__).resolve().parents[1]
