@@ -83,6 +83,7 @@ def _install_import_only_triton() -> tuple[bool, list[str]]:
     attempts: list[str] = []
     root = ModuleType("triton")
     root.__path__ = []
+    root.__file__ = "<pra-import-only-triton>"
     root.__pra_import_only__ = True
     root.__pra_forbidden_execution_attempts__ = attempts
     root.Config = _Config
@@ -97,21 +98,33 @@ def _install_import_only_triton() -> tuple[bool, list[str]]:
 
     language = ModuleType("triton.language")
     language.__path__ = []
+    language.__file__ = "<pra-import-only-triton-language>"
     language.constexpr = _Constexpr()
-    language.__getattr__ = lambda name: _LanguageSymbol(name, attempts)
+
+    def language_symbol(name: str):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _LanguageSymbol(name, attempts)
+
+    language.__getattr__ = language_symbol
     root.language = language
 
     extra = ModuleType("triton.language.extra")
     extra.__path__ = []
+    extra.__file__ = "<pra-import-only-triton-language-extra>"
     libdevice = ModuleType("triton.language.extra.libdevice")
+    libdevice.__file__ = "<pra-import-only-triton-libdevice>"
 
     def libdevice_symbol(name: str):
+        if name.startswith("__"):
+            raise AttributeError(name)
         return _LanguageSymbol(f"libdevice.{name}", attempts)
 
     libdevice.__getattr__ = libdevice_symbol
     extra.libdevice = libdevice
 
     testing = ModuleType("triton.testing")
+    testing.__file__ = "<pra-import-only-triton-testing>"
 
     def do_bench(*args, **kwargs):
         attempts.append("testing.do_bench")

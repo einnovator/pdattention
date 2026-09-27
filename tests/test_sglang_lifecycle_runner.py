@@ -7,6 +7,7 @@ from experiments.paper4_5_agent.run_sglang_live_agent_kv_lifecycle import (
     _prefill,
 )
 from experiments.paper4_5_agent.sglang_mlx_import_guard import (
+    _install_import_only_triton,
     _LanguageSymbol,
     TritonExecutionForbidden,
 )
@@ -84,3 +85,28 @@ def test_mlx_import_guard_fails_closed_on_triton_execution() -> None:
         symbol("pointer")
 
     assert attempts == ["load"]
+
+
+def test_import_only_triton_exposes_real_module_metadata(monkeypatch) -> None:
+    import sys
+
+    names = [
+        "triton",
+        "triton.language",
+        "triton.language.extra",
+        "triton.language.extra.libdevice",
+        "triton.testing",
+    ]
+    for name in names:
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.setattr(
+        "experiments.paper4_5_agent.sglang_mlx_import_guard."
+        "importlib.util.find_spec",
+        lambda _name: None,
+    )
+
+    installed, attempts = _install_import_only_triton()
+
+    assert installed is True
+    assert sys.modules["triton.language"].__file__.startswith("<pra-")
+    assert attempts == []
