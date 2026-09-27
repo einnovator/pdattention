@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "contract": "paper4.5-vllm-cuda-frozen-request-admission-v1",
+  "status": "blocked_before_inference",
+  "experiment_revision": "ec26528a3533bf7075ffd5ff2f3d47ae5ad18df3",
+  "engine": "vllm-cuda",
+  "engine_version": "0.28.0",
+  "model": "Qwen/Qwen3-0.6B",
+  "device": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "device_total_memory_gib": 7.96,
+  "fixture": {
+    "prompt_tokens": 77955,
+    "resident_source_tokens": 77756,
+    "wire_tail_tokens": 199,
+    "selected_logical_kv_tokens": 21912,
+    "physical_intervals": [
+      [0, 2319],
+      [26927, 27352],
+      [38258, 39984],
+      [49854, 50029],
+      [60489, 77756]
+    ]
+  },
+  "model_max_position_embeddings": 40960,
+  "measured_vllm_kv_capacity_tokens": 50400,
+  "measured_vllm_kv_capacity_gib": 5.38,
+  "source_kv_required_bytes_fp16": 8917680128,
+  "source_kv_required_gib_fp16": 8.30523681640625,
+  "block_size": 16,
+  "planned_page_geometry_not_executed": {
+    "resident_source_page_tokens": 77760,
+    "active_tail_tokens_moved_to_resident_page": 4,
+    "remaining_wire_tail_tokens": 195,
+    "selected_original_page_tokens": 21968,
+    "selected_page_rounding_overhead_tokens": 56
+  },
+  "blockers": [
+    "fixture prompt length exceeds the model's declared 40960-position limit",
+    "full FP16 source K/V exceeds physical GPU memory before weights and activation workspace",
+    "measured vLLM K/V capacity is below the required resident source length"
+  ],
+  "claim_boundary": "No N=6 inference, zero-copy, numerical, lifecycle, or latency result is claimed."
+}

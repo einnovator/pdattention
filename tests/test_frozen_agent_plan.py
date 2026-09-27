@@ -288,6 +288,77 @@ def test_pi_n6_request194_handoff_is_strict_hash_bound_subset() -> None:
     assert full["realized_retention_fraction"] == 1.0
 
 
+def test_pi_cuda_admission_and_largest_exact_scope_are_fail_closed() -> None:
+    plans = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans"
+    )
+    admission = json.loads(
+        (
+            plans
+            / "paper8_5_pi_n6_m2p1_request194_v1"
+            / "vllm_cuda_rtx5060_admission_v1/admission_summary.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert admission["status"] == "blocked_before_inference"
+    assert admission["fixture"]["resident_source_tokens"] == 77_756
+    assert admission["model_max_position_embeddings"] == 40_960
+    assert admission["measured_vllm_kv_capacity_tokens"] == 50_400
+    assert admission["source_kv_required_bytes_fp16"] > 7.96 * 1024**3
+    assert admission["planned_page_geometry_not_executed"][
+        "selected_page_rounding_overhead_tokens"
+    ] == 56
+
+    receipt = json.loads(
+        (
+            plans
+            / "paper8_5_pi_n3_m2p1_request81_v1"
+            / "vllm_cuda_rtx5060_ec26528a/lifecycle_receipt.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert receipt["qualified"] is True
+    assert receipt["request_input_sha256"] == (
+        "0ad3e4de6aadbacb08af1d1483a08bf749e47a23d112e26fa6ee21f032c4222c"
+    )
+    assert receipt["selected_history_reencoded_tokens"] == 0
+    assert receipt["selected_history_kv_copy_bytes"] == 0
+    assert receipt["receipt_h2d_bytes"] == 0
+    assert receipt["final_token_ids_a"] == receipt["final_token_ids_b"]
+    assert receipt["final_registry_snapshot"]["sources"] == {}
+
+
+def test_pi_n6_mlx_mechanics_gate_is_exact_and_copy_free() -> None:
+    receipt_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans/paper8_5_pi_n6_m2p1_request194_v1"
+        / "mlx_qwen3_06b_m4pro_lifecycle_v1/lifecycle_receipt.json"
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+    assert receipt["engine_lifecycle_qualified"] is True
+    assert receipt["qualification_blockers"] == []
+    assert receipt["request_input_sha256"] == (
+        "8990cf82da78a8182871a2f7ac8849aa055483a678303e1777e39c20ab9f8436"
+    )
+    assert receipt["source_tokens"] == 77_636
+    assert receipt["selected_kv_tokens"] == 23_345
+    assert receipt["materialized_history_tokens"] == 0
+    assert receipt["logical_selected_intervals"] == 120
+    assert receipt["physical_kv_segments"] == 5
+    assert receipt["selected_text_reencoded_tokens"] == 0
+    assert receipt["selection_pack_bytes"] == 0
+    assert receipt["physical_kv_copy"] is False
+    assert receipt["max_abs_logit_delta_same_subset"] == 0.0
+    assert receipt["max_abs_logit_delta_dense_engine_oracle"] == 0.0
+    assert receipt["max_abs_logit_delta_after_restore"] == 0.0
+    assert receipt["disjoint_attention_allocation"][
+        "full_selected_kv_sized_allocation_observed"
+    ] is False
+    assert all(receipt["checks"].values())
+
+
 def test_materialized_receipt_fixture_exposes_mixed_kv_spans() -> None:
     root = (
         Path(__file__).resolve().parents[1]

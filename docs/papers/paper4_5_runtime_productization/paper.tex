@@ -663,8 +663,23 @@ the frozen plan contains no replacement text, maps 77,756 resident source
 tokens to 21,912 original-position selected K/V entries plus the identical
 199-token wire tail, and realizes 71.64\% tokenizer-level omission through 120
 logical intervals coalesced to five physical spans.  This is geometry, not yet
-engine saving or latency evidence; the cross-engine consumer and lifecycle
-rows remain open.  The hash-bound fixture is
+engine saving or latency evidence.  On the 8-GB RTX 5060 host, vLLM 0.28
+correctly rejects this exact fixture before inference: 77,955 prompt tokens
+exceed the model's 40,960-position limit, while the FP16 source K/V alone would
+occupy 8.305~GiB and the initialized engine exposes capacity for 50,400 tokens.
+The largest exact CUDA scope on that host is therefore the earlier Pi $N=3$
+request: scheduler page aliasing omits 64.45\% of resident K/V with zero
+selected-history re-encoding, selected-K/V copy, or H2D, repeat-exact tokens,
+and clean alias release.  Same-subset logit parity and consumer scratch remain
+unmeasured for that CUDA row.  Other cross-engine consumer and lifecycle rows
+remain open.  Direct MLX does execute the exact $N=6$ plan as an engine-
+mechanics probe on Qwen3-0.6B-4bit: under that tokenizer it selects 23,345 of
+77,636 resident source K/V entries plus a 195-token tail, for 69.755\% total
+omission.  Selected-history re-encoding and packing are zero; same-subset,
+dense-engine-oracle, and restored logits are exact; the 307,235-byte first-
+layer peak delta is 0.3213\% of selected layer K/V; and every declared lifecycle
+check passes.  Its 265.71-second correctness run is not a latency claim or an
+autonomous Qwen3-Coder-30B result.  The hash-bound $N=6$ fixture is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_pi_n6_m2p1_request194_v1}.
 
 The same corrected request-9 gate does not yet qualify the direct MLX 14B
@@ -5369,8 +5384,31 @@ maps the same decision to a 77,756-token resident source, a 199-token ordinary
 wire tail, and 21,912 selected original-position K/V entries.  Total realized
 retention is 28.36\%, or 71.64\% omission, with 120 logical intervals
 coalescing to five physical spans.  This closes the frozen-plan identity and
-geometry gate only; native execution, lifecycle, and timing remain pending on
-each engine.
+geometry gate only.  vLLM 0.28 on the 8-GB RTX 5060 fails the exact request
+closed before inference: its 77,955 tokens exceed Qwen3-0.6B's declared
+40,960-position limit, its FP16 source K/V alone requires 8.305~GiB, and the
+initialized engine exposes a 50,400-token K/V pool.  Deterministic page rounding
+would select 21,968 tokens ($+56$), but that geometry was not executed.  The
+largest exact CUDA scope is the earlier Pi $N=3$ request: vLLM aliases 13,440
+selected page tokens from a 37,792-token resident source, omits 64.45\% of
+resident K/V, and reports zero selected-history re-encoding, selected-K/V copy,
+or H2D with repeat-exact output and clean release.  Its runner still lacks
+same-subset logit and consumer-scratch instrumentation, so it is a bounded page-
+alias/lifecycle result rather than full strict qualification.
+
+Direct MLX clears the corresponding exact-plan mechanism and lifecycle gate on
+a 48-GB M4 Pro with Qwen3-0.6B-4bit.  The engine tokenizer maps the source to
+77,636 tokens and the live tail to 195; the frozen decision selects 23,345
+resident K/V entries across the same 120 logical intervals and five physical
+spans.  Total realized omission is 69.755\%.  Selected-history re-encoding and
+selection-pack bytes are zero, physical K/V copy is false, and same-subset,
+dense-engine-oracle, and restored maximum logit deltas are all 0.0.  The
+first-layer peak delta is 307,235 bytes, or 0.3213\% of the 95,621,120-byte
+selected layer K/V extent, and no selected-K/V-sized temporary is observed.
+Concurrent borrowing, cancellation, error cleanup, stale-fork rejection,
+offload/restore, termination, and tombstoning all pass.  The 265.71-second run
+is correctness provenance, not a performance benefit, and the smaller model
+does not establish autonomous Qwen3-Coder-30B parity.
 
 The first direct HF execution of that fixture now closes the request-level
 mechanism gate, but not the task or fused-performance gate.  On
@@ -5992,8 +6030,11 @@ plans.  A later matched Pi $N=5$ prefix preserves all three Full successes at
 37.51\% clean paired saving, but failure-aware accounting lowers saving to
 29.05\% and increases calls by 27; its completed selective $N=6$ extension has
 51.36\% own saving but no completed Full denominator.  The final strict-subset
-request supplies a 71.64\%-omission native stress fixture, not an engine or
-accuracy result.  M2/P1 is therefore not yet a production default or a greater-
+request supplies a 71.64\%-omission native stress fixture.  MLX qualifies its
+69.755\%-omission small-model realization with exact logits and full lifecycle;
+vLLM/CUDA fails the exact $N=6$ model/hardware admission gate but qualifies the
+earlier $N=3$ page-alias scope.  Neither is an autonomous accuracy or latency
+result.  M2/P1 is therefore not yet a production default or a greater-
 than-90\% accuracy claim.  Agent-Full remains the correctness control.  HF,
 MLX, SGLang-MLX, and vLLM-Metal now pass their declared
 consumer and lifecycle scopes.  HF's fused Triton path consumes canonical K/V

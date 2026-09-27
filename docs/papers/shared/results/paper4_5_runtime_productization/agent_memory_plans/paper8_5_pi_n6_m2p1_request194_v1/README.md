@@ -27,3 +27,16 @@ do not prove engine correctness, zero-copy consumption, lifecycle safety,
 latency benefit, or autonomous task parity.  Each native engine must consume
 the frozen plan unchanged and report those gates independently.
 
+The first vLLM/CUDA admission on an RTX 5060 8 GB fails closed before
+inference.  The prompt exceeds Qwen3-0.6B's declared position limit and the
+full FP16 source K/V alone exceeds physical VRAM.  The raw receipt and the
+unexecuted page-rounded geometry are under
+`vllm_cuda_rtx5060_admission_v1/`; they are a hardware/model admission result,
+not a native N=6 execution.
+
+The MLX mechanics probe under `mlx_qwen3_06b_m4pro_lifecycle_v1/` does execute
+the exact frozen plan on Qwen3-0.6B-4bit.  Under that engine tokenizer it omits
+69.755% of total visible tokens, re-encodes and packs zero selected history,
+is same-subset/dense-oracle/restored-logit exact, and passes the full declared
+lifecycle suite.  It remains a small-model mechanism result, not autonomous
+Qwen3-Coder-30B task parity or a latency-benefit result.
