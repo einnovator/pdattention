@@ -37,6 +37,7 @@ from .frozen_agent_plan import (
     frozen_live_kv_geometry,
     load_frozen_agent_decisions,
 )
+from .sglang_mlx_import_guard import sglang_mlx_import_guard
 
 
 def _max_delta(left: np.ndarray, right: np.ndarray) -> float:
@@ -298,8 +299,9 @@ def _git_revision() -> str:
 
 def run(args: argparse.Namespace) -> dict[str, object]:
     import mlx.core as mx
-    import sglang
-    from sglang.srt.hardware_backend.mlx.model_runner import MlxModelRunner
+    with sglang_mlx_import_guard() as import_guard:
+        import sglang
+        from sglang.srt.hardware_backend.mlx.model_runner import MlxModelRunner
     from transformers import AutoTokenizer
 
     started = time.perf_counter()
@@ -1075,6 +1077,21 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "qualification_blockers": [
             name for name, passed in checks.items() if not passed
         ],
+        "sglang_mlx_import_guard": {
+            "triton_import_stub_installed": (
+                import_guard.triton_import_stub_installed
+            ),
+            "torch_compile_guarded": import_guard.torch_compile_guarded,
+            "torch_device_annotation_guarded": (
+                import_guard.torch_device_annotation_guarded
+            ),
+            "duplicate_config_registration_guarded": (
+                import_guard.duplicate_config_registration_guarded
+            ),
+            "forbidden_execution_attempts": list(
+                import_guard.forbidden_execution_attempts
+            ),
+        },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

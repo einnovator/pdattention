@@ -6,6 +6,10 @@ from experiments.paper4_5_agent.run_sglang_live_agent_kv_lifecycle import (
     _extend_prefill,
     _prefill,
 )
+from experiments.paper4_5_agent.sglang_mlx_import_guard import (
+    _LanguageSymbol,
+    TritonExecutionForbidden,
+)
 
 
 class FakeRunner:
@@ -70,3 +74,13 @@ def test_lifecycle_extend_prefill_uses_only_existing_request() -> None:
         ("extend", [1, 2], False),
         ("extend", [3], True),
     ]
+
+
+def test_mlx_import_guard_fails_closed_on_triton_execution() -> None:
+    attempts: list[str] = []
+    symbol = _LanguageSymbol("load", attempts)
+
+    with pytest.raises(TritonExecutionForbidden, match="MLX path"):
+        symbol("pointer")
+
+    assert attempts == ["load"]
