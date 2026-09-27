@@ -1088,6 +1088,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "duplicate_config_registration_guarded": (
                 import_guard.duplicate_config_registration_guarded
             ),
+            "optional_vllm_import_shadowed": (
+                import_guard.optional_vllm_import_shadowed
+            ),
             "forbidden_execution_attempts": list(
                 import_guard.forbidden_execution_attempts
             ),

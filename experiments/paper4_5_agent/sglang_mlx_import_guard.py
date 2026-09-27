@@ -59,6 +59,7 @@ class SGLangMLXImportGuardReport:
     torch_compile_guarded: bool
     torch_device_annotation_guarded: bool
     duplicate_config_registration_guarded: bool
+    optional_vllm_import_shadowed: bool
     forbidden_execution_attempts: list[str]
 
 
@@ -166,6 +167,14 @@ def sglang_mlx_import_guard() -> Iterator[SGLangMLXImportGuardReport]:
     original_get_device_module = torch.get_device_module
     original_register = AutoConfig.register
     original_register_descriptor = inspect.getattr_static(AutoConfig, "register")
+    shadow_vllm = (
+        "vllm" not in sys.modules
+        and importlib.util.find_spec("vllm") is not None
+    )
+    if shadow_vllm:
+        optional_vllm = ModuleType("vllm")
+        optional_vllm.__file__ = "<pra-optional-vllm-import-shadow>"
+        sys.modules["vllm"] = optional_vllm
 
     class _ImportOnlyStream:
         pass
@@ -184,6 +193,7 @@ def sglang_mlx_import_guard() -> Iterator[SGLangMLXImportGuardReport]:
         torch_compile_guarded=True,
         torch_device_annotation_guarded=True,
         duplicate_config_registration_guarded=True,
+        optional_vllm_import_shadowed=shadow_vllm,
         forbidden_execution_attempts=attempts,
     )
     try:
@@ -192,3 +202,5 @@ def sglang_mlx_import_guard() -> Iterator[SGLangMLXImportGuardReport]:
         torch.compile = original_compile
         torch.get_device_module = original_get_device_module
         AutoConfig.register = original_register_descriptor
+        if shadow_vllm:
+            sys.modules.pop("vllm", None)
