@@ -197,6 +197,7 @@ def _admission_summary(path: Path) -> dict[str, Any]:
         ),
         "behavioral_gate_complete": False,
         "measurement_gate_complete": False,
+        "reduced_policy_quality_pass": False,
         "admission": {
             "model": payload.get("model"),
             "task": task_id,
@@ -230,6 +231,7 @@ def summarize(
     engines: dict[str, Any] = {}
     behavioral_complete = 0
     measurement_complete = 0
+    reduced_policy_complete = 0
     for engine in REQUIRED_ENGINES:
         path = gates_by_engine.get(engine)
         if path is None or not path.is_file():
@@ -242,14 +244,24 @@ def summarize(
                 "artifact": None if path is None else path.as_posix(),
                 "behavioral_gate_complete": False,
                 "measurement_gate_complete": False,
+                "reduced_policy_quality_pass": False,
             }
             continue
         payload = json.loads(path.read_text(encoding="utf-8"))
         checks = _measurement_checks(payload)
         behavior = bool((payload.get("gates") or {}).get("engine_task_gate_complete"))
         measured = behavior and all(checks.values())
+        plain_calls = (payload.get("plain") or {}).get("calls_to_solution")
+        pra90_calls = (payload.get("pra_90") or {}).get("calls_to_solution")
+        reduced_quality = bool(
+            (payload.get("pra_90") or {}).get("task_success") is True
+            and plain_calls is not None
+            and pra90_calls is not None
+            and int(pra90_calls) <= int(plain_calls)
+        )
         behavioral_complete += int(behavior)
         measurement_complete += int(measured)
+        reduced_policy_complete += int(reduced_quality)
         engines[engine] = {
             "status": "complete" if measured else (
                 "behavioral_complete_measurement_pending" if behavior else "incomplete"
@@ -258,6 +270,7 @@ def summarize(
             "classification": payload.get("classification"),
             "behavioral_gate_complete": behavior,
             "measurement_gate_complete": measured,
+            "reduced_policy_quality_pass": reduced_quality,
             "pra_90_task_success": (payload.get("pra_90") or {}).get(
                 "task_success"
             ),
@@ -271,20 +284,27 @@ def summarize(
         }
 
     required = len(REQUIRED_ENGINES)
-    release = behavioral_complete == required and measurement_complete == required
+    engine_gate = behavioral_complete == required and measurement_complete == required
+    reduced_policy_gate = reduced_policy_complete == required
+    release = engine_gate and reduced_policy_gate
     return {
         "schema_version": "paper4.5.cross-engine-agent-gate.v1",
         "required_engines": list(REQUIRED_ENGINES),
         "engines": engines,
         "behavioral_complete_engines": behavioral_complete,
         "measurement_complete_engines": measurement_complete,
+        "reduced_policy_quality_pass_engines": reduced_policy_complete,
         "required_engine_count": required,
-        "cross_engine_agent_gate_complete": release,
+        "cross_engine_agent_gate_complete": engine_gate,
+        "cross_engine_reduced_policy_gate_complete": reduced_policy_gate,
         "easy14_expansion_allowed": release,
         "claim_boundary": (
             "A PRA-100 action divergence is an implementation failure. A PRA-90 "
             "divergence is a retention-quality result only after exact PRA-100 "
-            "behavior. Missing telemetry is reported as missing, never as zero."
+            "behavior. A valid negative PRA-90 completes measurement but cannot "
+            "unlock Easy-14; expansion additionally requires no lost solve and no "
+            "call increase on every required engine. Missing telemetry is reported "
+            "as missing, never as zero."
         ),
     }
 

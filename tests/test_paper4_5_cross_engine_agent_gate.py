@@ -9,7 +9,13 @@ from experiments.paper4_5_agent.summarize_cross_engine_agent_gate import (
 )
 
 
-def _gate(path: Path, *, consumer_bytes: int | None = 10) -> None:
+def _gate(
+    path: Path,
+    *,
+    consumer_bytes: int | None = 10,
+    pra90_success: bool = True,
+    pra90_calls: int = 12,
+) -> None:
     payload = {
         "plain": {"task_success": True, "calls_to_solution": 12},
         "pra_100": {
@@ -22,13 +28,14 @@ def _gate(path: Path, *, consumer_bytes: int | None = 10) -> None:
             "consumer_temporary_peak_bytes": consumer_bytes,
         },
         "pra_90": {
+            "task_success": pra90_success,
             "realized_retention_fraction": 0.91,
             "selected_history_reencoded_tokens": 0,
             "physical_kv_copy_bytes": 0,
             "total_kv_copy_bytes": 0,
             "consumer_temporary_bytes": consumer_bytes,
             "consumer_temporary_peak_bytes": consumer_bytes,
-            "calls_to_solution": 12,
+            "calls_to_solution": pra90_calls,
         },
         "gates": {
             "pra_100_exact_action_trajectory": True,
@@ -45,7 +52,7 @@ def test_missing_engine_blocks_expansion(tmp_path: Path) -> None:
     result = summarize({"llama.cpp": path})
     assert result["behavioral_complete_engines"] == 1
     assert result["measurement_complete_engines"] == 1
-    assert result["engines"]["llama.cpp"]["pra_90_task_success"] is None
+    assert result["engines"]["llama.cpp"]["pra_90_task_success"] is True
     assert result["easy14_expansion_allowed"] is False
 
 
@@ -267,7 +274,27 @@ def test_all_behavior_and_measurements_authorize_expansion(tmp_path: Path) -> No
     result = summarize(paths)
     assert result["behavioral_complete_engines"] == len(REQUIRED_ENGINES)
     assert result["measurement_complete_engines"] == len(REQUIRED_ENGINES)
+    assert result["reduced_policy_quality_pass_engines"] == len(REQUIRED_ENGINES)
+    assert result["cross_engine_agent_gate_complete"] is True
+    assert result["cross_engine_reduced_policy_gate_complete"] is True
     assert result["easy14_expansion_allowed"] is True
+
+
+def test_valid_negative_pra90_completes_measurement_but_blocks_expansion(
+    tmp_path: Path,
+) -> None:
+    paths = {}
+    for engine in REQUIRED_ENGINES:
+        path = tmp_path / f"{engine}.json"
+        _gate(path, pra90_success=engine != "vllm")
+        paths[engine] = path
+    result = summarize(paths)
+    assert result["cross_engine_agent_gate_complete"] is True
+    assert result["measurement_complete_engines"] == len(REQUIRED_ENGINES)
+    assert result["reduced_policy_quality_pass_engines"] == len(REQUIRED_ENGINES) - 1
+    assert result["engines"]["vllm"]["reduced_policy_quality_pass"] is False
+    assert result["cross_engine_reduced_policy_gate_complete"] is False
+    assert result["easy14_expansion_allowed"] is False
 
 
 def test_published_cross_engine_gate_stays_locked() -> None:

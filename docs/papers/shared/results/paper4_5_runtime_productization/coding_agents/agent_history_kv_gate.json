@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-09-13",
+  "updated_at": "2026-09-28",
   "status": "QUALIFIED",
   "campaigns_armed": false,
   "campaign_lock": "No Easy-14 expansion until every qualified engine completes one frozen plain -> PRA-100 -> PRA-90 agent task.",
@@ -30,7 +30,7 @@
       "consumption_gate": "passed across all seven eligible Task02 turns with the fused interval-addressed Triton consumer: 196 layer calls, maximum matched-consumer logit delta 0.0, zero persistent interval packing, zero selected-K/V copy, zero selected-history re-encoding, and 19,292,784 cumulative logical attention-temporary bytes",
       "lifecycle": "passed for the synchronous request-owned HF runtime: concurrent borrowers, exact-once finish/cancel/error release, stale-generation rejection, offload/restore, termination, tombstones, original-position sparse selection, and the strict no-K/V-copy consumer gate",
       "required_fix": null,
-      "agent_campaign": "The direct no-gateway HF live-agent executor passes its declared mechanism gates, but autonomous admission remains blocked on plain task success. Moving exact-revision Qwen2.5-Coder-7B NF4 serving to Windows avoids the earlier WSL memory failure. Task05 is a valid 8,192-token plain failure: official 0/1 after 30 calls, no source mutation, an empty patch, and a 6,402-token maximum prompt. Task01 also reaches 30 calls and an empty patch, but is quarantined because the pre-fix endpoint silently accepted prompts through 14,797 tokens despite the manifest's 8,192-token limit; the first declared prompt-plus-completion overflow is call 14. The direct HF server now rejects over-limit plain and native requests before cache mutation, advertises max_model_len, and the runner preflight requires an exact context match. PRA-100/PRA-90 were not run."
+      "agent_campaign": "The direct no-gateway HF live-agent executor passes its declared mechanism gates, but autonomous admission remains blocked on plain task success. Moving exact-revision Qwen2.5-Coder-7B NF4 serving to Windows avoids the earlier WSL memory failure. Task05 is a valid 8,192-token plain failure: official 0/1 after 30 calls, no source mutation, an empty patch, and a 6,402-token maximum prompt. Task01 also reaches 30 calls and an empty patch, but is quarantined because the pre-fix endpoint silently accepted prompts through 14,797 tokens despite the manifest's 8,192-token limit; the first declared prompt-plus-completion overflow is call 14. A separate full-prompt attempt showed that an otherwise admitted 7B NF4 server can exhaust the 8 GiB GPU in the BitsAndBytes dequantization temporary. The direct server now rejects over-limit requests, exposes the observed Accelerate device map, accepts bounded GPU/CPU placement, and the lease-aware runner preflight works against a protected endpoint. Those controls are prepared but not qualified until the CUDA host returns. PRA-100/PRA-90 were not run."
     },
     "mlx": {
       "status": "QUALIFIED_DECLARED_SCOPE",
@@ -196,6 +196,7 @@
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_task01_qwen25coder14b/gate.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/gate.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/vllm_task05_qwen25coder7b/gate.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_small_model_agent_admission_20260928.json"
   ],
   "passed": [
     "same-state two-turn exactness smoke",
@@ -243,7 +244,7 @@
     ,"vLLM CUDA autonomous Task05: exact 15-call plain/PRA-100 parity followed by a valid PRA-90 quality failure at action 6 with zero selected-history re-encoding, physical or total K/V copy, or H2D"
   ],
   "still_required": [
-    "find one predeclared plain-success HF model/task pair, then run PRA-100 exact behavioral parity and PRA-90; the mechanism is qualified but Task05 failed plain and Task01 is quarantined for a pre-fix context overflow",
+    "use the bounded HF GPU/CPU placement path to find one predeclared plain-success HF model/task pair, then run PRA-100 exact behavioral parity and PRA-90; the mechanism is qualified but prior Task05 failed plain, Task01 is quarantined for a pre-fix context overflow, and the earlier full-prompt 7B attempt exhausted an unbounded dequantization temporary",
     "import a frozen agent-memory policy from Paper 8.5 and retest the same vLLM Task05 at 90%; the current causal-record policy loses the progress/submission spine despite 94.24% aggregate retention",
     "extend vLLM CUDA beyond the bounded in-process V1 homogeneous complete-page alias to partial pages, hybrid groups, multiprocess scheduler/worker execution, and timing/economic qualification",
     "instrument llama.cpp consumer temporary and total lifecycle-copy bytes; the completed task-01 endpoint reports these fields as missing rather than falsely reporting zero",
@@ -295,7 +296,7 @@
     "locked_easy3_config_qualified_cells": 9,
     "locked_easy3_adaptor_blocked_cells": 6,
     "locked_easy3_executed_cells": 0,
-    "next_action": "find one plain-success HF pair and complete its PRA-100/PRA-90 sequence; in parallel, import a frozen Paper 8.5 policy and retest the vLLM Task05 90% quality failure; do not expand Easy-14"
+    "next_action": "when the CUDA host is available, qualify bounded HF GPU/CPU placement and find one plain-success pair before PRA-100/PRA-90; do not expand Easy-14. The 1.5B and 4B MLX admission diagnostics are not substitutes for that row."
   },
   "reason": "llama.cpp, MLX, SGLang-MLX, and bounded vLLM CUDA complete one frozen autonomous sequence; HF still lacks a plain-success pair. Engine qualification remains scoped to each declared resident-K/V implementation and never transfers to cache-off or rematerializing paths."
 }
