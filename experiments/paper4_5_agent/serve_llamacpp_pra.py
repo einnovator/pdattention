@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import re
+import subprocess
 import threading
 import traceback
 import urllib.error
@@ -30,6 +31,75 @@ from pra_hf.gateway import PRAGateway, serve_gateway
 
 
 _TRAJECTORY_RESOURCE_ID = re.compile(r"m(?P<message>\d+)-(?P<segment>\d+)-(?P<role>.+)")
+
+
+def _process_rss_bytes(pid: int) -> int:
+    """Return a process RSS without making psutil a runtime dependency."""
+
+    try:
+        import psutil  # type: ignore[import-not-found]
+    except ImportError:
+        psutil = None
+    if psutil is not None:
+        try:
+            return int(psutil.Process(pid).memory_info().rss)
+        except (OSError, psutil.Error):
+            pass
+    completed = subprocess.run(
+        ["ps", "-o", "rss=", "-p", str(pid)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=2,
+    )
+    return int(completed.stdout.strip()) * 1024
+
+
+class _ProcessRSSPeakSampler:
+    """Poll one external consumer and report its observed RSS high-water delta.
+
+    This is deliberately described as an observed process-level lower bound:
+    allocations shorter than the polling interval or served from an already
+    resident allocator arena need not increase RSS.
+    """
+
+    def __init__(self, pid: int, *, interval_seconds: float = 0.01) -> None:
+        self.pid = int(pid)
+        self.interval_seconds = float(interval_seconds)
+        self._baseline = _process_rss_bytes(self.pid)
+        self._peak = self._baseline
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._sample, daemon=True)
+
+    def _sample(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            try:
+                self._peak = max(self._peak, _process_rss_bytes(self.pid))
+            except (OSError, subprocess.SubprocessError, ValueError):
+                # The request boundary will still perform one final read. A
+                # transient failed poll must not abort model generation.
+                continue
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def finish(self) -> dict[str, int | str]:
+        self._stop.set()
+        self._thread.join(timeout=max(1.0, self.interval_seconds * 4))
+        try:
+            self._peak = max(self._peak, _process_rss_bytes(self.pid))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+        delta = max(0, self._peak - self._baseline)
+        return {
+            "consumer_temporary_bytes": delta,
+            "consumer_temporary_peak_bytes": delta,
+            "consumer_process_rss_baseline_bytes": self._baseline,
+            "consumer_process_rss_peak_bytes": self._peak,
+            "consumer_temporary_measurement_scope": (
+                "external_process_rss_high_water_delta_lower_bound"
+            ),
+        }
 
 
 class SessionCommitConflict(RuntimeError):
@@ -71,14 +141,33 @@ class CausalChatNativePromptMixin:
     ) -> Mapping[str, object]:
         local = getattr(self, "_pra_cancellation_local", None)
         cancel_event = getattr(local, "cancel_event", None)
-        if path == "/completion" and payload is not None and cancel_event is not None:
-            return self._request_json_cancellable(
-                path,
-                payload,
-                cancel_event=cancel_event,
-                response_callback=getattr(local, "response_callback", None),
-            )
-        return super()._request_json(path, payload)
+        consumer_pid = getattr(self, "consumer_process_id", None)
+        sampler = (
+            _ProcessRSSPeakSampler(int(consumer_pid))
+            if path == "/completion" and consumer_pid is not None
+            else None
+        )
+        if sampler is not None:
+            sampler.start()
+        try:
+            if path == "/completion" and payload is not None and cancel_event is not None:
+                result = self._request_json_cancellable(
+                    path,
+                    payload,
+                    cancel_event=cancel_event,
+                    response_callback=getattr(local, "response_callback", None),
+                )
+            else:
+                result = super()._request_json(path, payload)
+        finally:
+            memory = sampler.finish() if sampler is not None else None
+        if memory is None or not isinstance(result, Mapping):
+            return result
+        measured = dict(result)
+        pra = dict(measured.get("pra") or {})
+        pra.update(memory)
+        measured["pra"] = pra
+        return measured
 
     def _request_json_cancellable(
         self,
@@ -1659,7 +1748,8 @@ class HybridLlamaCppAdapter:
             },
         ))
         cached = (raw.get("timings") or {}).get("cache_n")
-        pra = {
+        pra = dict(raw.get("pra") or {})
+        pra.update({
             "native_tokens": cached,
             "wire_tokens": len(wire_tokens),
             "physical_kv_copy": False,
@@ -1670,7 +1760,7 @@ class HybridLlamaCppAdapter:
             "selected_history_reencoded_tokens": 0,
             "full_retention": True,
             "realized_retention_fraction": 1.0,
-        }
+        })
         raw["pra"] = pra
         raw.update(
             prefix_cache_enabled=True,
@@ -1800,6 +1890,15 @@ def _completion(
         "consumer_temporary_bytes": native_raw.get("consumer_temporary_bytes"),
         "consumer_temporary_peak_bytes": native_raw.get(
             "consumer_temporary_peak_bytes"
+        ),
+        "consumer_process_rss_baseline_bytes": native_raw.get(
+            "consumer_process_rss_baseline_bytes"
+        ),
+        "consumer_process_rss_peak_bytes": native_raw.get(
+            "consumer_process_rss_peak_bytes"
+        ),
+        "consumer_temporary_measurement_scope": native_raw.get(
+            "consumer_temporary_measurement_scope"
         ),
         "source_bootstrap": native_raw.get("source_bootstrap"),
         "source_bootstrap_tokens": native_raw.get("source_bootstrap_tokens"),
@@ -1982,6 +2081,7 @@ def serve(args: argparse.Namespace) -> None:
         model_fingerprint=args.model_fingerprint,
         timeout_seconds=args.timeout_seconds,
     )
+    native_executor.consumer_process_id = args.llama_server_pid
     if args.prefix_caching:
         native_executor.validate_record_prefix_template()
     if args.reset_slots:
@@ -2033,6 +2133,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resource-slots", type=int, nargs="+")
     parser.add_argument("--request-slots", type=int, nargs="+")
     parser.add_argument("--timeout-seconds", type=float, default=3600)
+    parser.add_argument(
+        "--llama-server-pid",
+        type=int,
+        help=(
+            "Optional llama-server PID for process-RSS high-water sampling. "
+            "The resulting consumer-temporary metric is an observed lower bound."
+        ),
+    )
     parser.add_argument(
         "--slot-save-path", type=Path,
         help="Directory configured in llama-server with --slot-save-path.",

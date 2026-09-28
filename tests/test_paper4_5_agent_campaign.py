@@ -18,6 +18,8 @@ from types import ModuleType, SimpleNamespace
 import pytest
 import yaml
 
+import experiments.paper4_5_agent.serve_llamacpp_pra as llamacpp_server
+
 from pra_hf.deployment import (
     PRAEngineCapabilities,
     PRAEngineResult,
@@ -1509,6 +1511,54 @@ def test_native_agent_split_is_an_exact_causal_chat_template_prefix() -> None:
     # reuse that validated pair instead of issuing duplicate template calls.
     assert render_calls[:2] == [(4, True), (2, False)]
     assert len(render_calls) == 3
+
+
+def test_llamacpp_completion_reports_external_consumer_rss_lower_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = []
+
+    class Sampler:
+        def __init__(self, pid):
+            events.append(("init", pid))
+
+        def start(self):
+            events.append(("start", None))
+
+        def finish(self):
+            events.append(("finish", None))
+            return {
+                "consumer_temporary_bytes": 4096,
+                "consumer_temporary_peak_bytes": 4096,
+                "consumer_process_rss_baseline_bytes": 100_000,
+                "consumer_process_rss_peak_bytes": 104_096,
+                "consumer_temporary_measurement_scope": (
+                    "external_process_rss_high_water_delta_lower_bound"
+                ),
+            }
+
+    monkeypatch.setattr(llamacpp_server, "_ProcessRSSPeakSampler", Sampler)
+
+    class FakeNativeBase:
+        def _request_json(self, path, body):
+            assert path == "/completion"
+            assert body == {"prompt": "hello"}
+            return {"content": "ok", "pra": {"selected_history_kv_copy_bytes": 0}}
+
+    class Executor(CausalChatNativePromptMixin, FakeNativeBase):
+        pass
+
+    executor = Executor()
+    executor.consumer_process_id = 321
+    result = executor._request_json("/completion", {"prompt": "hello"})
+
+    assert events == [("init", 321), ("start", None), ("finish", None)]
+    assert result["pra"]["selected_history_kv_copy_bytes"] == 0
+    assert result["pra"]["consumer_temporary_bytes"] == 4096
+    assert result["pra"]["consumer_process_rss_peak_bytes"] == 104_096
+    assert result["pra"]["consumer_temporary_measurement_scope"] == (
+        "external_process_rss_high_water_delta_lower_bound"
+    )
 
 
 def test_changed_resource_uses_in_place_prefix_delta_without_delete() -> None:
