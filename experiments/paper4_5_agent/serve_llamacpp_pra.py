@@ -1526,10 +1526,10 @@ class HybridLlamaCppAdapter:
         active_start = min(active_non_system) if active_non_system else len(logical_messages)
 
         ranges: list[Any] = []
-        for index in [
+        for index in dict.fromkeys([
             *system_indices,
             *(index for index in selected_indices if index not in replacement_indices),
-        ]:
+        ]):
             start = 0 if index == 0 else boundaries[index - 1]
             end = min(boundaries[index], common)
             if end <= start:

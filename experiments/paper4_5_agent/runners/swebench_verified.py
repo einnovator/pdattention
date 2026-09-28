@@ -373,7 +373,7 @@ def gateway_preflight(
         "model": args.served_model,
         "messages": [{
             "role": "user",
-            "content": "PRA selected-context consumption probe. Reply with OK.",
+            "content": "Reply with OK.",
         }],
         "temperature": 0,
         "top_p": float(getattr(args, "top_p", 1.0)),
@@ -405,6 +405,8 @@ def gateway_preflight(
                 "metadata": {
                     "purpose": "live_consumption_probe",
                     "message_index": 0,
+                    "segment_index": 0,
+                    "role": "system",
                 },
             }],
             "budget": {"max_resources": 1, "max_selected_tokens": 8},
@@ -418,14 +420,21 @@ def gateway_preflight(
                 # contract used by the treatment proxy so this probe reaches
                 # the native engine path it is intended to qualify.
                 "history_projection": "live-agent-kv-v1",
+                "source_bootstrap_contract": "full-logical-history-once-v1",
                 "logical_message_manifest": [{
                     "message_index": 0,
+                    "role": "system",
+                    "content_sha256": hashlib.sha256(
+                        b"PRA selected-context consumption probe."
+                    ).hexdigest(),
+                }, {
+                    "message_index": 1,
                     "role": "user",
                     "content_sha256": hashlib.sha256(
-                        b"PRA selected-context consumption probe. Reply with OK."
+                        b"Reply with OK."
                     ).hexdigest(),
                 }],
-                "mandatory_message_indices": [0],
+                "mandatory_message_indices": [1],
                 "target_retention_fraction": 1.0,
                 "selection_contract": "preflight-full-history-v1",
                 "chat_template_digest": chat_template_digest,
@@ -452,6 +461,16 @@ def gateway_preflight(
     try:
         with urllib.request.urlopen(probe_request, timeout=120) as response:
             completion = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        try:
+            response_body = error.read().decode("utf-8", errors="replace")
+        except OSError:
+            response_body = "<unavailable>"
+        raise RuntimeError(
+            "gateway generation probe failed for "
+            f"{root}/v1/chat/completions: HTTP {error.code}; "
+            f"response={response_body}"
+        ) from error
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
         raise RuntimeError(
             f"gateway generation probe failed for {root}/v1/chat/completions: {error}"
@@ -477,13 +496,18 @@ def gateway_preflight(
         consumed_natively = any(
             row.get("native_kv_used") is True
             or row.get("stage") in {
-                "llama_cpp_native_attach", "native_attach",
+                "llama_cpp_native_attach",
+                "llama_cpp_live_prefix_subset",
+                "llama_cpp_live_prefix_full_continue",
+                "llama_cpp_live_prefix_continue",
+                "native_attach",
             }
             for row in native_trace if isinstance(row, dict)
         )
         if pra.get("native_kv") is not True or not consumed_natively:
             raise RuntimeError(
-                "native PRA consumption probe did not prove physical native consumption"
+                "native PRA consumption probe did not prove physical native "
+                f"consumption: pra={pra!r}, trace={native_trace!r}"
             )
         native_consumption_probe = "passed"
     return {

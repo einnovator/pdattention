@@ -27,7 +27,7 @@ esac
 
 runtime=${PRA_AGENT_RUNTIME:-/Users/admin.jorge.simao/git/rd/p45-gate-5fbc}
 llama_repo=${PRA_LLAMA_REPO:-/Users/admin.jorge.simao/git/rd/upstream/llama.cpp}
-paper67=${PRA_LLAMA_ADAPTER_SRC:-/Users/admin.jorge.simao/git/rd/pdattention-paper6-7-agentkv/src}
+paper67=${PRA_LLAMA_ADAPTER_SRC:-/Users/admin.jorge.simao/git/rd/pdattention-paper67-llamacpp-native/src}
 python=${PRA_AGENT_PYTHON:-/Users/admin.jorge.simao/.venvs/paper45-agent/bin/python}
 model=${PRA_AGENT_MODEL_PATH:-/Users/admin.jorge.simao/.ollama/models/blobs/sha256-1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a}
 output_root=${PRA_AGENT_OUTPUT_ROOT:-/Users/admin.jorge.simao/git/rd/paper45-easy50-runs/e2e_gate/llamacpp_task01_posttelemetry}

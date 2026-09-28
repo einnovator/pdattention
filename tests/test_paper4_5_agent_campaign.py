@@ -1955,22 +1955,26 @@ def test_live_record_plan_selects_resident_kv_without_omitted_text_prefill(
         {"role": "assistant", "content": "B"},
         {"role": "user", "content": "C"},
     ]
-    resource = PRAWireResource(
-        resource_id="m1-0-user",
-        uri="pra://agent-trajectory/m1-0-user",
-        text="T",
-        metadata={
-            "message_index": 1,
-            "segment_index": 0,
-            "role": "user",
-            "parent_record_id": "m1",
-            "causal_group_id": "record:m1",
-        },
-    )
+    def resource(index, role, text):
+        return PRAWireResource(
+            resource_id=f"m{index}-0-{role}",
+            uri=f"pra://agent-trajectory/m{index}-0-{role}",
+            text=text,
+            metadata={
+                "message_index": index,
+                "segment_index": 0,
+                "role": role,
+                "parent_record_id": f"m{index}",
+                "causal_group_id": f"record:m{index}",
+            },
+        )
     request = PRAWireRequest(
         model="model",
         messages=(logical[0], logical[4], logical[5]),
-        resources=(resource,),
+        # System records are selected explicitly by the generic logical plan
+        # and implicitly by the engine's causal-prefix invariant. They must
+        # still map to one physical K/V range, not two overlapping ranges.
+        resources=(resource(0, "system", "S"), resource(1, "user", "T")),
         session_id="session",
         metadata={"mandatory_message_indices": [0, 4, 5]},
     )
@@ -3882,15 +3886,19 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
             assert body["pra"]["required_capabilities"] == ["logical_refs", "native_kv"]
             assert body["pra"]["metadata"]["ephemeral_session"] is True
             assert body["pra"]["metadata"]["history_projection"] == "live-agent-kv-v1"
-            assert body["pra"]["metadata"]["mandatory_message_indices"] == [0]
+            assert body["pra"]["metadata"]["source_bootstrap_contract"] == (
+                "full-logical-history-once-v1"
+            )
+            assert body["pra"]["metadata"]["mandatory_message_indices"] == [1]
             assert body["pra"]["resources"][0]["metadata"]["message_index"] == 0
+            assert body["pra"]["resources"][0]["metadata"]["segment_index"] == 0
+            assert body["pra"]["resources"][0]["metadata"]["role"] == "system"
             Handler.session_ids.append(body["pra"]["session_id"])
             encoded = json.dumps({
                 "choices": [{"message": {"role": "assistant", "content": "OK"}}],
                 "pra": {"native_kv": True},
                 "pra_trace": [{
-                    "stage": "vllm_scheduler_agent_alias",
-                    "native_kv_used": True,
+                    "stage": "llama_cpp_live_prefix_full_continue",
                     "native_tokens": 4,
                 }],
             }).encode()
