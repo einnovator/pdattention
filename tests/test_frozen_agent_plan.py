@@ -310,6 +310,21 @@ def test_pi_cuda_admission_and_largest_exact_scope_are_fail_closed() -> None:
         "selected_page_rounding_overhead_tokens"
     ] == 56
 
+    sglang_admission = json.loads(
+        (
+            plans
+            / "paper8_5_pi_n6_m2p1_request194_v1"
+            / "sglang_mlx_qwen3_06b_m5_n6_admission_v1/admission_summary.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert sglang_admission["status"] == "failed_closed_out_of_memory"
+    assert sglang_admission["fixture"]["resident_source_tokens"] == 77_636
+    assert sglang_admission["fixture"]["selected_logical_kv_tokens"] == 23_345
+    assert sglang_admission["lifecycle_receipt_emitted"] is False
+    assert sglang_admission["failure"]["code"] == (
+        "kIOGPUCommandBufferCallbackErrorOutOfMemory"
+    )
+
     receipt = json.loads(
         (
             plans
@@ -356,6 +371,37 @@ def test_pi_n6_mlx_mechanics_gate_is_exact_and_copy_free() -> None:
     assert receipt["disjoint_attention_allocation"][
         "full_selected_kv_sized_allocation_observed"
     ] is False
+    assert all(receipt["checks"].values())
+
+
+def test_pi_n3_sglang_mlx_mechanics_gate_is_exact_and_copy_free() -> None:
+    receipt_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans/paper8_5_pi_n3_m2p1_request81_v1"
+        / "sglang_mlx_qwen3_06b_m5_lifecycle_v1/lifecycle_receipt.json"
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+    assert receipt["engine_lifecycle_qualified"] is True
+    assert receipt["qualification_blockers"] == []
+    assert receipt["request_input_sha256"] == (
+        "0ad3e4de6aadbacb08af1d1483a08bf749e47a23d112e26fa6ee21f032c4222c"
+    )
+    assert receipt["source_tokens"] == 37_784
+    assert receipt["selected_kv_tokens"] == 13_418
+    assert receipt["materialized_history_tokens"] == 0
+    assert receipt["physical_kv_segments"] == 2
+    assert receipt["selected_text_reencoded_tokens"] == 0
+    assert receipt["selection_pack_bytes"] == 0
+    assert receipt["physical_kv_copy"] is False
+    assert receipt["max_abs_logit_delta_same_subset"] == 0.0
+    assert receipt["candidate_token_ids"] == receipt["reference_token_ids"]
+    assert receipt["candidate_token_ids"] == receipt["restored_token_ids"]
+    assert receipt["disjoint_attention_allocation"][
+        "full_selected_kv_sized_allocation_observed"
+    ] is False
+    assert receipt["sglang_mlx_import_guard"]["forbidden_execution_attempts"] == []
     assert all(receipt["checks"].values())
 
 

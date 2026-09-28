@@ -681,6 +681,15 @@ layer peak delta is 0.3213\% of selected layer K/V; and every declared lifecycle
 check passes.  Its 265.71-second correctness run is not a latency claim or an
 autonomous Qwen3-Coder-30B result.  The hash-bound $N=6$ fixture is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_pi_n6_m2p1_request194_v1}.
+SGLang-MLX on the 16-GB M5 fails this full $N=6$ lifecycle run closed with a
+Metal out-of-memory error and emits no qualification receipt.  The bounded
+$N=3$ request does qualify on the same host: it selects 13,418/37,784 resident
+K/V entries plus a 2,144-token tail (61.02\% total visible omission), re-encodes
+and copies no selected history, matches same-subset logits and two continuation
+tokens exactly, limits the first-layer peak delta to 0.2832\% of selected-layer
+K/V, and clears every lifecycle check.  Thus the corrected SGLang mechanism is
+qualified at $N=3$, while $N=6$ remains a capacity boundary rather than a
+correctness or performance result.
 
 The same corrected request-9 gate does not yet qualify the direct MLX 14B
 path.  On MLX 0.32.2 / MLX-LM 0.31.3 with Qwen3-14B 4-bit, both fused and
@@ -4391,6 +4400,23 @@ retained as superseded evidence because it changed cache-consumption mode and
 therefore compared different prefill-kernel dispatches, not PRA-100 against
 the no-PRA prefix-cache baseline.  These are request-level results; they do
 not yet establish autonomous task parity or runtime benefit.
+
+The larger frozen Pi campaign supplies a second SGLang-MLX identity and a
+capacity boundary.  Request~81 from the persistent $N=3$ session selects
+13,418 of 37,784 resident source K/V tokens in two physical intervals and
+appends a 2,144-token live suffix.  Historical retention is 35.51\% and total
+visible retention is 38.98\%.  The engine re-encodes zero selected-history
+tokens, allocates zero selection-pack bytes, reports no physical selected-K/V
+copy, matches the identical-subset reference with zero maximum logit delta and
+two exact continuation tokens, and clears every ownership, concurrency,
+cancellation, stale-fork, offload/restore, termination, and cleanup check.
+Disjoint attention adds 155,659 peak bytes, 0.2832\% of the 54,960,128-byte
+selected-layer K/V extent.  The macOS import guard also records no forbidden
+CUDA/Triton execution.  The shared-host 733.99-second duration is provenance,
+not a latency result.  In contrast, the exact $N=6$ fixture terminates after a
+Metal command-buffer out-of-memory error on the 16-GB M5 and emits no receipt;
+it is retained as fail-closed admission evidence, not as a numerical or
+lifecycle failure.
 
 vLLM-Metal 0.29.0 now clears all six frozen Task~4 requests on the 48~GB M4
 Pro.  Every PRA-100 request matches an independent ordinary prefix-cache

@@ -55,3 +55,14 @@ The run qualifies the mechanism, not coding-agent model quality:
 
 The corresponding Qwen3-Coder-30B autonomous task run and the same lifecycle
 gate on HF, vLLM, SGLang, and llama.cpp remain separate required evidence.
+
+## SGLang-MLX lifecycle qualification
+
+`sglang_mlx_qwen3_06b_m5_lifecycle_v1/lifecycle_receipt.json` consumes the
+same frozen request through SGLang's real MLX request-owned sparse-K/V bridge.
+It reproduces the MLX geometry (37,784 source, 13,418 selected, and 2,144 wire
+tokens), re-encodes and copies no selected history, matches the identical-
+subset reference with zero maximum logit delta and two exact token IDs, limits
+the first-layer consumer peak delta to 155,659 bytes (0.2832% of selected-layer
+K/V), and clears every declared lifecycle check.  Its 733.99-second shared-host
+duration is correctness provenance, not a performance claim.

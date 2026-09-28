@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "contract": "paper4.5-sglang-mlx-frozen-request-admission-v1",
+  "status": "failed_closed_out_of_memory",
+  "experiment_revision": "c63e243d",
+  "engine": "sglang-mlx",
+  "engine_revision": "ef20fab38a",
+  "model": "mlx-community/Qwen3-0.6B-4bit",
+  "model_revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
+  "device": "Apple M5 16 GB",
+  "hardware_label": "mediummac-m5-16gb",
+  "fixture": {
+    "request_index": 1,
+    "request_input_sha256": "8990cf82da78a8182871a2f7ac8849aa055483a678303e1777e39c20ab9f8436",
+    "resident_source_tokens": 77636,
+    "selected_logical_kv_tokens": 23345,
+    "wire_tail_tokens": 195,
+    "resident_omission_fraction": 0.6993018702663713
+  },
+  "materialization_policy": "disjoint_segmented",
+  "source_prefill_step_size": 512,
+  "continuation_tokens": 2,
+  "elapsed_approx_seconds": 2040,
+  "maximum_observed_swap_used_mib": 5591.88,
+  "failure": {
+    "subsystem": "Metal",
+    "code": "kIOGPUCommandBufferCallbackErrorOutOfMemory",
+    "message": "Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory)."
+  },
+  "lifecycle_receipt_emitted": false,
+  "execution_log_sha256": "938e578987c23755c417947ed7c14f1dcbf9704d4bbd021a37c08c72c4317e26",
+  "blockers": [
+    "the full N=6 SGLang-MLX lifecycle workload exceeds the 16 GB host's available unified-memory capacity"
+  ],
+  "claim_boundary": "No N=6 SGLang-MLX numerical parity, zero-copy, lifecycle, autonomous-agent, or latency result is claimed."
+}
