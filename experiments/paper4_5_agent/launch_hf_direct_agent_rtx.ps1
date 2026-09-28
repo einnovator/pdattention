@@ -4,7 +4,14 @@ param(
     [string]$Model = "Qwen/Qwen2.5-Coder-1.5B-Instruct",
     [string]$Revision = "2e1fd397ee46e1388853d2af2c993145b0f1098a",
     [int]$Port = 18123,
+    [string]$RunToken = "",
     [int]$MaximumUsedGpuMiB = 2500,
+    [switch]$LoadIn4Bit,
+    [int]$MaxGpuMemoryMiB = 0,
+    [int]$MaxCpuMemoryGiB = 64,
+    [string]$OffloadFolder = "C:\Users\killu\git\rd\hf-offload",
+    [ValidateSet("eager", "sdpa")]
+    [string]$AttentionImplementation = "sdpa",
     [switch]$InstallDependencies
 )
 
@@ -41,11 +48,31 @@ if ($LASTEXITCODE -ne 0) {
 $env:HF_HUB_OFFLINE = "1"
 $env:PYTHONPATH = "$RepoRoot\src;$RepoRoot"
 Set-Location -LiteralPath $RepoRoot
-& $Python -m experiments.paper4_5_agent.serve_hf_agent_pra `
-    --model $Model `
-    --revision $Revision `
-    --host 127.0.0.1 `
-    --port $Port `
-    --wire-tail-tokens 32 `
-    --device-map cuda:0 `
-    --chat-template-profile native
+$serverArguments = @(
+    "-m", "experiments.paper4_5_agent.serve_hf_agent_pra",
+    "--model", $Model,
+    "--revision", $Revision,
+    "--host", "127.0.0.1",
+    "--port", "$Port",
+    "--wire-tail-tokens", "32",
+    "--attn-implementation", $AttentionImplementation,
+    "--chat-template-profile", "native"
+)
+if ($LoadIn4Bit) {
+    $serverArguments += "--load-in-4bit"
+}
+if ($RunToken) {
+    $serverArguments += @("--run-token", $RunToken)
+}
+if ($MaxGpuMemoryMiB -gt 0) {
+    New-Item -ItemType Directory -Force -Path $OffloadFolder | Out-Null
+    $serverArguments += @(
+        "--device-map", "auto",
+        "--max-gpu-memory-mib", "$MaxGpuMemoryMiB",
+        "--max-cpu-memory-gib", "$MaxCpuMemoryGiB",
+        "--offload-folder", $OffloadFolder
+    )
+} else {
+    $serverArguments += @("--device-map", "cuda:0")
+}
+& $Python @serverArguments

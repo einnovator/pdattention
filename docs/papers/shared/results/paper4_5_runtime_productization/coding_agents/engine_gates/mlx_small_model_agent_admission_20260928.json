@@ -1,0 +1,61 @@
+{
+  "schema": "paper4.5.agent-model-admission.v1",
+  "created_at": "2026-09-28",
+  "status": "no_model_task_pair_admitted",
+  "host": {
+    "address": "192.168.1.8",
+    "hardware": "Apple M5, 16 GiB unified memory",
+    "note": "Host identity is provenance only; no result from this file enters an engine comparison."
+  },
+  "source_revision": "ab5ad6782f5031670b77f489d249da45586584f6",
+  "attempts": [
+    {
+      "model": "mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit",
+      "model_revision": "b3252a2f97102b1fb1571fec2c9b27219a8536be",
+      "engine": "mlx-lm 0.31.3",
+      "tasks": [
+        {
+          "task_index": 5,
+          "instance_id": "pytest-dev__pytest-7982",
+          "mode": "plain",
+          "official_resolution": 0,
+          "outcome": "step-limit loop with an empty patch; subsequent grading infrastructure was also contaminated by a stale-container race"
+        },
+        {
+          "task_index": 7,
+          "instance_id": "django__django-14089",
+          "mode": "plain",
+          "official_resolution": 0,
+          "outcome": "irrelevant environment installation and malformed patch"
+        }
+      ],
+      "admission": "rejected",
+      "pra_arms_launched": false
+    },
+    {
+      "model": "mlx-community/Qwen3-4B-4bit",
+      "model_revision": "4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25",
+      "source_model_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+      "engine": "mlx-lm 0.31.3",
+      "task_index": 7,
+      "instance_id": "django__django-14089",
+      "mode": "plain",
+      "completed_agent_actions": 43,
+      "completed_endpoint_requests_including_preflight": 44,
+      "duplicate_in_flight_requests_at_quarantine": 7,
+      "last_completed_message_count": 86,
+      "stalled_message_count": 88,
+      "stalled_rendered_prompt_tokens": 7010,
+      "observed_behavior": "The model found the relevant OrderedSet method but repeatedly inserted a literal escaped newline, reproduced the SyntaxError, and failed to repair the edit.",
+      "termination_reason": "At the next action, the client emitted seven identical requests while the first generation remained in flight. The owned runner and endpoint were terminated and the result was quarantined as timeout/concurrency contaminated.",
+      "official_resolution": null,
+      "admission": "rejected_and_quarantined",
+      "pra_arms_launched": false
+    }
+  ],
+  "decision": "Neither small quantized model supplies the required plain-success control. They must not be used to manufacture a cross-engine PRA row. Continue with the already supported Qwen2.5-Coder-7B or Qwen2.5-Coder-14B cohort and require a plain solve before PRA-100.",
+  "remote_raw_artifacts": [
+    "/Users/jorge.simao/git/rd/p45-qwen25-15b-admission-v1",
+    "/Users/jorge.simao/git/rd/p45-qwen3-4b-admission-v1"
+  ]
+}

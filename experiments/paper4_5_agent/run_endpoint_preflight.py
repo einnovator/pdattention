@@ -16,6 +16,13 @@ def main() -> None:
     parser.add_argument("--mode", required=True)
     parser.add_argument("--served-model", default="qwen3-coder:30b")
     parser.add_argument("--prefix-caching", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--endpoint-run-token",
+        help=(
+            "Frozen endpoint lease forwarded as X-PRA-Run-Lease during the "
+            "generation probe."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     options = SimpleNamespace(
@@ -25,6 +32,7 @@ def main() -> None:
         prefix_caching=args.prefix_caching,
         require_endpoint_preflight=True,
         endpoint_preflight_receipt=None,
+        endpoint_run_token=args.endpoint_run_token,
         chat_template_no_thinking=False,
     )
     result = gateway_preflight(options)

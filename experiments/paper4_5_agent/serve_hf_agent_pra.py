@@ -8,6 +8,7 @@ import json
 import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Mapping
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
@@ -69,6 +70,18 @@ def _direct_handler(
                         executor, "dense_attention_implementation", None
                     ),
                     "load_in_4bit": bool(getattr(executor, "load_in_4bit", False)),
+                    "cpu_offload_enabled": bool(
+                        getattr(executor, "cpu_offload_enabled", False)
+                    ),
+                    "max_gpu_memory_mib": getattr(
+                        executor, "max_gpu_memory_mib", None
+                    ),
+                    "max_cpu_memory_gib": getattr(
+                        executor, "max_cpu_memory_gib", None
+                    ),
+                    "hf_device_map": dict(
+                        getattr(executor, "hf_device_map", {})
+                    ),
                     "chat_template_profile": executor.chat_template_profile,
                     "chat_template_digest": executor.chat_template_digest,
                     "runtime_identity": dict(runtime_identity or {}),
@@ -171,12 +184,40 @@ def main() -> None:
         help="Opt in to BitsAndBytes NF4 loading; the default load path is unchanged.",
     )
     parser.add_argument(
+        "--max-gpu-memory-mib",
+        type=int,
+        help=(
+            "Cap device 0 placement during Accelerate dispatch. Requires "
+            "--device-map auto and permits overflow modules to reside on CPU."
+        ),
+    )
+    parser.add_argument(
+        "--max-cpu-memory-gib",
+        type=int,
+        default=64,
+        help="CPU placement budget used with --max-gpu-memory-mib (default: 64 GiB).",
+    )
+    parser.add_argument(
+        "--offload-folder",
+        type=Path,
+        help="Optional Accelerate disk-offload directory for the bounded loader.",
+    )
+    parser.add_argument(
         "--chat-template-profile",
         choices=("native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
         default="qwen3-stable-no-thinking",
     )
     args = parser.parse_args()
     served_model = args.served_model or args.model
+    if args.max_gpu_memory_mib is not None:
+        if args.max_gpu_memory_mib <= 0:
+            parser.error("--max-gpu-memory-mib must be positive")
+        if args.max_cpu_memory_gib <= 0:
+            parser.error("--max-cpu-memory-gib must be positive")
+        if args.device_map != "auto":
+            parser.error("--max-gpu-memory-mib requires --device-map auto")
+    if args.offload_folder is not None:
+        args.offload_folder.mkdir(parents=True, exist_ok=True)
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -207,6 +248,14 @@ def main() -> None:
         "torch_dtype": "auto",
         "attn_implementation": args.attn_implementation,
     }
+    if args.max_gpu_memory_mib is not None:
+        model_kwargs["max_memory"] = {
+            0: f"{args.max_gpu_memory_mib}MiB",
+            "cpu": f"{args.max_cpu_memory_gib}GiB",
+        }
+        model_kwargs["offload_state_dict"] = True
+    if args.offload_folder is not None:
+        model_kwargs["offload_folder"] = str(args.offload_folder)
     if args.load_in_4bit:
         import torch
         from transformers import BitsAndBytesConfig
@@ -216,6 +265,9 @@ def main() -> None:
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.float16,
             bnb_4bit_use_double_quant=True,
+            llm_int8_enable_fp32_cpu_offload=(
+                args.max_gpu_memory_mib is not None
+            ),
         )
     model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
     model.eval()
@@ -237,6 +289,15 @@ def main() -> None:
     )
     executor.dense_attention_implementation = args.attn_implementation
     executor.load_in_4bit = args.load_in_4bit
+    executor.cpu_offload_enabled = args.max_gpu_memory_mib is not None
+    executor.max_gpu_memory_mib = args.max_gpu_memory_mib
+    executor.max_cpu_memory_gib = (
+        args.max_cpu_memory_gib if args.max_gpu_memory_mib is not None else None
+    )
+    executor.hf_device_map = {
+        str(name): str(device)
+        for name, device in dict(getattr(model, "hf_device_map", {}) or {}).items()
+    }
     try:
         ThreadingHTTPServer(
             (args.host, args.port),
