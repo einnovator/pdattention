@@ -318,3 +318,31 @@ def test_published_cross_engine_gate_stays_locked() -> None:
     assert result["engines"]["vllm"]["pra_90_first_action_divergence"] == 6
     assert result["engines"]["huggingface"]["behavioral_gate_complete"] is False
     assert result["easy14_expansion_allowed"] is False
+
+
+def test_published_hf_admission_plan_is_frozen_and_matches_benchmark() -> None:
+    root = Path(__file__).resolve().parents[1]
+    plan_path = (
+        root
+        / "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents"
+        / "engine_gates/hf_qwen25coder7b_plain_admission_plan_20260929.json"
+    )
+    benchmark_path = (
+        root
+        / "experiments/paper4_5_agent/benchmarks"
+        / "swebench_verified_easy50_baseline_success14.json"
+    )
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
+
+    rows = plan["ordered_tasks"]
+    assert [row["order"] for row in rows] == list(range(1, len(rows) + 1))
+    assert len({row["task_index"] for row in rows}) == len(rows)
+    for row in rows:
+        assert benchmark["instance_ids"][row["task_index"] - 1] == row["instance_id"]
+
+    gate = plan["treatment_gate"]
+    assert gate["plain_required"] is True
+    assert gate["pra_100_requires_plain_success"] is True
+    assert gate["easy14_expansion_allowed"] is False
+    assert plan["status"] == "waiting_for_cuda_host"
