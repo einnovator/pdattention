@@ -43,6 +43,7 @@ from experiments.paper8_5_agent_memory import (
     realize_negative_receipts,
     serialize_materialized_messages,
     simplify_disconnected_frontier,
+    trace_frontier_reachability,
     validate_minisweagent_chat,
 )
 from experiments.paper8_5_agent_memory.observation_instrumentation import (
@@ -61,6 +62,9 @@ from experiments.paper8_5_agent_memory.run_negative_heuristic_screen import (
 )
 from experiments.paper8_5_agent_memory.run_synthetic_diagnostics import (
     run_synthetic_diagnostics,
+)
+from experiments.paper8_5_agent_memory.run_frontier_dag_oracle import (
+    synthetic_oracle_cases,
 )
 from experiments.paper8_5_agent_memory.selectors import whitespace_tokens
 from experiments.paper8_5_agent_memory.workspace_checkpoint import (
@@ -197,6 +201,48 @@ def test_frontier_dag_preserves_old_resource_lineage_reaching_live_prompt():
     assert "turn-0" not in retired
     assert retired == {"turn-1", "turn-2", "turn-3"}
     assert {"action-0", "observation-0"}.issubset(dag.live_ancestor_record_ids)
+
+    traces = {
+        row.source_record_id: row
+        for row in trace_frontier_reachability(history, dag)
+    }
+    assert traces["observation-0"].reaches_frontier
+    assert DagEdgeKind.RESOURCE_FLOW in traces["observation-0"].edge_kinds
+    assert "src/shared.py" in traces["observation-0"].edge_resources
+
+
+def test_frontier_reachability_ledger_has_no_chronology_only_cross_prompt_path():
+    history = _information_flow_chain(
+        [f"src/task_{index}.py" for index in range(6)],
+        workspace_scopes=[f"workspace-{index}" for index in range(6)],
+    )
+    dag = build_frontier_information_flow_dag(history, recent_user_prompts=2)
+    traces = {
+        row.source_record_id: row
+        for row in trace_frontier_reachability(history, dag)
+    }
+
+    assert not traces["action-0"].reaches_frontier
+    assert traces["action-0"].record_path == ()
+    assert traces["instruction-4"].reaches_frontier
+    assert traces["instruction-4"].edge_kinds == ()
+
+
+def test_frontier_synthetic_shared_workspace_dependency_matches_oracle():
+    cases = {row["case"]: row["result"] for row in synthetic_oracle_cases()}
+    dependent = cases["old_resource_reaches_current_task"]
+    heuristic = next(
+        row for row in dependent["comparisons"]
+        if row["rule"] == "dag_no_path_heuristic_allowed"
+    )
+
+    assert heuristic["false_positive_group_count"] == 0
+    assert heuristic["false_negative_group_count"] == 0
+    assert any(
+        row["edge_kind"] == DagEdgeKind.RESOURCE_FLOW.value
+        and row["resource_id"] == "src/shared.py"
+        for row in dependent["cross_instruction_interval_edges"]
+    )
 
 
 def test_frontier_dag_does_not_treat_environment_as_cross_epoch_lineage():

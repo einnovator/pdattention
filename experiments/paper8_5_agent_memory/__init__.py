@@ -29,6 +29,7 @@ from .dag import (
     ExclusionCertificate,
     ExclusionClass,
     FrontierInformationFlowDag,
+    FrontierReachabilityTrace,
     FrontierDagRetirementSelector,
     FrontierRetirementCandidate,
     FrontierRetirementConfidence,
@@ -48,6 +49,7 @@ from .dag import (
     classify_bash_effect,
     exclude_certified_groups,
     simplify_disconnected_frontier,
+    trace_frontier_reachability,
 )
 from .model import (
     AgentMemoryBudget,
@@ -112,6 +114,7 @@ __all__ = [
     "ExclusionCertificate",
     "ExclusionClass",
     "FrontierInformationFlowDag",
+    "FrontierReachabilityTrace",
     "FrontierDagRetirementSelector",
     "FrontierRetirementCandidate",
     "FrontierRetirementConfidence",
@@ -154,6 +157,7 @@ __all__ = [
     "classify_bash_operation",
     "exclude_certified_groups",
     "simplify_disconnected_frontier",
+    "trace_frontier_reachability",
     "materialize_plan",
     "materialize_matched_token_tail",
     "materialize_tool_observation_tail_to_ceiling",

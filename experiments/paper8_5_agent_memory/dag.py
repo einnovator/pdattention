@@ -140,7 +140,12 @@ class FrontierRetirementCandidate:
 
 @dataclass(frozen=True)
 class FrontierInformationFlowDag:
-    """Forward information-flow DAG rooted at genuine user instructions."""
+    """Forward information-flow DAG rooted at genuine user instructions.
+
+    ``epochs`` are observable inter-prompt intervals, not supplied task
+    boundaries. Dependencies may cross any number of intervals. The legacy
+    field name is retained because it is serialized in existing artifacts.
+    """
 
     epochs: tuple[InstructionEpoch, ...]
     edges: tuple[DagEdge, ...]
@@ -148,6 +153,25 @@ class FrontierInformationFlowDag:
     frontier_record_ids: tuple[str, ...]
     live_ancestor_record_ids: tuple[str, ...]
     retirement_candidates: tuple[FrontierRetirementCandidate, ...]
+
+
+@dataclass(frozen=True)
+class FrontierReachabilityTrace:
+    """Shortest auditable information-flow path from a record to the frontier.
+
+    An empty path with ``reaches_frontier=False`` means that the record is not
+    an ancestor of the live frontier under the declared graph. Protection
+    floors remain distinguishable through ``PROTOCOL_CONTROL`` and
+    ``WORKFLOW_CONTROL`` edges; they are not reported as resource dependence.
+    """
+
+    source_record_id: str
+    source_interval_index: int | None
+    reaches_frontier: bool
+    frontier_record_id: str | None
+    record_path: tuple[str, ...]
+    edge_kinds: tuple[DagEdgeKind, ...]
+    edge_resources: tuple[str | None, ...]
 
 
 @dataclass(frozen=True)
@@ -316,10 +340,13 @@ def build_frontier_information_flow_dag(
 ) -> FrontierInformationFlowDag:
     """Build a boundary-free, forward information-flow graph.
 
-    Every TASK/USER_INPUT record starts an instruction epoch.  The most recent
-    ``M`` epochs form the live frontier.  Older causal groups become retirement
-    candidates only when no directed path reaches that frontier.  The selector
-    never receives evaluator task IDs or source-episode boundaries.
+    Every TASK/USER_INPUT record starts an observable instruction interval.
+    This does *not* assert that the prompt starts a new task: resource/version
+    and declared-dependency edges may reconnect intervals. The most recent
+    ``M`` prompt roots form the live frontier. Older causal groups become
+    retirement candidates only when no directed path reaches that frontier.
+    The selector never receives evaluator task IDs or source-episode
+    boundaries.
 
     Edges encode (1) instruction control within an epoch, (2) action/result and
     next-decision flow, (3) same-resource flow across epochs, and (4) explicit
@@ -619,6 +646,83 @@ def build_frontier_information_flow_dag(
         tuple(sorted(live, key=lambda value: records[value].message_index)),
         tuple(candidates),
     )
+
+
+def trace_frontier_reachability(
+    history: CanonicalAgentHistory,
+    dag: FrontierInformationFlowDag,
+) -> tuple[FrontierReachabilityTrace, ...]:
+    """Return one deterministic shortest path per record reaching the frontier.
+
+    This is an audit function, not a selector. It makes false cross-prompt
+    links inspectable without exposing evaluator task boundaries to the DAG.
+    Paths follow the same directed edges used by retirement reachability.
+    """
+
+    records = history.record_by_id
+    interval_for_record = {
+        record_id: interval.epoch_index
+        for interval in dag.epochs
+        for record_id in interval.record_ids
+    }
+    incoming: dict[str, list[DagEdge]] = {}
+    for edge in dag.edges:
+        incoming.setdefault(edge.target_id, []).append(edge)
+    for rows in incoming.values():
+        rows.sort(key=lambda row: (
+            records[row.source_id].message_index,
+            row.kind.value,
+            row.resource_id or "",
+        ))
+
+    # Reverse breadth-first traversal records the next forward edge on a
+    # shortest source -> frontier path. Frontier order and edge sorting make
+    # ties deterministic for evidence artifacts and regression tests.
+    frontier = tuple(sorted(
+        dag.frontier_record_ids,
+        key=lambda record_id: records[record_id].message_index,
+    ))
+    next_edge: dict[str, DagEdge] = {}
+    terminal: dict[str, str] = {record_id: record_id for record_id in frontier}
+    pending = list(frontier)
+    cursor = 0
+    while cursor < len(pending):
+        target_id = pending[cursor]
+        cursor += 1
+        for edge in incoming.get(target_id, ()):
+            if edge.source_id in terminal:
+                continue
+            next_edge[edge.source_id] = edge
+            terminal[edge.source_id] = terminal[target_id]
+            pending.append(edge.source_id)
+
+    traces: list[FrontierReachabilityTrace] = []
+    for record in sorted(history.records, key=lambda row: row.message_index):
+        reaches = record.record_id in terminal
+        path = [record.record_id]
+        kinds: list[DagEdgeKind] = []
+        resources: list[str | None] = []
+        current = record.record_id
+        seen = {current}
+        while current in next_edge:
+            edge = next_edge[current]
+            kinds.append(edge.kind)
+            resources.append(edge.resource_id)
+            current = edge.target_id
+            if current in seen:  # Defensive: the builder promises a DAG.
+                raise ValueError(f"frontier information-flow cycle at {current}")
+            seen.add(current)
+            path.append(current)
+        traces.append(FrontierReachabilityTrace(
+            source_record_id=record.record_id,
+            source_interval_index=interval_for_record.get(record.record_id),
+            reaches_frontier=reaches,
+            frontier_record_id=terminal.get(record.record_id),
+            record_path=tuple(path) if reaches else (),
+            edge_kinds=tuple(kinds) if reaches else (),
+            edge_resources=tuple(resources) if reaches else (),
+        ))
+    return tuple(traces)
 
 
 _ACTION_PARAMETERS_OMITTED = (

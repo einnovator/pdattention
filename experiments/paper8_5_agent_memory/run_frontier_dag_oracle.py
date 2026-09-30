@@ -20,6 +20,7 @@ from .dag import (
     FrontierSimplificationMode,
     build_frontier_information_flow_dag,
     simplify_disconnected_frontier,
+    trace_frontier_reachability,
 )
 from .model import (
     AgentRecord,
@@ -57,13 +58,19 @@ def score_frontier_dag(
     *,
     oracle_excluded_groups: Iterable[str],
     recent_user_prompts: int,
+    valid_protocol_exemplars: int = 0,
+    valid_workflow_exemplars: int = 0,
     count_tokens: TokenCounter = whitespace_tokens,
 ) -> dict[str, Any]:
     """Score no-path predictions against an evaluator-only group oracle."""
 
     dag = build_frontier_information_flow_dag(
-        history, recent_user_prompts=recent_user_prompts
+        history,
+        recent_user_prompts=recent_user_prompts,
+        valid_protocol_exemplars=valid_protocol_exemplars,
+        valid_workflow_exemplars=valid_workflow_exemplars,
     )
+    traces = trace_frontier_reachability(history, dag)
     costs = _group_costs(history, count_tokens)
     oracle = set(oracle_excluded_groups)
     heuristic = {row.causal_group_id for row in dag.retirement_candidates}
@@ -113,6 +120,28 @@ def score_frontier_dag(
                 count_tokens=count_tokens,
                 allow_heuristic=allow_heuristic,
             )
+            selected = set(plan.selected_record_ids)
+            closed_intervals = [
+                interval for interval in dag.epochs
+                if any(
+                    bool(history.record_by_id[record_id].metadata.get(
+                        "protocol_completion_valid"
+                    ))
+                    for record_id in interval.record_ids
+                )
+            ]
+            orphaned_closed_prompts = [
+                interval.instruction_record_id
+                for interval in closed_intervals
+                if interval.instruction_record_id in selected
+                and not any(
+                    record_id in selected
+                    and bool(history.record_by_id[record_id].metadata.get(
+                        "protocol_completion_valid"
+                    ))
+                    for record_id in interval.record_ids
+                )
+            ]
             simplifications.append({
                 "mode": mode.value,
                 "confidence_gate": "heuristic_allowed" if allow_heuristic else "certified_only",
@@ -121,9 +150,55 @@ def score_frontier_dag(
                 "materialized_tokens": plan.materialized_tokens,
                 "saving_fraction": plan.saving_fraction,
                 "replacement_count": len(plan.record_replacements),
+                "known_closed_instruction_interval_count": len(closed_intervals),
+                "orphaned_closed_prompt_count": len(orphaned_closed_prompts),
+                "orphaned_closed_prompt_record_ids": orphaned_closed_prompts,
             })
+    interval_for_record = {
+        record_id: interval.epoch_index
+        for interval in dag.epochs
+        for record_id in interval.record_ids
+    }
+    cross_interval_edges = []
+    for edge in dag.edges:
+        source_interval = interval_for_record.get(edge.source_id)
+        target_interval = interval_for_record.get(edge.target_id)
+        if source_interval == target_interval:
+            continue
+        cross_interval_edges.append({
+            "source_record_id": edge.source_id,
+            "target_record_id": edge.target_id,
+            "source_instruction_interval": source_interval,
+            "target_instruction_interval": target_interval,
+            "edge_kind": edge.kind.value,
+            "resource_id": edge.resource_id,
+            "classification": (
+                "resource_or_declared_dependency"
+                if edge.kind.value in {"resource_flow", "declared_dependency"}
+                else "bounded_behavioral_floor"
+                if edge.kind.value in {"protocol_control", "workflow_control"}
+                else "unexpected_cross_interval_control"
+            ),
+        })
+    live_trace_rows = []
+    frontier_indices = set(dag.frontier_epoch_indices)
+    for trace in traces:
+        if not trace.reaches_frontier:
+            continue
+        if trace.source_interval_index in frontier_indices:
+            continue
+        live_trace_rows.append({
+            "source_record_id": trace.source_record_id,
+            "source_instruction_interval": trace.source_interval_index,
+            "frontier_record_id": trace.frontier_record_id,
+            "record_path": list(trace.record_path),
+            "edge_kinds": [value.value for value in trace.edge_kinds],
+            "edge_resources": list(trace.edge_resources),
+        })
     return {
         "recent_user_prompts": recent_user_prompts,
+        "valid_protocol_exemplars": valid_protocol_exemplars,
+        "valid_workflow_exemplars": valid_workflow_exemplars,
         "instruction_epoch_count": len(dag.epochs),
         "frontier_epoch_indices": list(dag.frontier_epoch_indices),
         "edge_count": len(dag.edges),
@@ -131,6 +206,8 @@ def score_frontier_dag(
         "unknown_effect_candidate_count": sum(
             row.unknown_effect for row in dag.retirement_candidates
         ),
+        "cross_instruction_interval_edges": cross_interval_edges,
+        "older_live_reachability_paths": live_trace_rows,
         "comparisons": [
             score("recent_epoch_only_no_dag", recent_epoch_only),
             score("dag_no_path_certified_only", certified),
@@ -175,6 +252,8 @@ def analyze_independent_trajectories(
     trajectories: Sequence[Mapping[str, Any]],
     *,
     recent_user_prompts_values: Sequence[int] = (2, 3),
+    valid_protocol_exemplars: int = 0,
+    valid_workflow_exemplars: int = 0,
     count_tokens: TokenCounter = whitespace_tokens,
 ) -> dict[str, Any]:
     session = compose_multi_issue_session(
@@ -192,6 +271,8 @@ def analyze_independent_trajectories(
             history,
             oracle_excluded_groups=oracle,
             recent_user_prompts=recent,
+            valid_protocol_exemplars=valid_protocol_exemplars,
+            valid_workflow_exemplars=valid_workflow_exemplars,
             count_tokens=count_tokens,
         ))
     return {
@@ -274,9 +355,13 @@ def synthetic_oracle_cases(
             count_tokens=count_tokens,
         ),
     })
-    dependent = _synthetic_chain([
-        "src/shared.py", "src/a.py", "src/b.py", "src/c.py", "src/d.py", "src/shared.py"
-    ])
+    dependent = _synthetic_chain(
+        [
+            "src/shared.py", "src/a.py", "src/b.py", "src/c.py",
+            "src/d.py", "src/shared.py",
+        ],
+        workspace_scopes=["workspace-shared"] * 6,
+    )
     cases.append({
         "case": "old_resource_reaches_current_task",
         "result": score_frontier_dag(
@@ -327,6 +412,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tokenizer")
     parser.add_argument("--tokenizer-revision", default="unversioned")
+    parser.add_argument("--protocol-exemplars", type=int, default=0)
+    parser.add_argument("--workflow-exemplars", type=int, default=0)
     args = parser.parse_args()
     count_tokens = whitespace_tokens
     tokenizer_identity = "whitespace_v1_diagnostic"
@@ -366,7 +453,10 @@ def main() -> None:
         "synthetic_cases": synthetic_oracle_cases(count_tokens=count_tokens),
         "real_chain": (
             analyze_independent_trajectories(
-                trajectories, count_tokens=count_tokens
+                trajectories,
+                valid_protocol_exemplars=args.protocol_exemplars,
+                valid_workflow_exemplars=args.workflow_exemplars,
+                count_tokens=count_tokens,
             )
             if trajectories else None
         ),
