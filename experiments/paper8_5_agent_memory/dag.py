@@ -1152,6 +1152,7 @@ class FrontierDagRetirementSelector:
         allow_heuristic: bool = False,
         valid_protocol_exemplars: int = 0,
         valid_workflow_exemplars: int = 0,
+        atomic_closed_components: bool = True,
     ) -> None:
         if recent_user_prompts < 1:
             raise ValueError("recent_user_prompts must be positive")
@@ -1163,6 +1164,7 @@ class FrontierDagRetirementSelector:
         if valid_workflow_exemplars < 0:
             raise ValueError("valid_workflow_exemplars cannot be negative")
         self.valid_workflow_exemplars = valid_workflow_exemplars
+        self.atomic_closed_components = atomic_closed_components
 
     def select(
         self,
@@ -1184,10 +1186,108 @@ class FrontierDagRetirementSelector:
             if self.allow_heuristic
             or row.confidence == FrontierRetirementConfidence.CERTIFIED
         )
-        excluded_groups = {row.causal_group_id for row in eligible}
+        eligible_groups = {row.causal_group_id for row in eligible}
+        excluded_record_ids: set[str] = set()
+        exclusion_rows: list[AgentMemoryExclusion] = []
+
+        if self.atomic_closed_components:
+            # A prompt interval is retired only when it is observably closed
+            # and every one of its complete causal groups is disconnected from
+            # the live frontier. No evaluator task/episode identity is used.
+            # Partial retirement would leave the pinned prompt apparently
+            # unanswered, so intervals that fail this gate remain whole.
+            turn_groups = {turn.causal_group_id for turn in history.turns}
+            candidates_by_group = {
+                row.causal_group_id: row for row in eligible
+            }
+            for interval in dag.epochs:
+                if interval.epoch_index in dag.frontier_epoch_indices:
+                    continue
+                interval_groups = {
+                    group_id for group_id in interval.causal_group_ids
+                    if group_id in turn_groups
+                }
+                closed = any(
+                    bool(history.record_by_id[record_id].metadata.get(
+                        "protocol_completion_valid"
+                    ))
+                    for record_id in interval.record_ids
+                )
+                if (
+                    not closed
+                    or not interval_groups
+                    or not interval_groups.issubset(eligible_groups)
+                ):
+                    continue
+                excluded_record_ids.update(interval.record_ids)
+                rows = tuple(
+                    candidates_by_group[group_id]
+                    for group_id in sorted(interval_groups)
+                )
+                confidence = (
+                    FrontierRetirementConfidence.CERTIFIED
+                    if all(
+                        row.confidence == FrontierRetirementConfidence.CERTIFIED
+                        for row in rows
+                    )
+                    else FrontierRetirementConfidence.HEURISTIC
+                )
+                resources = tuple(dict.fromkeys(
+                    resource for row in rows for resource in row.resource_ids
+                ))
+                exclusion_rows.append(AgentMemoryExclusion(
+                    causal_group_id=(
+                        "closed-component:" + interval.instruction_record_id
+                    ),
+                    record_ids=interval.record_ids,
+                    rule_id=(
+                        f"FRONTIER_CLOSED_COMPONENT_NO_PATH_M"
+                        f"{self.recent_user_prompts}_V1"
+                    ),
+                    classification=confidence.value,
+                    reason=(
+                        "observable instruction root has terminal evidence and "
+                        "no record in its closed component reaches the recent "
+                        "user-prompt frontier"
+                    ),
+                    resource_ids=resources,
+                    witness_record_ids=dag.frontier_record_ids,
+                    tombstone=(
+                        f"INACTIVE component={interval.instruction_record_id} "
+                        f"rule=FRONTIER_CLOSED_COMPONENT_NO_PATH_M"
+                        f"{self.recent_user_prompts}_V1 "
+                        f"confidence={confidence.value}"
+                    ),
+                    excluded_tokens=sum(
+                        count_tokens(history.record_by_id[record_id].content)
+                        for record_id in interval.record_ids
+                    ),
+                ))
+        else:
+            excluded_record_ids.update(
+                record_id for row in eligible for record_id in row.record_ids
+            )
+            exclusion_rows.extend(AgentMemoryExclusion(
+                causal_group_id=row.causal_group_id,
+                record_ids=row.record_ids,
+                rule_id=f"FRONTIER_NO_PATH_M{self.recent_user_prompts}_V1",
+                classification=row.confidence.value,
+                reason=row.reason,
+                resource_ids=row.resource_ids,
+                witness_record_ids=dag.frontier_record_ids,
+                tombstone=(
+                    f"INACTIVE group={row.causal_group_id} "
+                    f"rule=FRONTIER_NO_PATH_M{self.recent_user_prompts}_V1 "
+                    f"confidence={row.confidence.value}"
+                ),
+                excluded_tokens=sum(
+                    count_tokens(history.record_by_id[record_id].content)
+                    for record_id in row.record_ids
+                ),
+            ) for row in eligible)
         selected_records = tuple(
             row for row in sorted(history.records, key=lambda value: value.message_index)
-            if row.causal_group_id not in excluded_groups
+            if row.record_id not in excluded_record_ids
         )
         selected_ids = tuple(row.record_id for row in selected_records)
         selected_groups = tuple(dict.fromkeys(
@@ -1196,28 +1296,12 @@ class FrontierDagRetirementSelector:
         full_tokens = sum(count_tokens(row.content) for row in history.records)
         selected_tokens = sum(count_tokens(row.content) for row in selected_records)
         requested = int(getattr(budget, "max_tokens", full_tokens))
-        exclusions = tuple(AgentMemoryExclusion(
-            causal_group_id=row.causal_group_id,
-            record_ids=row.record_ids,
-            rule_id=f"FRONTIER_NO_PATH_M{self.recent_user_prompts}_V1",
-            classification=row.confidence.value,
-            reason=row.reason,
-            resource_ids=row.resource_ids,
-            witness_record_ids=dag.frontier_record_ids,
-            tombstone=(
-                f"INACTIVE group={row.causal_group_id} "
-                f"rule=FRONTIER_NO_PATH_M{self.recent_user_prompts}_V1 "
-                f"confidence={row.confidence.value}"
-            ),
-            excluded_tokens=sum(
-                count_tokens(history.record_by_id[record_id].content)
-                for record_id in row.record_ids
-            ),
-        ) for row in eligible)
+        exclusions = tuple(exclusion_rows)
         return AgentMemoryPlan(
             policy=(
                 f"frontier_dag_m{self.recent_user_prompts}_"
                 + ("heuristic" if self.allow_heuristic else "certified")
+                + ("_atomic" if self.atomic_closed_components else "_groups")
                 + f"_p{self.valid_protocol_exemplars}"
                 + (
                     f"_w{self.valid_workflow_exemplars}"
@@ -1239,7 +1323,8 @@ class FrontierDagRetirementSelector:
             tail_turns=len(dag.frontier_epoch_indices),
             middle_candidate_turns=len(history.turns),
             middle_selected_turns=sum(
-                turn.causal_group_id not in excluded_groups for turn in history.turns
+                not set(turn.record_ids).issubset(excluded_record_ids)
+                for turn in history.turns
             ),
             exclusions=exclusions,
         )

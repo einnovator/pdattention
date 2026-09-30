@@ -310,7 +310,7 @@ def test_frontier_simplification_preserves_prompts_and_orders_ablation_savings()
     )
 
 
-def test_frontier_dag_selector_emits_auditable_atomic_exclusions():
+def test_frontier_dag_selector_can_reproduce_legacy_group_exclusions():
     history = _information_flow_chain(
         [f"src/task_{index}.py" for index in range(6)],
         workspace_scopes=[f"workspace-{index}" for index in range(6)],
@@ -319,6 +319,7 @@ def test_frontier_dag_selector_emits_auditable_atomic_exclusions():
     plan = FrontierDagRetirementSelector(
         recent_user_prompts=2,
         allow_heuristic=False,
+        atomic_closed_components=False,
     ).select(
         history=history,
         query="",
@@ -334,6 +335,88 @@ def test_frontier_dag_selector_emits_auditable_atomic_exclusions():
         set(row.record_ids).isdisjoint(plan.selected_record_ids)
         for row in plan.exclusions
     )
+
+
+def test_frontier_dag_selector_retires_closed_disconnected_components_atomically():
+    base = _information_flow_chain(
+        [f"src/task_{index}.py" for index in range(6)],
+        workspace_scopes=[f"workspace-{index}" for index in range(6)],
+    )
+    records = tuple(
+        replace(
+            row,
+            metadata={**row.metadata, "protocol_completion_valid": True},
+        )
+        if row.record_id.startswith("observation-") else row
+        for row in base.records
+    )
+    history = CanonicalAgentHistory(records, base.turns)
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+
+    plan = FrontierDagRetirementSelector(
+        recent_user_prompts=2,
+        allow_heuristic=False,
+    ).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert {row.causal_group_id for row in plan.exclusions} == {
+        "closed-component:instruction-0",
+        "closed-component:instruction-1",
+        "closed-component:instruction-2",
+        "closed-component:instruction-3",
+    }
+    assert all(
+        row.rule_id == "FRONTIER_CLOSED_COMPONENT_NO_PATH_M2_V1"
+        for row in plan.exclusions
+    )
+    assert {
+        "instruction-0", "action-0", "observation-0",
+        "instruction-1", "action-1", "observation-1",
+    }.isdisjoint(plan.selected_record_ids)
+    assert {
+        "instruction-4", "action-4", "observation-4",
+        "instruction-5", "action-5", "observation-5",
+    }.issubset(plan.selected_record_ids)
+
+
+def test_frontier_atomic_retirement_preserves_closed_component_with_live_resource_path():
+    base = _information_flow_chain(
+        [
+            "src/shared.py", "src/a.py", "src/b.py", "src/c.py",
+            "src/d.py", "src/shared.py",
+        ],
+        workspace_scopes=["workspace-shared"] * 6,
+    )
+    history = CanonicalAgentHistory(tuple(
+        replace(
+            row,
+            metadata={**row.metadata, "protocol_completion_valid": True},
+        )
+        if row.record_id.startswith("observation-") else row
+        for row in base.records
+    ), base.turns)
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+
+    plan = FrontierDagRetirementSelector(
+        recent_user_prompts=2,
+        allow_heuristic=False,
+    ).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert "instruction-0" in plan.selected_record_ids
+    assert "action-0" in plan.selected_record_ids
+    assert "observation-0" in plan.selected_record_ids
+    assert "closed-component:instruction-0" not in {
+        row.causal_group_id for row in plan.exclusions
+    }
 
 
 def test_frontier_policy_does_not_branch_on_agent_or_native_tool_name():

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .dag import (
+    FrontierDagRetirementSelector,
     FrontierRetirementConfidence,
     FrontierSimplificationMode,
     build_frontier_information_flow_dag,
@@ -23,6 +24,7 @@ from .dag import (
     trace_frontier_reachability,
 )
 from .model import (
+    AgentMemoryBudget,
     AgentRecord,
     AgentRecordRole,
     AgentTurn,
@@ -154,6 +156,59 @@ def score_frontier_dag(
                 "orphaned_closed_prompt_count": len(orphaned_closed_prompts),
                 "orphaned_closed_prompt_record_ids": orphaned_closed_prompts,
             })
+    full_tokens = sum(count_tokens(row.content) for row in history.records)
+    atomic_component_plans = []
+    for allow_heuristic in (False, True):
+        plan = FrontierDagRetirementSelector(
+            recent_user_prompts=recent_user_prompts,
+            allow_heuristic=allow_heuristic,
+            valid_protocol_exemplars=valid_protocol_exemplars,
+            valid_workflow_exemplars=valid_workflow_exemplars,
+            atomic_closed_components=True,
+        ).select(
+            history=history,
+            query="",
+            budget=AgentMemoryBudget(max_tokens=full_tokens),
+            count_tokens=count_tokens,
+        )
+        selected = set(plan.selected_record_ids)
+        atomic_component_plans.append({
+            "confidence_gate": (
+                "heuristic_allowed" if allow_heuristic else "certified_only"
+            ),
+            "selected_tokens": plan.selected_tokens,
+            "full_tokens": plan.full_history_tokens,
+            "saving_fraction": 1.0 - (
+                plan.selected_tokens / plan.full_history_tokens
+                if plan.full_history_tokens else 1.0
+            ),
+            "retired_component_count": len(plan.exclusions),
+            "retired_instruction_record_ids": [
+                record_id
+                for row in plan.exclusions
+                for record_id in row.record_ids
+                if record_id in {
+                    interval.instruction_record_id for interval in dag.epochs
+                }
+            ],
+            "orphaned_closed_prompt_count": sum(
+                interval.instruction_record_id in selected
+                and not any(
+                    record_id in selected
+                    and bool(history.record_by_id[record_id].metadata.get(
+                        "protocol_completion_valid"
+                    ))
+                    for record_id in interval.record_ids
+                )
+                for interval in dag.epochs
+                if any(
+                    bool(history.record_by_id[record_id].metadata.get(
+                        "protocol_completion_valid"
+                    ))
+                    for record_id in interval.record_ids
+                )
+            ),
+        })
     interval_for_record = {
         record_id: interval.epoch_index
         for interval in dag.epochs
@@ -214,6 +269,7 @@ def score_frontier_dag(
             score("dag_no_path_heuristic_allowed", heuristic),
         ],
         "simplifications": simplifications,
+        "atomic_closed_component_plans": atomic_component_plans,
         "candidates": [asdict(row) for row in dag.retirement_candidates],
     }
 

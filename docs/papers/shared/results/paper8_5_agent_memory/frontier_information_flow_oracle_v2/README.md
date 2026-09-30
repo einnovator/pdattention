@@ -56,9 +56,20 @@ three older pinned prompts.
 
 Whole-group M2/P1 is structurally invalid as a production profile even though
 its resource-retirement precision is perfect on this independent sequence.
-The next candidate must combine DAG retirement with a topology-preserving
-realization made from original record/token spans. Autonomous accuracy runs
-should remain paused until that invariant is enforced by tests.
+The implemented successor retires a complete older prompt component only when
+(1) terminal evidence exists and (2) every causal group in that component is
+disconnected from the live prompt frontier. The selector receives no task ID;
+the component is induced by observable prompt roots and information-flow
+reachability. On the frozen N=6 prefix, atomic M2 retires three closed
+components, saves 29.45%, and leaves zero orphaned prompts. Atomic M3 retires
+two components, saves 21.13%, and likewise leaves zero orphans. These are
+structural opportunities, not autonomous accuracy results.
+
+The imported legacy trajectories lack the newer runtime workspace-lineage
+receipt, so these independent-component decisions remain in the explicit
+`heuristic_allowed` tier. The `certified_only` arm correctly abstains. New
+autonomous runs must capture workspace lineage and resource versions before a
+certified deployment claim.
 
 ## Files
 

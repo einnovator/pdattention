@@ -49,7 +49,10 @@ def _post(endpoint: str, payload: Mapping[str, Any], timeout: float) -> dict[str
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
+    source = json.loads(args.trajectory.read_text(encoding="utf-8"))
+    trajectory = source.get("trajectory", source)
+    if not isinstance(trajectory, Mapping):
+        raise ValueError("trajectory input is not an object")
     messages = trajectory.get("messages")
     if not isinstance(messages, list) or len(messages) < args.message_prefix_length:
         raise ValueError("trajectory does not contain the requested frozen prefix")
@@ -139,6 +142,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             compact_completed_finalizations=True,
             keep_completed_task_statements=True,
             retire_closed_instructions=False,
+            **common,
+        ),
+        "DAG_M2_ATOMIC": AutonomousSelectionConfig(
+            policy="frontier_dag_retirement",
+            frontier_recent_user_prompts=2,
+            frontier_protocol_exemplars=0,
+            frontier_allow_heuristic=True,
+            **common,
+        ),
+        "DAG_M2_P1_ATOMIC": AutonomousSelectionConfig(
+            policy="frontier_dag_retirement",
+            frontier_recent_user_prompts=2,
+            frontier_protocol_exemplars=1,
+            frontier_allow_heuristic=True,
             **common,
         ),
     }
@@ -287,6 +304,7 @@ def main() -> None:
         choices=(
             "FULL", "E0", "E0_F1", "E0_F1C", "E0_ATOMIC",
             "E1_ATOMIC", "E2_ATOMIC", "E2", "E2_F1C",
+            "DAG_M2_ATOMIC", "DAG_M2_P1_ATOMIC",
         ),
         help="Run only the named arm; repeat to select multiple arms.",
     )
