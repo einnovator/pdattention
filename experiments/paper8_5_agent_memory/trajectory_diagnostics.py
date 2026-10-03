@@ -21,7 +21,34 @@ from pra_hf.tool_semantics import OperationKind
 
 _COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
 _RETURNCODE = re.compile(r"<returncode>\s*(-?\d+)\s*</returncode>")
-_SUBMISSION = re.compile(r"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT|patch\.txt", re.I)
+_SUBMISSION = re.compile(r"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT", re.I)
+_WORKSPACE_DIFF_SUBMISSION = re.compile(
+    r"git\s+diff\b[^\n]*(?:>|\|)|git\s+diff\b", re.I
+)
+_MANUAL_PATCH_CONSTRUCTION = re.compile(
+    r"(?:echo|printf)\b[^\n]*(?:---\s+a/|\+\+\+\s+b/|@@\s+-)", re.I
+)
+
+
+def _changed_resources(extra: Mapping[str, Any]) -> tuple[str, ...]:
+    before = extra.get("resource_version_fingerprints")
+    after = extra.get("post_resource_version_fingerprints")
+    if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+        return ()
+    return tuple(sorted(
+        str(resource) for resource in set(before) | set(after)
+        if before.get(resource) != after.get(resource)
+    ))
+
+
+def _is_source_resource(resource: str) -> bool:
+    normalized = resource.replace("\\", "/")
+    basename = normalized.rsplit("/", 1)[-1]
+    return (
+        basename not in {"patch.txt"}
+        and not basename.endswith((".patch", ".diff"))
+        and not normalized.startswith(("a/", "b/"))
+    )
 
 
 def _command(content: str) -> str | None:
@@ -51,6 +78,22 @@ def extract_miniswe_steps(messages: Sequence[Mapping[str, Any]]) -> list[dict[st
         )
         operation = classify_bash_operation(command)
         resources = extract_resource_ids(command, observation_content)
+        observation_extra = observation.get("extra")
+        if not isinstance(observation_extra, Mapping):
+            observation_extra = {}
+        before_workspace = observation_extra.get("workspace_version_fingerprint")
+        after_workspace = observation_extra.get("post_workspace_version_fingerprint")
+        workspace_change_observed = (
+            bool(before_workspace)
+            and bool(after_workspace)
+            and str(before_workspace) != str(after_workspace)
+        )
+        changed_resources = _changed_resources(observation_extra)
+        changed_source_resources = tuple(
+            resource for resource in changed_resources
+            if _is_source_resource(resource)
+        )
+        is_mutation = operation == OperationKind.WRITE
         steps.append({
             "call": len(steps) + 1,
             "command": command,
@@ -59,6 +102,21 @@ def extract_miniswe_steps(messages: Sequence[Mapping[str, Any]]) -> list[dict[st
             "returncode": _returncode(observation_content),
             "failed": (_returncode(observation_content) not in {None, 0}),
             "submission": bool(_SUBMISSION.search(command)),
+            "workspace_change_observed": workspace_change_observed,
+            "workspace_change_coverage": bool(before_workspace and after_workspace),
+            "effective_mutation": bool(is_mutation and workspace_change_observed),
+            "changed_resources": list(changed_resources),
+            "changed_source_resources": list(changed_source_resources),
+            "effective_source_mutation": bool(
+                is_mutation and changed_source_resources
+            ),
+            "submission_from_workspace_diff": bool(
+                _SUBMISSION.search(command)
+                and _WORKSPACE_DIFF_SUBMISSION.search(command)
+            ),
+            "manual_patch_construction": bool(
+                _MANUAL_PATCH_CONSTRUCTION.search(command)
+            ),
         })
     return steps
 
@@ -85,6 +143,17 @@ def summarize_miniswe_steps(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any
         ] += 1
     repeated = sum(max(0, count - 1) for count in signatures.values())
     first_mutation = _first_call(steps, OperationKind.WRITE.value)
+    first_effective_mutation = next(
+        (int(step["call"]) for step in steps if step.get("effective_mutation")),
+        None,
+    )
+    first_effective_source_mutation = next(
+        (
+            int(step["call"])
+            for step in steps if step.get("effective_source_mutation")
+        ),
+        None,
+    )
     first_verification = _first_call(steps, OperationKind.VERIFY.value)
     first_submission = next(
         (int(step["call"]) for step in steps if step.get("submission")), None
@@ -98,10 +167,32 @@ def summarize_miniswe_steps(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any
         "failed_tool_calls": sum(bool(step.get("failed")) for step in steps),
         "repeated_operation_resource_calls": repeated,
         "calls_to_first_mutation": first_mutation,
+        "calls_to_first_effective_mutation": first_effective_mutation,
+        "calls_to_first_effective_source_mutation": (
+            first_effective_source_mutation
+        ),
         "calls_to_first_verification": first_verification,
         "calls_to_first_submission": first_submission,
         "calls_after_first_mutation": post_mutation,
         "submission_calls": sum(bool(step.get("submission")) for step in steps),
+        "effective_mutation_calls": sum(
+            bool(step.get("effective_mutation")) for step in steps
+        ),
+        "effective_source_mutation_calls": sum(
+            bool(step.get("effective_source_mutation")) for step in steps
+        ),
+        "ineffective_mutation_calls": sum(
+            step.get("operation") == OperationKind.WRITE.value
+            and step.get("workspace_change_coverage")
+            and not step.get("workspace_change_observed")
+            for step in steps
+        ),
+        "workspace_diff_submission_calls": sum(
+            bool(step.get("submission_from_workspace_diff")) for step in steps
+        ),
+        "manual_patch_construction_calls": sum(
+            bool(step.get("manual_patch_construction")) for step in steps
+        ),
     }
 
 

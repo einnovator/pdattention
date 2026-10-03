@@ -1952,12 +1952,15 @@ requests select the alternative command exactly.  Thus temperature zero is
 not an admission criterion, and the nine-call difference is backend-state
 variance rather than evidence that selection caused extra work.  Reported
 log-probabilities are retained for audit but are not interpreted as the
-effective sampler distribution.  Temperature $10^{-7}$ is not promoted as a
-workaround: although it stabilizes the frozen request, a clean autonomous
-Task~3 \textsc{Full} execution fails closed on an upstream timeout at request
-five and has already diverged from the historical temperature-zero trajectory
-at request two.  Frozen next-action stability does not by itself qualify a
-decoding configuration for autonomous evaluation.
+effective sampler distribution. Temperature $10^{-7}$ is not promoted as a
+workaround. The apparent autonomous Task~3 model failure at request five was
+subsequently isolated as a client-transport timeout: Python \texttt{urllib} on
+the Medium Mac timed out, whereas the exact captured 14,385-token request
+completed through \texttt{curl} in 166.55 seconds and returned the expected
+response. Frozen next-action stability does not by itself qualify a decoding
+configuration for autonomous evaluation, but this timeout is not counted as a
+model or policy failure. The autonomous comparison below uses one declared
+\texttt{curl} transport and a 600-second upstream ceiling.
 
 We then vary record age without partially deleting an instruction component.
 At fixed removed mass, individual no-path read groups at 8, 16, and 28
@@ -1973,8 +1976,27 @@ than the historical successful \textsc{Full} trajectory.  On a second task
 identity, a discarded warmup plus three stable interleaved \textsc{Full}
 controls admits a larger first-decision ablation: retiring the immediately
 preceding superseded-unfinished component saves 64.73\% and matches the exact
-command and observation contract in 3/3 trials.  This last result is
-next-action evidence; autonomous success remains pending.
+command and observation contract in 3/3 trials. This last result is
+next-action evidence.
+
+The corrected autonomous Task~3 pair resolves officially in both arms. Two
+contemporaneous \textsc{Full} controls use 13 calls and 199,232 cumulative
+input tokens each; they match exactly through call 12 and differ only in the
+terminal submission command spelling. Distance-1 atomic retirement resolves in two exact 15-call
+repeats. Each materializes 95,934 of 232,269 tokens: 58.70\% saving against its
+own realized trajectory and 51.85\% paired saving against \textsc{Full}, after
+charging the two extra calls. Trace inspection rejects the simple ``missing evidence causes extra
+search'' explanation. Both arms issue the same first search and inspection,
+and both initially direct \texttt{sed} at the wrong line. \textsc{Full} never
+changes the source file; it hand-constructs a valid patch and submits it. The
+selective arm continues inspection, edits the actual source line, verifies it,
+and submits the workspace diff. Its delta is two reads plus one write minus
+one separate diff action. Hence the raw call delta is behavioral divergence,
+but not evidence of reduced task capability or current-task evidence loss.
+The released reducer reports effective source mutation and patch-construction
+provenance as well as candidate-own and paired saving. Both arms are therefore
+repeat-qualified within one task/model/backend identity, not a cross-task
+accuracy estimate.
 
 The resulting mitigation is narrower than generic recency: preserve the
 active instruction and progress spine, the system/tool contract, one recent

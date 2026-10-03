@@ -60,6 +60,14 @@ def reduce(reference: Path, candidates: list[Path]) -> dict[str, Any]:
             "cumulative_saving_fraction": 1.0 - float(
                 metrics["cumulative_materialized_retention_fraction"]
             ),
+            "candidate_own_saving_fraction": 1.0 - (
+                float(metrics["cumulative_materialized_tokens"])
+                / float(metrics["cumulative_full_tokens"])
+            ),
+            "paired_saving_fraction_vs_reference": 1.0 - (
+                float(metrics["cumulative_materialized_tokens"])
+                / float(reference_metrics["cumulative_materialized_tokens"])
+            ),
             "reacquisition_events": metrics.get("reacquisition_events"),
             "message_count": len(messages),
             "message_content_sha256": digest,
@@ -86,7 +94,8 @@ def reduce(reference: Path, candidates: list[Path]) -> dict[str, Any]:
         ),
         "guardrail": (
             "Repeated executions of one task/model/backend do not estimate "
-            "cross-task or cross-agent reliability."
+            "cross-task or cross-agent reliability. Candidate-own saving and "
+            "paired saving answer different questions and must not be pooled."
         ),
     }
 

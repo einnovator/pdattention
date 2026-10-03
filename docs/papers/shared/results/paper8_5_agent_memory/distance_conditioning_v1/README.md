@@ -157,13 +157,14 @@ differ from the highest *reported* raw-logit probability. Therefore the
 observed 9-versus-18-call FULL split is a backend decoding-state control, not
 admissible selection evidence. Policy comparisons must declare and stabilize
 cold/warm state as well as model, messages, tokenizer, seed and temperature.
-Near-zero temperature is not promoted as the workaround: a clean autonomous
-Task-3 FULL execution follows the frozen action for four completed calls but
-fails closed on an upstream timeout at request 5. Its first request and
-response match the historical temperature-zero control exactly, but generation
-already differs on request 2. Frozen next-action repeatability therefore does
-not qualify a decoding configuration for autonomous use. The autonomous pair
-returns to temperature zero with an explicitly stabilized warm state.
+Near-zero temperature is not promoted as the workaround. The apparent
+autonomous Task-3 model failure at request 5 was subsequently isolated as a
+client-transport timeout: Python `urllib` on the Medium Mac timed out, while
+the exact captured 14,385-token request completed through `curl` in 166.55 s
+and returned the expected response. Frozen next-action repeatability still
+does not qualify a decoding configuration for autonomous use, but the timeout
+must not be counted as a policy or model failure. Autonomous comparisons now
+use the same `curl` transport and a 600 s upstream ceiling.
 
 The first stable distance cell removes one 275-token read group eight complete
 tool turns behind the current decision.  It saves 1.03% of the request and
@@ -212,8 +213,27 @@ three treatment requests at temperature `1e-7`. All three FULL responses are
 byte-identical. Atomically retiring the immediately preceding 9,089-token
 no-path, superseded-unfinished instruction component saves 64.73% of the
 request and matches the exact FULL command, operation, and observation
-contract in 3/3 trials. This is next-action evidence only; an autonomous
-FULL--treatment pair is required for success and calls-to-solution.
+contract in 3/3 trials.
+
+The corrected autonomous FULL--treatment pair is now complete. FULL officially
+resolves Task 3 in two 13-call repeats and sends 199,232 cumulative input
+tokens per repeat. The FULL controls match exactly through call 12 and differ
+only in the terminal submission command spelling. Atomic
+distance-1 retirement resolves in two exact 15-call repeats. Each materializes
+95,934 of 232,269 tokens: 58.70% candidate-own saving and 51.85% paired saving
+relative to FULL, after paying for the two extra calls. The extra calls do not represent
+repository rediscovery. Both arms issue the same first search and inspection
+and both initially target the wrong `sed` line. FULL never changes the source
+file; after observing the no-op it hand-builds a valid patch and submits it.
+The selective arm continues inspecting, edits the actual source line, verifies
+it, and submits the workspace diff. Its delta is two reads plus one write minus
+one separate diff action. Therefore the raw 13-versus-15 comparison is a real
+trajectory difference but not evidence that retirement destroyed current-task
+state or made the agent less capable. The reducer now reports effective source
+mutations, patch-construction provenance, candidate-own saving, and paired
+saving. Both arms are therefore repeat-qualified within one
+task/model/backend identity, not a
+cross-task accuracy estimate.
 
 ## Current root-cause disposition
 
@@ -222,10 +242,10 @@ FULL--treatment pair is required for success and calls-to-solution.
 | Old request appears unfinished | A 9,089-token disconnected interval has no valid completion receipt; closed-only selection retained it. Atomic retirement preserves the frozen next action and gives the 2/2 nine-call Task-4 treatment. | Supported as a policy defect in the old closure rule; use later-instruction supersession plus no-path evidence. |
 | Missing one-command format | Removing matched old read groups at tool distances 8, 16 and 28 preserves the exact next command in 6/6 trials. | Not caused by age alone. Retain the system contract and at least one natural valid action--observation exemplar before broader removal. |
 | Missing search--inspect--edit--verify--submit workflow | Removing a closed component three prompts back preserves the search operation but changes bounded `find ... | head` to unbounded `find`. | Plausible conditioning effect; operation-class equality is insufficient. Keep one recent complete successful workflow component. |
-| Insufficient evidence confidence | The repeat-qualified Task-4 treatment removes four reads and reaches the same mutation five calls earlier, with no reacquisition. | In this cell removal increases rather than decreases edit confidence; test another task identity. |
+| Insufficient evidence confidence | The repeat-qualified Task-4 treatment removes four reads and reaches the same mutation five calls earlier, with no reacquisition. On Task 3 both arms make the same no-op edit; the selective arm repairs the real file while FULL fabricates the submitted patch. | No current-task evidence was removed in either cell. Count effective source mutation and submission provenance before calling added calls a confidence loss. |
 | Missing error-recovery example | No admitted cell yet removes the sole relevant failed-action/recovery pair. | Pending targeted frozen ablation; failed action, error observation and recovery remain atomic. |
 | Missing stopping example | The Task-4 treatment leaves the two-call mutation-to-submission tail unchanged. | No stop regression in the admitted cell; preserve one valid verification/submission spine until replicated. |
-| Temperature-zero model variance | Exact FULL request branches 9 versus 18 calls historically; 2/2 cold requests and warm requests form different exact response clusters. | Confirmed backend-state confound. Do not attribute call deltas to selection without stable paired FULL controls. |
+| Temperature-zero model variance | Exact FULL request branches 9 versus 18 calls historically; 2/2 cold requests and warm requests form different exact response clusters. | Confirmed backend-state confound. Do not attribute call deltas to selection without stable paired FULL controls. Separately, use a transport capable of completing long cold/prefix-miss requests. |
 
 The present policy candidate is deliberately small: preserve the active
 instruction and its complete progress spine, preserve the system/tool
