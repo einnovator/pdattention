@@ -12,6 +12,8 @@ from experiments.paper8_5_agent_memory import (
     BashOperation,
     DagEdgeKind,
     DagCertifiedExclusionSelector,
+    DistanceConditioningConfig,
+    DistanceConditioningSelector,
     ExclusionClass,
     AgentRecordRole,
     AgentTurn,
@@ -381,6 +383,129 @@ def test_frontier_dag_selector_retires_closed_disconnected_components_atomically
         "instruction-4", "action-4", "observation-4",
         "instruction-5", "action-5", "observation-5",
     }.issubset(plan.selected_record_ids)
+
+
+def _closed_information_flow_chain(resources, *, workspace_scopes):
+    base = _information_flow_chain(
+        resources,
+        workspace_scopes=workspace_scopes,
+    )
+    records = tuple(
+        replace(
+            row,
+            metadata={**row.metadata, "protocol_completion_valid": True},
+        )
+        if row.record_id.startswith("observation-") else row
+        for row in base.records
+    )
+    return CanonicalAgentHistory(records, base.turns)
+
+
+def test_distance_conditioning_retires_exact_closed_task_distance_atomically():
+    history = _closed_information_flow_chain(
+        [f"src/task_{index}.py" for index in range(6)],
+        workspace_scopes=[f"workspace-{index}" for index in range(6)],
+    )
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+    plan = DistanceConditioningSelector(DistanceConditioningConfig(
+        task_distances=(3,),
+    )).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert {row.causal_group_id for row in plan.exclusions} == {
+        "task-distance:3"
+    }
+    assert "instruction-2" not in plan.selected_record_ids
+    assert "action-2" not in plan.selected_record_ids
+    assert "observation-2" not in plan.selected_record_ids
+    assert "instruction-1" in plan.selected_record_ids
+    assert "instruction-5" in plan.selected_record_ids
+
+
+def test_distance_conditioning_superseded_unfinished_is_explicit_diagnostic():
+    closed = _closed_information_flow_chain(
+        [f"src/task_{index}.py" for index in range(6)],
+        workspace_scopes=[f"workspace-{index}" for index in range(6)],
+    )
+    history = CanonicalAgentHistory(tuple(
+        replace(
+            row,
+            metadata={**row.metadata, "protocol_completion_valid": False},
+        )
+        if row.record_id == "observation-2" else row
+        for row in closed.records
+    ), closed.turns)
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+    default_plan = DistanceConditioningSelector(DistanceConditioningConfig(
+        task_distances=(3,),
+    )).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+    diagnostic_plan = DistanceConditioningSelector(DistanceConditioningConfig(
+        task_distances=(3,),
+        allow_superseded_unfinished_after=2,
+    )).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert default_plan.exclusions == ()
+    assert diagnostic_plan.exclusions[0].rule_id == (
+        "DISTANCE_SUPERSEDED_UNFINISHED_D3_V1"
+    )
+    assert "instruction-2" not in diagnostic_plan.selected_record_ids
+
+
+def test_distance_conditioning_tool_distance_removes_one_complete_group_only():
+    history = _closed_information_flow_chain(
+        [f"src/task_{index}.py" for index in range(6)],
+        workspace_scopes=[f"workspace-{index}" for index in range(6)],
+    )
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+    plan = DistanceConditioningSelector(DistanceConditioningConfig(
+        tool_call_distances=(3,),
+    )).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert {row.causal_group_id for row in plan.exclusions} == {
+        "tool-distance:3"
+    }
+    assert "instruction-3" in plan.selected_record_ids
+    assert "action-3" not in plan.selected_record_ids
+    assert "observation-3" not in plan.selected_record_ids
+    assert "action-2" in plan.selected_record_ids
+
+
+def test_distance_conditioning_abstains_on_old_task_with_live_resource_path():
+    history = _closed_information_flow_chain(
+        ["src/shared.py", "src/a.py", "src/b.py", "src/shared.py"],
+        workspace_scopes=["workspace-live"] * 4,
+    )
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+    plan = DistanceConditioningSelector(DistanceConditioningConfig(
+        task_distances=(3,),
+    )).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert plan.exclusions == ()
+    assert plan.selected_tokens == full_tokens
 
 
 def test_frontier_atomic_retirement_preserves_closed_component_with_live_resource_path():

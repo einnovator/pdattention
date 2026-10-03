@@ -60,6 +60,10 @@ from .model import (
     AgentTurn,
     CanonicalAgentHistory,
 )
+from .distance_conditioning import (
+    DistanceConditioningConfig,
+    DistanceConditioningSelector,
+)
 from .negative_selection import (
     NEGATIVE_POLICY_RULES,
     NegativeHeuristicSelector,
@@ -104,6 +108,8 @@ __all__ = [
     "AgentRecordRole",
     "AgentTurn",
     "CanonicalAgentHistory",
+    "DistanceConditioningConfig",
+    "DistanceConditioningSelector",
     "AgentHistoryDag",
     "DagEdge",
     "DagEdgeKind",

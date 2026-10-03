@@ -51,6 +51,10 @@ _ORDER_SENSITIVE_SEARCH = re.compile(
     r"(?:^|\s)(?:-[ABC]\d*|--(?:after|before-)?context(?:=|\s)|"
     r"-[z0]|--null\b|--null-data\b|--json\b)"
 )
+_OUTPUT_LIMIT = re.compile(
+    r"\|\s*(?:head|tail)(?:\s+-n)?\s+-?\d+\b|\bsed\s+-n\s+['\"]?\d+\s*,\s*\d+p"
+)
+_STDERR_SUPPRESSION = re.compile(r"(?:2|&)?>\s*/dev/null")
 
 
 def normalize_resource(value: str) -> str:
@@ -96,6 +100,28 @@ def classify_bash_effect(command: str | None) -> EffectKind:
     if command.strip() in {"true", ":"}:
         return EffectKind.PURE
     return EffectKind.UNKNOWN
+
+
+def bash_action_contract(command: str | None) -> dict[str, object]:
+    """Coarse model-visible action contract for divergence diagnostics.
+
+    Unlike ``OperationKind``, this distinguishes changes that alter the likely
+    observation: bounded versus unbounded output, stderr visibility, referenced
+    resources, and shell composition.  It is not an execution equivalence
+    proof and is never used to certify retirement.
+    """
+
+    value = command or ""
+    return {
+        "operation": classify_bash_operation(value).value,
+        "resources": list(extract_resource_ids(value, "")),
+        "output_bounded": bool(_OUTPUT_LIMIT.search(value)),
+        "stderr_suppressed": bool(_STDERR_SUPPRESSION.search(value)),
+        "pipeline_stages": value.count("|") + 1,
+        "submission": bool(re.search(
+            r"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT|patch\.txt", value, re.I
+        )),
+    }
 
 
 def _writes_workspace(command: str) -> bool:
@@ -213,6 +239,7 @@ def declared_turn_metadata(
 __all__ = [
     "BashOperation",
     "bash_semantics_are_certifiable",
+    "bash_action_contract",
     "classify_bash_effect",
     "classify_bash_operation",
     "canonicalize_unordered_search_output",

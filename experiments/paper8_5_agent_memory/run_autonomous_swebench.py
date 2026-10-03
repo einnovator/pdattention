@@ -1051,6 +1051,13 @@ def run(args: argparse.Namespace) -> Path:
         frontier_protocol_exemplars=args.frontier_protocol_exemplars,
         frontier_workflow_exemplars=args.frontier_workflow_exemplars,
         frontier_allow_heuristic=args.frontier_allow_heuristic,
+        distance_task_distances=tuple(args.distance_task_distance),
+        distance_task_at_least=args.distance_task_at_least,
+        distance_tool_call_distances=tuple(args.distance_tool_call_distance),
+        distance_tool_call_window_radius=args.distance_tool_call_window_radius,
+        distance_allow_superseded_unfinished_after=(
+            args.distance_allow_superseded_unfinished_after
+        ),
         keep_completed_task_statements=args.keep_completed_task_statements,
         boundary_mode=args.boundary_mode,
         require_exact_sidecars=args.require_exact_sidecars,
@@ -1476,6 +1483,48 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Allow no-path retirement without a complete workspace/effect proof. "
             "Disabled by default; historical-chain experiments must opt in."
+        ),
+    )
+    parser.add_argument(
+        "--distance-task-distance",
+        type=int,
+        action="append",
+        default=[],
+        help=(
+            "Diagnostic: atomically retire a closed disconnected instruction "
+            "component at this one-based distance from the active prompt."
+        ),
+    )
+    parser.add_argument(
+        "--distance-task-at-least",
+        type=int,
+        help=(
+            "Diagnostic: atomically retire every qualifying instruction "
+            "component at or beyond this one-based prompt distance."
+        ),
+    )
+    parser.add_argument(
+        "--distance-tool-call-distance",
+        type=int,
+        action="append",
+        default=[],
+        help=(
+            "Diagnostic: retire a complete no-path action--observation group "
+            "at this one-based completed-tool-turn distance."
+        ),
+    )
+    parser.add_argument(
+        "--distance-tool-call-window-radius",
+        type=int,
+        default=0,
+        help="Also retire this many adjacent complete tool turns on each side.",
+    )
+    parser.add_argument(
+        "--distance-allow-superseded-unfinished-after",
+        type=int,
+        help=(
+            "Diagnostic only: allow a no-path unfinished instruction interval "
+            "to retire after this many later genuine-user prompts."
         ),
     )
     parser.add_argument(

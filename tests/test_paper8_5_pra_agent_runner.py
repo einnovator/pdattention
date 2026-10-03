@@ -33,7 +33,7 @@ from experiments.paper8_5_agent_memory.pra_agent_policy import (
 )
 
 
-def test_pra_agent_frontier_selector_retires_disconnected_old_task_tools() -> None:
+def test_pra_agent_frontier_selector_preserves_unclosed_old_task_atomically() -> None:
     rows = (
         _message("task1", "user", "fix repository one"),
         _message("a1", "assistant", "inspect old.py"),
@@ -56,10 +56,13 @@ def test_pra_agent_frontier_selector_retires_disconnected_old_task_tools() -> No
     selected = selector(rows, "continue")
     selected_ids = {row.record_id for row in selected}
 
-    assert {"task1", "task2", "task3", "a2", "o2", "a3", "o3"}.issubset(
-        selected_ids
-    )
-    assert {"a1", "o1"}.isdisjoint(selected_ids)
+    # Removing only a1/o1 would leave task1 looking unanswered.  An interval
+    # without witnessed completion therefore remains whole even when its tool
+    # group is disconnected from the recent prompt frontier.
+    assert {
+        "task1", "a1", "o1", "task2", "a2", "o2", "task3", "a3", "o3",
+    }.issubset(selected_ids)
+    assert selector.traces[0]["excluded_record_ids"] == []
     assert selector.traces[0]["policy"].startswith("frontier_dag_m2_")
 
 

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_distance_conditioning_reduction",
+  "source_study": "paper8_5_distance_conditioning_ablation",
+  "full_control": {
+    "attempts": 2,
+    "transport_clean": true,
+    "action_valid": true,
+    "selected_request_exact": true,
+    "unique_command_hashes": 1,
+    "unique_response_hashes": 1,
+    "causal_admission": true,
+    "pairwise_token_divergences": [
+      {
+        "left_repeat": 1,
+        "right_repeat": 2,
+        "same_request_sha256": true,
+        "common_prefix_tokens": 110,
+        "left_token_count": 110,
+        "right_token_count": 110,
+        "first_divergence": null
+      }
+    ],
+    "note": "Stable byte-identical FULL commands admit arm attribution. Temperature zero alone does not."
+  },
+  "arms": {
+    "FULL": {
+      "attempts": 2,
+      "transport_errors": 0,
+      "valid_actions": 2,
+      "valid_action_fraction": 1.0,
+      "unique_command_hashes": 1,
+      "unique_response_hashes": 1,
+      "operation_classes": {
+        "search_discovery": 2
+      },
+      "paired_command_matches": 2,
+      "paired_comparable": 2,
+      "paired_command_match_fraction": 1.0,
+      "paired_operation_matches": 2,
+      "paired_operation_comparable": 2,
+      "paired_operation_match_fraction": 1.0,
+      "paired_action_contract_matches": 2,
+      "paired_action_contract_comparable": 2,
+      "paired_action_contract_match_fraction": 1.0,
+      "saving_fraction": 0.0,
+      "exact_noop": true,
+      "causal_interpretation": "admitted_against_stable_full"
+    },
+    "TASK_D2": {
+      "attempts": 2,
+      "transport_errors": 0,
+      "valid_actions": 2,
+      "valid_action_fraction": 1.0,
+      "unique_command_hashes": 1,
+      "unique_response_hashes": 1,
+      "operation_classes": {
+        "search_discovery": 2
+      },
+      "paired_command_matches": 0,
+      "paired_comparable": 2,
+      "paired_command_match_fraction": 0.0,
+      "paired_operation_matches": 2,
+      "paired_operation_comparable": 2,
+      "paired_operation_match_fraction": 1.0,
+      "paired_action_contract_matches": 0,
+      "paired_action_contract_comparable": 2,
+      "paired_action_contract_match_fraction": 0.0,
+      "saving_fraction": 0.5367308373686075,
+      "exact_noop": false,
+      "causal_interpretation": "admitted_against_stable_full"
+    }
+  },
+  "guardrail": "This reduction concerns the next action only. Calls-to-solution and official resolution require autonomous paired executions."
+}

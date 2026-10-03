@@ -37,6 +37,10 @@ from .matched_token_tail import (
     materialize_matched_token_tail,
 )
 from .dag import DagCertifiedExclusionSelector, FrontierDagRetirementSelector
+from .distance_conditioning import (
+    DistanceConditioningConfig,
+    DistanceConditioningSelector,
+)
 from .model import AgentMemoryBudget, AgentMemoryPlan, AgentRecordRole
 from .negative_selection import (
     BashOperation,
@@ -91,6 +95,7 @@ AUTONOMOUS_EPISODE_POLICIES = (
     "persistent_global_retirement",
     "persistent_instruction_epoch_retirement",
     "frontier_dag_retirement",
+    "distance_conditioning_ablation",
 )
 AUTONOMOUS_DAG_POLICIES = (
     "dag_certified_exclusion",
@@ -429,6 +434,11 @@ class AutonomousSelectionConfig:
     frontier_protocol_exemplars: int = 0
     frontier_workflow_exemplars: int = 0
     frontier_allow_heuristic: bool = False
+    distance_task_distances: tuple[int, ...] = ()
+    distance_task_at_least: int | None = None
+    distance_tool_call_distances: tuple[int, ...] = ()
+    distance_tool_call_window_radius: int = 0
+    distance_allow_superseded_unfinished_after: int | None = None
     keep_completed_task_statements: bool = True
     boundary_mode: BoundaryMode = BoundaryMode.EXPLICIT
     require_exact_sidecars: bool = True
@@ -480,6 +490,7 @@ class AutonomousSelectionConfig:
                 "persistent_global_retirement",
                 "persistent_instruction_epoch_retirement",
                 "frontier_dag_retirement",
+                "distance_conditioning_ablation",
             }
             and self.boundary_mode is not BoundaryMode.BOUNDARY_FREE
         ):
@@ -501,6 +512,29 @@ class AutonomousSelectionConfig:
             raise ValueError("frontier_protocol_exemplars cannot be negative")
         if self.frontier_workflow_exemplars < 0:
             raise ValueError("frontier_workflow_exemplars cannot be negative")
+        if any(value < 1 for value in self.distance_task_distances):
+            raise ValueError("distance task targets must be positive")
+        if self.distance_task_at_least is not None and self.distance_task_at_least < 1:
+            raise ValueError("distance_task_at_least must be positive")
+        if any(value < 1 for value in self.distance_tool_call_distances):
+            raise ValueError("distance tool-call targets must be positive")
+        if self.distance_tool_call_window_radius < 0:
+            raise ValueError("distance_tool_call_window_radius cannot be negative")
+        if (
+            self.distance_allow_superseded_unfinished_after is not None
+            and self.distance_allow_superseded_unfinished_after < 1
+        ):
+            raise ValueError(
+                "distance_allow_superseded_unfinished_after must be positive"
+            )
+        if self.policy == "distance_conditioning_ablation" and not (
+            self.distance_task_distances
+            or self.distance_task_at_least is not None
+            or self.distance_tool_call_distances
+        ):
+            raise ValueError(
+                "distance conditioning requires a task or tool-call target"
+            )
         if self.policy == "frontier_dag_retirement" and self.budget_fraction != 1.0:
             raise ValueError(
                 "frontier_dag_retirement is a reachability policy and requires "
@@ -609,6 +643,17 @@ class AutonomousSelectionConfig:
                 valid_protocol_exemplars=self.frontier_protocol_exemplars,
                 valid_workflow_exemplars=self.frontier_workflow_exemplars,
             )
+        if self.policy == "distance_conditioning_ablation":
+            return DistanceConditioningSelector(DistanceConditioningConfig(
+                task_distances=tuple(self.distance_task_distances),
+                task_distance_at_least=self.distance_task_at_least,
+                tool_call_distances=tuple(self.distance_tool_call_distances),
+                tool_call_window_radius=self.distance_tool_call_window_radius,
+                allow_heuristic=self.frontier_allow_heuristic,
+                allow_superseded_unfinished_after=(
+                    self.distance_allow_superseded_unfinished_after
+                ),
+            ))
         if self.policy == "head_tail_recency":
             return HeadMiddleTailSelector(HeadMiddleTailConfig(
                 head_turns=self.protected_head_turns,
@@ -781,6 +826,7 @@ def transform_autonomous_payload(
             *AUTONOMOUS_DAG_POLICIES,
             *NEGATIVE_POLICY_RULES,
             "frontier_dag_retirement",
+            "distance_conditioning_ablation",
         }
     )
     selection_abstained = bool(
@@ -944,8 +990,14 @@ def transform_autonomous_payload(
             if (
                 config.retire_closed_instructions
                 and not config.keep_completed_task_statements
-            ) else
+            ) else ({
+                "instruction_floor": "newest_user_instruction",
+                "prior_instruction_retirement": "distance_diagnostic_atomic",
+            } if config.policy in {
+                "distance_conditioning_ablation", "frontier_dag_retirement",
+            } else
             {"instruction_floor": "all_user_instructions"}
+            )
         ),
     )
     # FULL is the behavioral control.  A negative policy that currently has
@@ -1010,7 +1062,9 @@ def transform_autonomous_payload(
     if (
         config.retire_closed_instructions
         and not config.keep_completed_task_statements
-    ):
+    ) or config.policy in {
+        "distance_conditioning_ablation", "frontier_dag_retirement",
+    }:
         genuine_instructions = [
             row.record_id for row in history.records
             if row.has_role(AgentRecordRole.TASK)
@@ -1092,6 +1146,13 @@ def transform_autonomous_payload(
         "keep_completed_task_statements": config.keep_completed_task_statements,
         "frontier_protocol_exemplars": config.frontier_protocol_exemplars,
         "frontier_workflow_exemplars": config.frontier_workflow_exemplars,
+        "distance_task_distances": list(config.distance_task_distances),
+        "distance_task_at_least": config.distance_task_at_least,
+        "distance_tool_call_distances": list(config.distance_tool_call_distances),
+        "distance_tool_call_window_radius": config.distance_tool_call_window_radius,
+        "distance_allow_superseded_unfinished_after": (
+            config.distance_allow_superseded_unfinished_after
+        ),
         "prior_finalization_receipt_count": len(compact_finalization_group_ids),
         "prior_finalization_receipt_tokens": sum(
             row.materialized_tokens for row in compact_finalization_rows
