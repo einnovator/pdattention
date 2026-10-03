@@ -16,6 +16,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import time
 from typing import Any, Mapping
 import urllib.error
 import urllib.request
@@ -118,6 +119,8 @@ def _arm_configs(args: argparse.Namespace, common: Mapping[str, Any]):
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    if args.warmup_full < 0:
+        raise ValueError("--warmup-full cannot be negative")
     if not args.dry_run and (not args.ollama_tags_url or not args.model_revision):
         raise ValueError(
             "non-dry diagnostics require --ollama-tags-url and --model-revision"
@@ -148,8 +151,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         budget_fraction=1.0,
         materialization_mode=MaterializationMode.WHOLE_RECORD,
         expected_model=args.model,
-        temperature=0.0,
-        top_p=1.0,
+        temperature=args.temperature,
+        top_p=args.top_p,
         seed=0,
         max_calls=40,
         max_completion_tokens=args.max_completion_tokens,
@@ -170,8 +173,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": args.model,
         "observed_model_identity": observed_model_identity,
         "messages": frozen_messages,
-        "temperature": 0.0,
-        "top_p": 1.0,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
         "seed": 0,
         "stream": False,
         "max_tokens": args.max_completion_tokens,
@@ -216,10 +219,64 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for name, row in transformed.items()
     }
     rows: list[dict[str, Any]] = []
+    warmup_rows: list[dict[str, Any]] = []
     endpoint = args.base_url.rstrip("/")
     if not endpoint.endswith("/v1/chat/completions"):
         endpoint += "/v1/chat/completions"
     if not args.dry_run:
+        full_treatment = transformed["FULL"]
+        for warmup_index in range(1, args.warmup_full + 1):
+            started = time.perf_counter()
+            try:
+                response = _post(
+                    endpoint, full_treatment.payload, args.timeout_seconds
+                )
+                choice = response["choices"][0]
+                content = str(choice["message"].get("content") or "")
+                commands = _COMMAND.findall(content)
+                command = commands[0].strip() if len(commands) == 1 else None
+                warmup_rows.append({
+                    "warmup": warmup_index,
+                    "selected_messages_sha256": full_treatment.trace[
+                        "selected_messages_sha256"
+                    ],
+                    "response_content_sha256": hashlib.sha256(
+                        content.encode()
+                    ).hexdigest(),
+                    "command": command,
+                    "command_sha256": (
+                        hashlib.sha256(command.encode()).hexdigest()
+                        if command else None
+                    ),
+                    "elapsed_seconds": time.perf_counter() - started,
+                })
+            except urllib.error.HTTPError as error:
+                try:
+                    error_body = error.read().decode("utf-8", errors="replace")
+                except Exception:  # pragma: no cover - defensive telemetry
+                    error_body = None
+                warmup_rows.append({
+                    "warmup": warmup_index,
+                    "selected_messages_sha256": full_treatment.trace[
+                        "selected_messages_sha256"
+                    ],
+                    "transport_error": type(error).__name__,
+                    "transport_status": error.code,
+                    "transport_body": error_body,
+                    "elapsed_seconds": time.perf_counter() - started,
+                })
+                raise RuntimeError("FULL warmup failed") from error
+            except (OSError, TimeoutError, urllib.error.URLError) as error:
+                warmup_rows.append({
+                    "warmup": warmup_index,
+                    "selected_messages_sha256": full_treatment.trace[
+                        "selected_messages_sha256"
+                    ],
+                    "transport_error": type(error).__name__,
+                    "transport_reason": str(error),
+                    "elapsed_seconds": time.perf_counter() - started,
+                })
+                raise RuntimeError("FULL warmup failed") from error
         names = tuple(configs)
         for repeat in range(1, args.repeats + 1):
             offset = (repeat - 1) % len(names)
@@ -238,8 +295,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         row["unit_id"] for row in arm_summary[arm]["exclusions"]
                     ],
                 }
+                started = time.perf_counter()
                 try:
                     response = _post(endpoint, treatment.payload, args.timeout_seconds)
+                except urllib.error.HTTPError as error:
+                    try:
+                        error_body = error.read().decode("utf-8", errors="replace")
+                    except Exception:  # pragma: no cover - defensive telemetry
+                        error_body = None
+                    rows.append({
+                        **base_row,
+                        "action_valid": None,
+                        "command": None,
+                        "command_sha256": None,
+                        "operation_class": None,
+                        "action_contract": None,
+                        "response_content": None,
+                        "response_content_sha256": None,
+                        "choice_logprobs": None,
+                        "transport_error": type(error).__name__,
+                        "transport_status": error.code,
+                        "transport_reason": str(error.reason),
+                        "transport_body": error_body,
+                        "elapsed_seconds": time.perf_counter() - started,
+                    })
+                    continue
                 except (OSError, TimeoutError, urllib.error.URLError) as error:
                     rows.append({
                         **base_row,
@@ -252,6 +332,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "response_content_sha256": None,
                         "choice_logprobs": None,
                         "transport_error": type(error).__name__,
+                        "transport_reason": str(error),
+                        "elapsed_seconds": time.perf_counter() - started,
                     })
                     continue
                 choice = response["choices"][0]
@@ -278,6 +360,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     ).hexdigest(),
                     "choice_logprobs": choice.get("logprobs"),
                     "reported_usage": response.get("usage"),
+                    "elapsed_seconds": time.perf_counter() - started,
                 })
                 args.output.parent.mkdir(parents=True, exist_ok=True)
                 args.output.write_text(json.dumps({
@@ -319,8 +402,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": args.model,
         "tokenizer": tokenizer_identity,
         "generation": {
-            "temperature": 0.0,
-            "top_p": 1.0,
+            "temperature": args.temperature,
+            "top_p": args.top_p,
             "seed": 0,
             "logprobs_requested": args.logprobs,
         },
@@ -330,6 +413,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "tool_call": "1=most recent complete action-observation turn",
         },
         "arms": arm_summary,
+        "discarded_full_warmups": warmup_rows,
         "repeats": 0 if args.dry_run else args.repeats,
         "rows": rows,
         "guardrail": (
@@ -370,7 +454,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--allow-superseded-unfinished-after", type=int)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument(
+        "--warmup-full",
+        type=int,
+        default=0,
+        help="Discard N exact FULL completions before collecting any arm.",
+    )
     parser.add_argument("--max-completion-tokens", type=int, default=512)
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--timeout-seconds", type=float, default=600.0)
     parser.add_argument("--logprobs", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--top-logprobs", type=int, default=5)

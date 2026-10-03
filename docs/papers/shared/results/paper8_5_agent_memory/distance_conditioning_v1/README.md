@@ -133,6 +133,31 @@ observed FULL-control split, not evidence that selection caused nine extra
 calls.  The exact call-6 request has been reconstructed for repeated logprob
 replay.
 
+That replay now reproduces the split under locked Ollama 0.34.2 on the 48-GB
+M4 Pro. Five byte-identical FULL requests yield two exact response clusters:
+the first request chooses the command from the historical 9-call success
+branch; the following four choose the command from the historical 18-call
+failure branch. The first response-token divergence occurs after 99 common
+tokens. It is not a near tie or an adequate basis for a generic
+``floating-point noise'' explanation. In the first response, the decoder
+emits ` this` at reported logprob -1.625 even though the reported top candidate
+is ` the` at -0.509; the next four responses emit the reported top candidate.
+The reported distributions are similar, but they are not the effective
+sampler distribution and cannot establish sampler causality.
+
+The cold/warm isolation is now replicated. After unloading the model, two
+independent cold executions of the exact `a009e752...` request produce the
+same complete response hash and successful-branch command. The immediate warm
+execution produces the alternative response and command. Three warm
+executions with temperature `1e-7` are also byte-identical to the alternative
+branch. This is an exact 2/2 cold cluster versus a stable warm cluster. It
+matches the failure shape reported upstream for Ollama's first request after
+load, while the adjacent Ollama logprob report explains why a chosen token can
+differ from the highest *reported* raw-logit probability. Therefore the
+observed 9-versus-18-call FULL split is a backend decoding-state control, not
+admissible selection evidence. Policy comparisons must declare and stabilize
+cold/warm state as well as model, messages, tokenizer, seed and temperature.
+
 The first stable distance cell removes one 275-token read group eight complete
 tool turns behind the current decision.  It saves 1.03% of the request and
 matches the exact FULL command in 2/2 trials, with stable 2/2 interleaved FULL
@@ -147,3 +172,59 @@ superseded it.  A diagnostic-only superseded-unfinished arm can retire that
 whole component atomically, yielding 33.92% next-request omission.  This arm
 directly tests whether an old apparently unfinished request, rather than loss
 of useful evidence, is responsible for later workflow disturbance.
+
+The Task-6 frozen decision confirms that isolation: retiring only the 9,089-
+token superseded-unfinished component preserves the exact next command in 2/2
+treatment trials (33.92% saving), and retiring it together with the oldest
+closed component also preserves the exact command in 2/2 trials (46.21%
+saving).  By contrast, removing the closed component three prompts back saves
+11.50% and preserves the search operation but changes the observation contract
+from a `head -10` bounded search to an unbounded search.  Exact command,
+operation class, and observation contract are therefore reported separately.
+
+The first admitted autonomous cell uses Task 4, whose historical persistent
+FULL control officially solved in 14 calls.  The treatment atomically retires
+the no-path, superseded-unfinished component two prompts back.  It officially
+solves in 9 calls with 51.61% cumulative logical/materialized saving (76,694 of
+158,495 content tokens retained), zero reacquisition events, and no upstream
+errors.  Relative to FULL it reaches the first mutation at call 7 rather than
+12, removes four reads and one miscellaneous diagnostic action, and leaves the
+two-call mutation-to-submission tail unchanged.
+
+The treatment repeat is exact at the episode-content level: 2/2 official
+solves, 9 calls in each execution, identical 20-message role/content
+trajectories, and the same 51.61% cumulative saving.  The paired historical
+FULL success used 14 calls and first mutated at call 12; both treatments first
+mutate at call 7.  This repeat-qualified cell still covers one task identity
+and one model/backend, so it motivates transfer rather than a production
+default.
+
+A second task identity now has a decode-state-qualified frozen decision. For
+Task 3, one discarded FULL warmup is followed by three interleaved FULL and
+three treatment requests at temperature `1e-7`. All three FULL responses are
+byte-identical. Atomically retiring the immediately preceding 9,089-token
+no-path, superseded-unfinished instruction component saves 64.73% of the
+request and matches the exact FULL command, operation, and observation
+contract in 3/3 trials. This is next-action evidence only; an autonomous
+FULL--treatment pair is required for success and calls-to-solution.
+
+## Current root-cause disposition
+
+| Hypothesis for extra calls | Current evidence | Disposition |
+|---|---|---|
+| Old request appears unfinished | A 9,089-token disconnected interval has no valid completion receipt; closed-only selection retained it. Atomic retirement preserves the frozen next action and gives the 2/2 nine-call Task-4 treatment. | Supported as a policy defect in the old closure rule; use later-instruction supersession plus no-path evidence. |
+| Missing one-command format | Removing matched old read groups at tool distances 8, 16 and 28 preserves the exact next command in 6/6 trials. | Not caused by age alone. Retain the system contract and at least one natural valid action--observation exemplar before broader removal. |
+| Missing search--inspect--edit--verify--submit workflow | Removing a closed component three prompts back preserves the search operation but changes bounded `find ... | head` to unbounded `find`. | Plausible conditioning effect; operation-class equality is insufficient. Keep one recent complete successful workflow component. |
+| Insufficient evidence confidence | The repeat-qualified Task-4 treatment removes four reads and reaches the same mutation five calls earlier, with no reacquisition. | In this cell removal increases rather than decreases edit confidence; test another task identity. |
+| Missing error-recovery example | No admitted cell yet removes the sole relevant failed-action/recovery pair. | Pending targeted frozen ablation; failed action, error observation and recovery remain atomic. |
+| Missing stopping example | The Task-4 treatment leaves the two-call mutation-to-submission tail unchanged. | No stop regression in the admitted cell; preserve one valid verification/submission spine until replicated. |
+| Temperature-zero model variance | Exact FULL request branches 9 versus 18 calls historically; 2/2 cold requests and warm requests form different exact response clusters. | Confirmed backend-state confound. Do not attribute call deltas to selection without stable paired FULL controls. |
+
+The present policy candidate is deliberately small: preserve the active
+instruction and its complete progress spine, preserve the system/tool
+contract, keep one recent complete successful workflow component, keep
+failed-action/recovery and mutation/verification/submission groups atomic, and
+retire only older no-path instruction components atomically. No synthetic
+summary is inserted into the model-visible stream. This is expected to retain
+25--60% depending on session length while avoiding the partial-component
+deletions that created the strongest earlier confounds.

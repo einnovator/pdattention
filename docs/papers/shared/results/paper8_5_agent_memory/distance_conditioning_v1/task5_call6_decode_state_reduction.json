@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_frozen_decode_state_control",
+  "selected_messages_sha256": "a009e7522023b772fc0618d67ee3e7f15b100c0865f6dfbdfb904467e6ab6335",
+  "exact_request_identity": true,
+  "causal_admission": true,
+  "cohorts": {
+    "cold": {
+      "attempts": 2,
+      "clean_attempts": 2,
+      "transport_errors": {},
+      "response_clusters": {
+        "710c8d595196040edc1478312f167dc11ca751636b36a2ee322bc56cd7637ad4": 2
+      },
+      "command_clusters": {
+        "grep -n -A10 -B5 \"default_addr\" /testbed/django/core/management/commands/runserver.py": 2
+      },
+      "reported_top1_mismatch_tokens": 44,
+      "elapsed_seconds": [
+        null,
+        122.63631370011717
+      ]
+    },
+    "warm": {
+      "attempts": 1,
+      "clean_attempts": 1,
+      "transport_errors": {},
+      "response_clusters": {
+        "f5417ddee4881ae0b65ffaea563fc69202a67cfb13a5ebb648e8d431177b9a36": 1
+      },
+      "command_clusters": {
+        "grep -n -A10 -B5 \"0\\.0\\.0\\.0\\|default_addr\" /testbed/django/core/management/commands/runserver.py": 1
+      },
+      "reported_top1_mismatch_tokens": 18,
+      "elapsed_seconds": [
+        29.546058499952778
+      ]
+    },
+    "epsilon_warm": {
+      "attempts": 3,
+      "clean_attempts": 3,
+      "transport_errors": {},
+      "response_clusters": {
+        "f5417ddee4881ae0b65ffaea563fc69202a67cfb13a5ebb648e8d431177b9a36": 3
+      },
+      "command_clusters": {
+        "grep -n -A10 -B5 \"0\\.0\\.0\\.0\\|default_addr\" /testbed/django/core/management/commands/runserver.py": 3
+      },
+      "reported_top1_mismatch_tokens": 54,
+      "elapsed_seconds": [
+        26.262183899991214,
+        28.145469199866056,
+        29.281679399777204
+      ]
+    }
+  },
+  "interpretation_guardrail": "Reported logprobs may describe pre-sampler logits. A chosen token that is not reported top-1 is not, by itself, proof of request temperature handling. Cold/warm clustering is a backend-state control and is never attributed to history selection."
+}
