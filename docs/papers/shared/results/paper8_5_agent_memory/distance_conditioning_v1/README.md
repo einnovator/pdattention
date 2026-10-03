@@ -157,6 +157,13 @@ differ from the highest *reported* raw-logit probability. Therefore the
 observed 9-versus-18-call FULL split is a backend decoding-state control, not
 admissible selection evidence. Policy comparisons must declare and stabilize
 cold/warm state as well as model, messages, tokenizer, seed and temperature.
+Near-zero temperature is not promoted as the workaround: a clean autonomous
+Task-3 FULL execution follows the frozen action for four completed calls but
+fails closed on an upstream timeout at request 5. Its first request and
+response match the historical temperature-zero control exactly, but generation
+already differs on request 2. Frozen next-action repeatability therefore does
+not qualify a decoding configuration for autonomous use. The autonomous pair
+returns to temperature zero with an explicitly stabilized warm state.
 
 The first stable distance cell removes one 275-token read group eight complete
 tool turns behind the current decision.  It saves 1.03% of the request and

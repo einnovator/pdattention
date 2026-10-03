@@ -1174,6 +1174,9 @@ def run(args: argparse.Namespace) -> Path:
             "grader_command": auxiliary_grader_command,
         },
         "preflight_only": args.preflight_only,
+        "capture_model_visible_requests": bool(
+            getattr(args, "capture_model_visible_requests", False)
+        ),
         "engine_or_kv_metrics_claimed": native_request_builder is not None,
         "submission_protocol": {
             "require_unified_diff_submission": bool(
@@ -1212,6 +1215,10 @@ def run(args: argparse.Namespace) -> Path:
         upstream_connect_retry_seconds=args.upstream_connect_retry_seconds,
         upstream_curl_executable=args.upstream_curl_executable,
         native_request_builder=native_request_builder,
+        request_capture_directory=(
+            output / "model_visible_requests"
+            if getattr(args, "capture_model_visible_requests", False) else None
+        ),
     )
     proxy_url = proxy.start()
     try:
@@ -1682,6 +1689,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument(
+        "--capture-model-visible-requests",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic only: persist exact logical and selected payloads for "
+            "every model request, including a request that later times out."
+        ),
+    )
     parser.add_argument(
         "--allow-whitespace-tokenizer",
         action="store_true",

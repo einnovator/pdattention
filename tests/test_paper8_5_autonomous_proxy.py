@@ -2115,6 +2115,38 @@ def test_proxy_optionally_captures_unmodified_first_request(tmp_path):
     )
 
 
+def test_proxy_captures_every_logical_and_selected_request(tmp_path):
+    upstream = _Upstream()
+    captures = tmp_path / "requests"
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="full", expected_model="locked-model", max_calls=2,
+        ),
+        trace_path=tmp_path / "trace.jsonl",
+        request_capture_directory=captures,
+    )
+    payload = _payload()
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", payload)[0] == 200
+        assert _post(f"{url}/chat/completions", payload)[0] == 200
+    finally:
+        proxy.close()
+        upstream.close()
+
+    paths = sorted(path.name for path in captures.glob("*.json"))
+    assert paths == [
+        "request_0001_logical.json",
+        "request_0001_selected.json",
+        "request_0002_logical.json",
+        "request_0002_selected.json",
+    ]
+    assert json.loads(
+        (captures / "request_0002_selected.json").read_text()
+    )["messages"] == payload["messages"]
+
+
 def test_proxy_captures_first_logical_request_with_real_exclusions(tmp_path):
     upstream = _Upstream()
     capture = tmp_path / "first-selective-request.json"

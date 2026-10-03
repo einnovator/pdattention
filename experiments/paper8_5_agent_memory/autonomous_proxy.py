@@ -1284,6 +1284,7 @@ class AutonomousSelectionProxy:
         native_request_builder: Callable[..., Mapping[str, Any]] | None = None,
         first_request_capture_path: Path | None = None,
         first_selective_request_capture_path: Path | None = None,
+        request_capture_directory: Path | None = None,
         request_content_normalizations: Sequence[tuple[str, str]] = (),
         initial_request_count: int = 0,
         initial_successful_request_count: int = 0,
@@ -1323,6 +1324,10 @@ class AutonomousSelectionProxy:
         self.first_selective_request_capture_path = (
             Path(first_selective_request_capture_path)
             if first_selective_request_capture_path is not None else None
+        )
+        self.request_capture_directory = (
+            Path(request_capture_directory)
+            if request_capture_directory is not None else None
         )
         self.request_content_normalizations = tuple(
             (re.compile(pattern), replacement)
@@ -1739,6 +1744,26 @@ class AutonomousSelectionProxy:
                 instrumentation_root=self.instrumentation_root,
                 prior_episodes=self.prior_episodes,
             )
+            if self.request_capture_directory is not None:
+                capture_root = self.request_capture_directory
+                capture_root.mkdir(parents=True, exist_ok=True)
+                stem = f"request_{int(request_index or 0):04d}"
+                (capture_root / f"{stem}_logical.json").write_text(
+                    json.dumps(
+                        transformation.logical_payload,
+                        indent=2,
+                        sort_keys=True,
+                    ) + "\n",
+                    encoding="utf-8",
+                )
+                (capture_root / f"{stem}_selected.json").write_text(
+                    json.dumps(
+                        transformation.payload,
+                        indent=2,
+                        sort_keys=True,
+                    ) + "\n",
+                    encoding="utf-8",
+                )
             if (
                 self.first_selective_request_capture_path is not None
                 and int(transformation.trace.get("excluded_tokens") or 0) > 0

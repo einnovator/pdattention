@@ -1936,6 +1936,53 @@ M2/P1 preserves 2/2, uses 19 versus 20 calls, and saves 28.67\% (229,047 versus
 321,088 tokens).  The latter is the promotion estimate and narrowly misses the
 predeclared 30\% floor; the former remains separate reliability evidence.
 
+\subsection{Decode-state control and distance-conditioned diagnosis}
+
+Call inflation cannot be assigned to a memory policy unless the corresponding
+\textsc{Full} request is itself stable.  A reconstructed Task~5 request makes
+this failure concrete.  Its model-visible messages, digest, model revision,
+tokenizer, seed, temperature, and top-$p$ are byte-identical, yet historical
+\textsc{Full} executions branch at call~6 into a nine-call official solve and
+an 18-call failure.  The latter adds four reads, three other diagnostics, one
+write, one failed action, one diff, and a second submission.  Replaying the
+exact call-6 request isolates two complete response clusters: 2/2 independently
+unloaded cold executions select the successful-branch command, whereas the
+immediately following warm request and three warm temperature-$10^{-7}$
+requests select the alternative command exactly.  Thus temperature zero is
+not an admission criterion, and the nine-call difference is backend-state
+variance rather than evidence that selection caused extra work.  Reported
+log-probabilities are retained for audit but are not interpreted as the
+effective sampler distribution.  Temperature $10^{-7}$ is not promoted as a
+workaround: although it stabilizes the frozen request, a clean autonomous
+Task~3 \textsc{Full} execution fails closed on an upstream timeout at request
+five and has already diverged from the historical temperature-zero trajectory
+at request two.  Frozen next-action stability does not by itself qualify a
+decoding configuration for autonomous evaluation.
+
+We then vary record age without partially deleting an instruction component.
+At fixed removed mass, individual no-path read groups at 8, 16, and 28
+completed tool calls behind the decision preserve the exact next action in
+6/6 trials, but each saves only about 1.0\%.  At instruction scale, a
+9,089-token no-path interval is resource-disconnected but lacks a valid
+completion receipt, so the earlier closed-only rule incorrectly preserves it
+as apparently unfinished.  Atomic retirement saves 33.92\% at Task~6 and
+preserves the exact next action in 2/2 trials.  On Task~4, the same abstraction
+at distance two resolves officially in two identical nine-call executions,
+saves 51.61\% of cumulative model-visible input, and uses five fewer calls
+than the historical successful \textsc{Full} trajectory.  On a second task
+identity, a discarded warmup plus three stable interleaved \textsc{Full}
+controls admits a larger first-decision ablation: retiring the immediately
+preceding superseded-unfinished component saves 64.73\% and matches the exact
+command and observation contract in 3/3 trials.  This last result is
+next-action evidence; autonomous success remains pending.
+
+The resulting mitigation is narrower than generic recency: preserve the
+active instruction and progress spine, the system/tool contract, one recent
+complete successful workflow, and atomic failed-action/recovery and
+mutation/verification/submission groups; retire only older no-path instruction
+components atomically.  The diagnostic bundle is
+\path{shared/results/paper8_5_agent_memory/distance_conditioning_v1}.
+
 \subsection{Cold-state held-out prompt-pinned qualification}
 
 A held-out sixth episode, \texttt{django\_\_django-15741}, starts from a frozen
