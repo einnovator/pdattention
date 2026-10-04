@@ -178,6 +178,7 @@ def test_frozen_request_reconstruction_joins_archived_receipts(tmp_path):
 
     end, _, reconstructed = _find_frozen_request(
         trajectory={"messages": messages},
+        target_request_digest=expected.trace["request_input_sha256"],
         target_selected_digest=expected.trace["selected_messages_sha256"],
         manifest=manifest,
         config=config,

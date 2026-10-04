@@ -236,6 +236,7 @@ def _payload(manifest: Mapping[str, Any], messages: Sequence[Mapping[str, Any]])
 def _find_frozen_request(
     *,
     trajectory: Mapping[str, Any],
+    target_request_digest: str,
     target_selected_digest: str,
     manifest: Mapping[str, Any],
     config: AutonomousSelectionConfig,
@@ -262,14 +263,22 @@ def _find_frozen_request(
             instrumentation_root=instrumentation_root,
             prior_episodes=prior_episodes,
         )
-        if transformed.trace["selected_messages_sha256"] == target_selected_digest:
+        if transformed.trace["request_input_sha256"] == target_request_digest:
             matches.append((end, candidate, transformed))
     if len(matches) != 1:
         raise ValueError(
-            "candidate trace did not identify exactly one active-message prefix: "
+            "candidate request input did not identify exactly one active-message prefix: "
             f"matches={len(matches)}"
         )
-    return matches[0]
+    end, candidate, transformed = matches[0]
+    reconstructed_digest = transformed.trace["selected_messages_sha256"]
+    if reconstructed_digest != target_selected_digest:
+        raise ValueError(
+            "candidate selection reconstruction mismatch for the exact frozen request: "
+            f"expected={target_selected_digest}, observed={reconstructed_digest}, "
+            f"prefix_length={end}"
+        )
+    return end, candidate, transformed
 
 
 def _post(endpoint: str, payload: Mapping[str, Any], timeout: float) -> dict[str, Any]:
@@ -359,6 +368,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     candidate_config = _selection_config(manifest)
     end, frozen_payload, candidate = _find_frozen_request(
         trajectory=trajectory,
+        target_request_digest=target["request_input_sha256"],
         target_selected_digest=target["selected_messages_sha256"],
         manifest=manifest,
         config=candidate_config,
