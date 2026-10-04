@@ -125,7 +125,8 @@ STATIC_WORKFLOW_ANCHORS = {
         "or find; inspect a bounded matching span with context or an explicit "
         "line range instead of dumping a whole large file; make the smallest "
         "justified edit; avoid a global substitution unless every match was "
-        "verified as intended; run a targeted test or diff; submit once the "
+        "verified as intended; do not leave backup or temporary files in the "
+        "workspace; run a targeted test or diff; submit once the "
         "evidence is sufficient. After a tool error, diagnose that error before "
         "changing the plan.\n</pra_workflow_anchor>"
     ),
