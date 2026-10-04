@@ -81,7 +81,11 @@ again both resolve.  The selective arm uses 30,647 tokens versus Full's
 213,298, an 85.63\% paired reduction, but uses eight versus six calls and seven
 versus six executed actions.  This stronger mechanism point preserves
 capability and removes edit/recovery churn, while still failing the strict
-no-call-increase gate on one identity.
+no-call-increase gate on one identity.  It also does not transfer as a prompt
+mechanism: on Task~4, moving a stricter anchor from the system prefix to the
+current user instruction yields a repeatable frozen next action but autonomous
+\textsc{Full} still reaches 25 calls without verification or submission and
+never invokes the installed transactional command.
 
 Finally, per-request omission can reverse end-to-end: one six-issue policy
 resolves 6/6 and omits 55.34\% against its own trajectory, yet expands from 60
@@ -1072,6 +1076,13 @@ fails officially.  Thus capability and saving pass on this identity, but the
 no-call-increase gate does not; the
 \texttt{v8\_transactional\_matched\_task7} bundle is not a production profile.
 
+A prospective Task~4 admission binds v7 to the current instruction.  Frozen
+pre-edit replay is repeatable in 3/3 trials, yet autonomous \textsc{Full} reaches
+25 calls (eight searches, twelve reads, no test), never invokes the transactional
+command, and does not submit; no selective arm is admitted.  Prompt placement
+is therefore insufficient, and typed-action reliability remains a separate
+gate.  See \path{v9_task4_current_instruction_anchor}.
+
 \paragraph{Oracle scope.}
 Leave-one-bundle-out and bounded subset search answer whether headroom exists
 on a frozen successful trajectory.  They cannot predict the new trajectory
@@ -1100,14 +1111,11 @@ those physical and numerical gates.
 
 \section{Conclusion}
 
-Agent history is not a bag of tokens and not merely a snapshot of current world
-state.  Provenance, control, and semantic evidence can outlive the state they
-helped create.  Whole-record deletion is consequently an unreliable abstraction.
-Structured boundary-free policies expose meaningful removable-history
-opportunity on repeat-qualified SWE-bench tasks, but the current cohorts are
-small and heterogeneous.  The defensible endpoint is trajectory economics:
-official resolution, reacquisition, calls, and cumulative work, not a nominal
-retention percentage.  Logical policy and physical runtime realization remain
+Agent history is neither a bag of tokens nor merely current world state:
+provenance, control, and semantic evidence can outlive the state they create.
+Boundary-free policies expose removable history, but current cohorts remain
+small.  The defensible endpoint is official resolution, calls, and cumulative
+work---not nominal retention.  Logical policy and physical realization remain
 separate contracts.
 
 \ifdefined\PaperEightFiveTechnicalReport
