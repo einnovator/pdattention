@@ -141,6 +141,13 @@ STATIC_WORKFLOW_ANCHORS = {
         "Do not repeat an inspection, edit, or verification unless new evidence "
         "shows that the preceding action failed.\n</pra_workflow_anchor>"
     ),
+    "coding_compact_state_machine_v4": (
+        "<pra_workflow_anchor version=\"coding-compact-state-machine-v4\">\n"
+        "Workflow state machine: content search -> bounded inspection -> exact "
+        "edit -> diff or targeted verification -> submit. Emit exactly one "
+        "tool action per response. Do not repeat a completed state unless its "
+        "observation reports failure.\n</pra_workflow_anchor>"
+    ),
 }
 
 

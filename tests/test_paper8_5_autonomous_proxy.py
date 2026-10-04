@@ -113,6 +113,9 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "fails unless the target occurs exactly once" in guarded
     assert "inspect the resulting git diff immediately" in guarded
     assert "submit after that verification passes" in guarded
+    compact = STATIC_WORKFLOW_ANCHORS["coding_compact_state_machine_v4"]
+    assert "content search -> bounded inspection -> exact edit" in compact
+    assert "Emit exactly one tool action per response" in compact
     with pytest.raises(ValueError, match="static_workflow_anchor"):
         AutonomousSelectionConfig(static_workflow_anchor="unknown")
     anchor = STATIC_WORKFLOW_ANCHORS[
