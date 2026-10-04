@@ -59,7 +59,7 @@ from experiments.paper8_5_agent_memory.run_structural_screen import (
     STRUCTURAL_POLICIES,
     structural_screen,
 )
-from experiments.paper8_5_agent_memory.miniswe_environment import (
+from experiments.paper8_5_agent_memory.transactional_replace_tool import (
     TRANSACTIONAL_REPLACE_TOOL,
 )
 from experiments.paper8_5_agent_memory.run_negative_heuristic_screen import (
