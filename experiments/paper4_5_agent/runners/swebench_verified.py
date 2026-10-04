@@ -421,6 +421,13 @@ def gateway_preflight(
                 # the native engine path it is intended to qualify.
                 "history_projection": "live-agent-kv-v1",
                 "source_bootstrap_contract": "full-logical-history-once-v1",
+                "source_bootstrap_logical_messages": [{
+                    "role": "system",
+                    "content": "PRA selected-context consumption probe.",
+                }, {
+                    "role": "user",
+                    "content": "Reply with OK.",
+                }],
                 "logical_message_manifest": [{
                     "message_index": 0,
                     "role": "system",
