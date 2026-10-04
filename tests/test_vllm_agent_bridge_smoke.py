@@ -6,6 +6,32 @@ from pra_vllm.agent_executor import (
     record_rounded_selected_indices,
     validate_retention_fractions,
 )
+from experiments.paper4_5_agent.run_vllm_cuda_agent_bridge_smoke import _llm_options
+
+
+def test_bridge_smoke_pins_bounded_vllm_admission_options(tmp_path) -> None:
+    args = type(
+        "Args",
+        (),
+        {
+            "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+            "revision": "immutable-revision",
+            "dtype": "bfloat16",
+            "max_model_len": 8192,
+            "max_num_batched_tokens": 2048,
+            "gpu_memory_utilization": 0.86,
+            "cpu_offload_gb": 8.0,
+            "kv_transfer_buffer_bytes": 268_435_456,
+            "kv_cache_memory_bytes": 536_870_912,
+        },
+    )()
+    options = _llm_options(args, tmp_path)
+    assert options["revision"] == "immutable-revision"
+    assert options["dtype"] == "bfloat16"
+    assert options["cpu_offload_gb"] == 8.0
+    assert options["max_num_batched_tokens"] == 2048
+    assert options["kv_transfer_config"]["kv_buffer_size"] == 268_435_456
+    assert options["kv_cache_memory_bytes"] == 536_870_912
 
 
 def test_bridge_smoke_can_run_pra100_without_starting_a_sparse_arm() -> None:
