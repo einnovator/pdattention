@@ -119,6 +119,10 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     transactional = STATIC_WORKFLOW_ANCHORS["coding_transactional_replace_v5"]
     assert "pra_replace PATH" in transactional
     assert "changes the file only when EXACT_OLD_TEXT occurs once" in transactional
+    content_search = STATIC_WORKFLOW_ANCHORS["coding_content_search_replace_v6"]
+    assert "Never search filenames for a code symbol" in content_search
+    assert "xargs grep -l" in content_search
+    assert "pra_replace PATH" in content_search
     with pytest.raises(ValueError, match="static_workflow_anchor"):
         AutonomousSelectionConfig(static_workflow_anchor="unknown")
     anchor = STATIC_WORKFLOW_ANCHORS[

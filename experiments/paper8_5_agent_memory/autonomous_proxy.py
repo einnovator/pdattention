@@ -158,6 +158,18 @@ STATIC_WORKFLOW_ANCHORS = {
         "and submit. Emit exactly one tool action per response.\n"
         "</pra_workflow_anchor>"
     ),
+    "coding_content_search_replace_v6": (
+        "<pra_workflow_anchor version=\"coding-content-search-replace-v6\">\n"
+        "For a named code symbol, search file contents in one command, for "
+        "example: find . -name '*.py' -type f | xargs grep -l "
+        "'NAMED_SYMBOL' | head -5. Never search filenames for a code symbol. "
+        "Inspect one bounded target span. Edit with the available transactional "
+        "command pra_replace PATH 'EXACT_OLD_TEXT' 'EXACT_NEW_TEXT', using \\n "
+        "for embedded newlines; it changes the file only when the old text "
+        "occurs once. Then inspect git diff, run one targeted verification, "
+        "and submit. Emit exactly one tool action per response.\n"
+        "</pra_workflow_anchor>"
+    ),
 }
 
 
