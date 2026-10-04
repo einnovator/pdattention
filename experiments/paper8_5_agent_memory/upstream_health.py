@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import math
 import subprocess
 from time import monotonic, sleep
 from typing import Any, Callable
@@ -215,6 +216,111 @@ def probe_generation_health(
     runtime_context: dict[str, Any] | None = None
     connection: Any | None = None
     chat_url = _chat_url(base_url)
+    curl_retry_arguments = [
+        "--retry", str(max(0, connect_attempts - 1)),
+        "--retry-connrefused",
+        "--retry-delay", str(int(math.ceil(connect_retry_seconds))),
+    ]
+    if qualification_path is not None and curl_executable is not None:
+        parsed = urlparse(chat_url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+
+        def curl_get_json(path: str) -> tuple[dict[str, Any], int, float]:
+            started = monotonic()
+            completed = curl_runner(
+                [
+                    curl_executable,
+                    "--silent", "--show-error",
+                    "--max-time", str(timeout_seconds),
+                    *curl_retry_arguments,
+                    "--request", "GET",
+                    "--output", "-", "--write-out", "\n%{http_code}",
+                    origin + path,
+                ],
+                capture_output=True,
+                timeout=timeout_seconds + 10,
+                check=False,
+            )
+            if completed.returncode:
+                detail = completed.stderr.decode(
+                    "utf-8", errors="replace"
+                ).strip()
+                raise OSError(
+                    f"curl exited {completed.returncode}: {detail}"
+                )
+            raw_body, status_text = completed.stdout.rsplit(b"\n", 1)
+            return (
+                json.loads(raw_body.decode("utf-8")),
+                int(status_text),
+                monotonic() - started,
+            )
+
+        try:
+            _qualification_body, qualification_status, qualification_latency = (
+                curl_get_json(qualification_path)
+            )
+            if qualification_status >= 500:
+                raise OSError(
+                    f"qualification returned HTTP {qualification_status}"
+                )
+            qualification = {
+                "attempt": 1,
+                "status": qualification_status,
+                "latency_seconds": qualification_latency,
+                "healthy": True,
+                "transport": "curl",
+            }
+            if runtime_state_path is not None:
+                context_body, context_status, context_latency = curl_get_json(
+                    runtime_state_path
+                )
+                active_models = list(context_body.get("models") or ())
+                active = next((
+                    row for row in active_models
+                    if str(row.get("name") or row.get("model")) == model
+                ), None)
+                active_context = (
+                    int(active.get("context_length"))
+                    if active is not None
+                    and active.get("context_length") is not None else None
+                )
+                context_healthy = (
+                    context_status < 500
+                    and active_context is not None
+                    and (
+                        minimum_active_context_tokens is None
+                        or active_context >= minimum_active_context_tokens
+                    )
+                )
+                runtime_context = {
+                    "status": context_status,
+                    "latency_seconds": context_latency,
+                    "model_found": active is not None,
+                    "active_context_tokens": active_context,
+                    "minimum_active_context_tokens": minimum_active_context_tokens,
+                    "healthy": context_healthy,
+                    "transport": "curl",
+                }
+                if not context_healthy:
+                    raise OSError(
+                        "active runtime context is missing or below the "
+                        f"required {minimum_active_context_tokens} tokens: "
+                        f"observed {active_context}"
+                    )
+        except Exception as error:
+            qualification = {
+                "attempt": connect_attempts,
+                "healthy": False,
+                "transport": "curl",
+                "error_type": type(error).__name__,
+                "error_detail": str(error),
+            }
+            probes.append({
+                "probe_index": 1,
+                "healthy": False,
+                "error_type": type(error).__name__,
+                "error_detail": str(error),
+            })
     if qualification_path is not None and curl_executable is None:
         parsed = urlparse(chat_url)
         if connection_factory is None:
@@ -304,7 +410,11 @@ def probe_generation_health(
                 "error_detail": str(last_error),
             })
     for index in range(1, count + 1):
-        if qualification_path is not None and curl_executable is None and connection is None:
+        if (
+            qualification_path is not None
+            and qualification is not None
+            and not qualification.get("healthy", False)
+        ):
             break
         request = urllib.request.Request(
             chat_url, data=payload,
@@ -319,6 +429,7 @@ def probe_generation_health(
                         curl_executable,
                         "--silent", "--show-error",
                         "--max-time", str(timeout_seconds),
+                        *curl_retry_arguments,
                         "--request", "POST",
                         "--header", "Content-Type: application/json",
                         "--data-binary", "@-",

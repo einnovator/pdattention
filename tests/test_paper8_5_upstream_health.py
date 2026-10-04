@@ -207,6 +207,69 @@ def test_generation_health_can_use_direct_curl_transport() -> None:
     assert len(calls) == 3
     assert all(call[0][-1].endswith("/v1/chat/completions") for call in calls)
     assert all(call[1]["check"] is False for call in calls)
+    assert all(call[0][call[0].index("--retry") + 1] == "0" for call in calls)
+
+
+def test_curl_health_qualifies_model_and_active_context_before_generation() -> None:
+    calls = []
+
+    class Completed:
+        returncode = 0
+        stderr = b""
+
+        def __init__(self, body):
+            self.stdout = json.dumps(body).encode("utf-8") + b"\n200"
+
+    responses = [
+        Completed({"models": [{"name": "locked-model"}]}),
+        Completed({
+            "models": [{
+                "name": "locked-model", "context_length": 131072,
+            }],
+        }),
+        Completed({"choices": [{"message": {"content": "OK"}}]}),
+    ]
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return responses.pop(0)
+
+    result = probe_generation_health(
+        base_url="http://engine.test:11435/v1",
+        model="locked-model",
+        count=1,
+        latency_ceiling_seconds=1,
+        timeout_seconds=2,
+        qualification_path="/api/tags",
+        runtime_state_path="/api/ps",
+        minimum_active_context_tokens=131072,
+        connect_attempts=5,
+        connect_retry_seconds=0.25,
+        curl_executable="/usr/bin/curl",
+        curl_runner=runner,
+    )
+
+    assert result["healthy"] is True
+    assert result["connection_qualification"]["transport"] == "curl"
+    assert result["runtime_context_qualification"] == {
+        "status": 200,
+        "latency_seconds": result["runtime_context_qualification"][
+            "latency_seconds"
+        ],
+        "model_found": True,
+        "active_context_tokens": 131072,
+        "minimum_active_context_tokens": 131072,
+        "healthy": True,
+        "transport": "curl",
+    }
+    assert [call[0][-1] for call in calls] == [
+        "http://engine.test:11435/api/tags",
+        "http://engine.test:11435/api/ps",
+        "http://engine.test:11435/v1/chat/completions",
+    ]
+    assert all(
+        call[0][call[0].index("--retry") + 1] == "4" for call in calls
+    )
 
 
 def test_generation_health_requires_active_runtime_context() -> None:
