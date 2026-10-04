@@ -44,6 +44,7 @@ class _Driver:
         self.prompts: list[list[int]] = []
         self.evictions: list[tuple[str, int]] = []
         self.bad_callbacks = False
+        self.store_committed_extra = 0
 
     def generate(
         self,
@@ -60,7 +61,15 @@ class _Driver:
         assert SparseCudaConnectorCommand.parse(command.cache_salt()) == command
         if command.mode == "store":
             delta = {"source_pin_events": 1}
-            committed = None
+            extra = (
+                self.store_committed_extra
+                if command.publish_computed_extent else 0
+            )
+            committed = (
+                command.logical_key,
+                command.source_generation,
+                command.source_tokens + extra,
+            )
         else:
             delta = {
                 "alias_hit_events": 1,
@@ -189,8 +198,50 @@ def test_stateful_bridge_stores_then_loads_only_suffix_with_exact_commands() -> 
     assert driver.evictions
 
 
+def test_initial_store_preserves_complete_pages_filled_during_decode() -> None:
+    driver = _Driver()
+    driver.store_committed_extra = driver.block_size
+    executor = VLLMCudaAgentHistoryExecutor(
+        driver,
+        _Tokenizer(),
+        model_id="tiny",
+        chat_template_digest=hashlib.sha256(b"stable").hexdigest(),
+    )
+    initial = (
+        {"role": "system", "content": "rules-long-enough"},
+        {"role": "user", "content": "task-long-enough"},
+    )
+
+    first = executor.generate(_request(initial, range(len(initial))))
+    initial_minimum = driver.commands[0].source_tokens
+    assert driver.commands[0].publish_computed_extent is True
+    assert first.trace[0]["canonical_source_tokens_after"] == (
+        initial_minimum + driver.block_size
+    )
+
+    logical = tuple(executor._sessions["s"].ledger.messages) + (
+        {"role": "user", "content": "next-result"},
+    )
+    executor.generate(_request(logical, range(len(logical))))
+    assert driver.commands[1].source_position_base == (
+        initial_minimum + driver.block_size
+    )
+
+
+def test_sparse_protocol_v2_defaults_to_declared_publication_extent() -> None:
+    command = SparseCudaConnectorCommand.parse(
+        "pra-cuda-sparse-v2:store:warm:144:144:3:agent-source:turn-1"
+    )
+
+    assert isinstance(command, SparseCudaConnectorCommand)
+    assert command.source_tokens == 144
+    assert command.source_generation == 3
+    assert command.publish_computed_extent is False
+
+
 def test_initial_vllm_store_selects_on_first_model_visible_request() -> None:
     driver = _Driver()
+    driver.store_committed_extra = driver.block_size
     executor = VLLMCudaAgentHistoryExecutor(
         driver,
         _Tokenizer(),
@@ -212,6 +263,8 @@ def test_initial_vllm_store_selects_on_first_model_visible_request() -> None:
     trace = first.trace[0]
 
     assert driver.commands[0].mode == "store"
+    assert driver.commands[0].publish_computed_extent is False
+    assert trace["canonical_source_tokens_after"] <= len(driver.prompts[0])
     assert driver.commands[1].mode == "load"
     assert trace["consumption_mode"].startswith("sparse_original_position_pages")
     assert trace["source_bootstrap"] is True

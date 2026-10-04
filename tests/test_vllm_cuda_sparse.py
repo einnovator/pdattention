@@ -26,10 +26,30 @@ def test_sparse_command_round_trip_preserves_original_position_base() -> None:
         source_generation=7,
         residency="hot",
         request_scope="turn-4",
+        publish_computed_extent=False,
     )
 
     assert SparseCudaConnectorCommand.parse(command.cache_salt()) == command
     assert _position_delta(command.source_tokens, command.source_position_base) == 16
+
+
+def test_store_command_round_trip_declares_computed_extent_publication() -> None:
+    command = SparseCudaConnectorCommand(
+        "store",
+        "agent-source",
+        144,
+        144,
+        source_generation=3,
+        residency="warm",
+        request_scope="turn-1",
+        publish_computed_extent=True,
+    )
+
+    assert SparseCudaConnectorCommand.parse(command.cache_salt()) == command
+    with pytest.raises(ValueError, match="Only a CUDA store"):
+        SparseCudaConnectorCommand(
+            "load", "selection", 128, 144, publish_computed_extent=True
+        )
 
 
 def test_complete_page_materialization_keeps_retention_as_a_floor() -> None:
