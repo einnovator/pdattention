@@ -5,6 +5,7 @@ from experiments.paper8_5_agent_memory.run_persistent_first_divergence_oracle im
     _apply_diagnostic_generation_overrides,
     _causal_group_addback_batches,
     _completed_epoch_addback_batches,
+    _counterfactual_config,
     _full_control_config,
 )
 from experiments.paper8_5_agent_memory.autonomous_proxy import (
@@ -87,6 +88,44 @@ def test_full_control_clone_disables_candidate_only_retirement_options():
     assert control.negative_fallback == "none"
     assert control.compact_completed_finalizations is False
     assert control.retire_closed_instructions is False
+
+
+def test_counterfactual_clone_changes_only_declared_frontier_values():
+    candidate = AutonomousSelectionConfig(
+        policy="frontier_dag_retirement",
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+        frontier_recent_user_prompts=1,
+        frontier_protocol_exemplars=1,
+        frontier_workflow_exemplars=1,
+        frontier_allow_superseded_unfinished_after=1,
+    )
+
+    counterfactual = _counterfactual_config(
+        candidate,
+        protocol_exemplars=0,
+        workflow_exemplars=0,
+    )
+
+    assert counterfactual.policy == candidate.policy
+    assert counterfactual.boundary_mode is candidate.boundary_mode
+    assert counterfactual.frontier_recent_user_prompts == 1
+    assert counterfactual.frontier_protocol_exemplars == 0
+    assert counterfactual.frontier_workflow_exemplars == 0
+    assert counterfactual.frontier_allow_superseded_unfinished_after == 1
+
+
+def test_counterfactual_clone_rejects_negative_frontier_values():
+    candidate = AutonomousSelectionConfig(
+        policy="frontier_dag_retirement",
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+
+    try:
+        _counterfactual_config(candidate, workflow_exemplars=-1)
+    except ValueError as exc:
+        assert "frontier_workflow_exemplars" in str(exc)
+    else:
+        raise AssertionError("negative frontier override was accepted")
 
 
 def test_completed_epoch_batches_cover_each_exclusion_once():

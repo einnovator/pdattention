@@ -80,6 +80,38 @@ def _full_control_config(
     )
 
 
+def _counterfactual_config(
+    candidate_config: AutonomousSelectionConfig,
+    *,
+    recent_user_prompts: int | None = None,
+    protocol_exemplars: int | None = None,
+    workflow_exemplars: int | None = None,
+    allow_superseded_unfinished_after: int | None = None,
+) -> AutonomousSelectionConfig:
+    """Clone a frozen candidate with explicitly declared frontier changes.
+
+    The original candidate is always reconstructed and identity-checked before
+    this clone is used.  Consequently a counterfactual arm can change selector
+    parameters without weakening the provenance of the frozen active request.
+    """
+
+    overrides = {
+        "frontier_recent_user_prompts": recent_user_prompts,
+        "frontier_protocol_exemplars": protocol_exemplars,
+        "frontier_workflow_exemplars": workflow_exemplars,
+        "frontier_allow_superseded_unfinished_after": (
+            allow_superseded_unfinished_after
+        ),
+    }
+    for name, value in overrides.items():
+        if value is not None and value < 0:
+            raise ValueError(f"{name} must be non-negative")
+    return replace(
+        candidate_config,
+        **{name: value for name, value in overrides.items() if value is not None},
+    )
+
+
 def _completed_epoch_addback_batches(
     *,
     composed: Mapping[str, Any],
@@ -347,6 +379,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         served_model=args.diagnostic_served_model,
         max_tokens=args.diagnostic_max_tokens,
     )
+    counterfactual_values = {
+        "recent_user_prompts": args.counterfactual_frontier_recent_user_prompts,
+        "protocol_exemplars": args.counterfactual_frontier_protocol_exemplars,
+        "workflow_exemplars": args.counterfactual_frontier_workflow_exemplars,
+        "allow_superseded_unfinished_after": (
+            args.counterfactual_frontier_allow_superseded_unfinished_after
+        ),
+    }
+    counterfactual = None
+    if any(value is not None for value in counterfactual_values.values()):
+        counterfactual_config = _counterfactual_config(
+            candidate_config, **counterfactual_values
+        )
+        counterfactual = transform_autonomous_payload(
+            frozen_payload,
+            counterfactual_config,
+            count_tokens=count_tokens,
+            prior_episodes=prior_episodes,
+        )
+        _apply_diagnostic_generation_overrides(
+            counterfactual,
+            served_model=args.diagnostic_served_model,
+            max_tokens=args.diagnostic_max_tokens,
+        )
     composed = compose_multi_issue_session(
         (*prior_episodes, {
             "instance_id": candidate_config.task_id,
@@ -386,6 +442,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             arm="candidate_same_prefix", repeat=repeat, transformation=candidate,
             endpoint=endpoint, timeout=args.timeout_seconds,
         ))
+        if counterfactual is not None:
+            rows.append(_generation_row(
+                arm="counterfactual_same_prefix",
+                repeat=repeat,
+                transformation=counterfactual,
+                endpoint=endpoint,
+                timeout=args.timeout_seconds,
+            ))
     if args.addback_mode == "completed_epoch":
         if args.addback_epoch is not None or args.addback_causal_group:
             raise ValueError(
@@ -453,6 +517,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "candidate_trace_selected_messages_sha256": target["selected_messages_sha256"],
         "candidate_reconstruction_exact": True,
         "full_same_prefix_selected_messages_sha256": full.trace["selected_messages_sha256"],
+        "counterfactual_selection_overrides": (
+            {key: value for key, value in counterfactual_values.items()
+             if value is not None}
+            if counterfactual is not None else None
+        ),
+        "counterfactual_selected_messages_sha256": (
+            counterfactual.trace["selected_messages_sha256"]
+            if counterfactual is not None else None
+        ),
         "preserved_completed_state": preserved_roles,
         "excluded_group_count": len(exclusions),
         "addback_mode": args.addback_mode,
@@ -484,6 +557,22 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--request-index", type=int, default=1)
     parser.add_argument("--control-repeats", type=int, default=3)
+    parser.add_argument(
+        "--counterfactual-frontier-recent-user-prompts", type=int,
+        help="diagnostically override the frozen frontier M value",
+    )
+    parser.add_argument(
+        "--counterfactual-frontier-protocol-exemplars", type=int,
+        help="diagnostically override the frozen protocol-exemplar P value",
+    )
+    parser.add_argument(
+        "--counterfactual-frontier-workflow-exemplars", type=int,
+        help="diagnostically override the frozen workflow-exemplar W value",
+    )
+    parser.add_argument(
+        "--counterfactual-frontier-allow-superseded-unfinished-after", type=int,
+        help="diagnostically override the frozen superseded-component U distance",
+    )
     parser.add_argument(
         "--addback-mode",
         choices=("causal_group", "completed_epoch"),
