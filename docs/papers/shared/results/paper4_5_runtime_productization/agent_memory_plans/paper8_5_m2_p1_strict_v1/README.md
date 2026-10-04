@@ -66,11 +66,14 @@ do not add policy-accuracy observations.
 |---|---|---:|---:|---:|---:|---:|---:|
 | MLX-LM 0.31.3 / MLX 0.32.2 | Full | 6/6 | 100.00% | 0.00% | 0 | 0 B | 0/6 |
 | MLX-LM 0.31.3 / MLX 0.32.2 | M2/P1 | 6/6 | 46.92% | 53.08% | 0 | 0 B | 0/6 |
+| SGLang-MLX `ef20fab` | Full | 6/6 | 100.00% | 0.00% | 0 | 0 B | 0/6 |
+| SGLang-MLX `ef20fab` | M2/P1 | 6/6 | 46.92% | 53.08% | 0 | 0 B | 0/6 |
 | vLLM-Metal 0.29.0 | Full | 6/6 | 100.00% | 0.00% | 0 | 0 B | 0/6 |
 | vLLM-Metal 0.29.0 | M2/P1 | 6/6 | 47.04% | 52.96% | 0 | 0 B | 0/6 |
 
-MLX consumes exact selected spans. vLLM-Metal rounds each request to complete
-pages, adding 21 tokens per request and 126 tokens across the sequence. This
-accounts for the approximately 0.12-point omission difference without changing
-the logical selection ledger. The MLX host carried unrelated load, so its
+MLX and SGLang-MLX consume the same exact selected spans and therefore report
+identical retention. vLLM-Metal rounds each request to complete pages, adding
+21 tokens per request and 126 tokens across the sequence. This accounts for
+the approximately 0.12-point omission difference without changing the logical
+selection ledger. The shared MLX/SGLang host carried unrelated load, so its
 elapsed times are provenance rather than runtime-economics evidence.

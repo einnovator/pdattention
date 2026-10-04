@@ -692,16 +692,18 @@ qualified at $N=3$, while $N=6$ remains a capacity boundary rather than a
 correctness or performance result.
 
 The strict Paper~8.5 Task~4 M2/P1 handoff now also has complete matched
-six-request sequences on two engines.  Direct MLX-LM 0.31.3 / MLX 0.32.2
+six-request sequences on three engines.  Direct MLX-LM 0.31.3 / MLX 0.32.2
 qualifies 6/6 \textsc{Full} requests at 100\% retention and 6/6 M2/P1 requests
-at 46.92\% weighted retention, or 53.08\% resident-K/V omission.  vLLM-Metal
-0.29.0 independently qualifies the same 6+6 requests at 100\% and 47.04\%
-retention, or 52.96\% omission.  Every cell re-encodes zero selected-history
-tokens, allocates zero selection-pack bytes, attaches without physical K/V
-copy, and clears its lifecycle gate.  vLLM's 0.12-point lower omission is
-accounted for by 21-token complete-page rounding on each request.  These are
-frozen request-sequence mechanism results, not autonomous solves; unrelated
-load on the MLX host also excludes its elapsed times from runtime economics.
+at 46.92\% weighted retention, or 53.08\% resident-K/V omission.  SGLang-MLX
+at pinned revision \texttt{ef20fab} independently obtains the identical
+46.92/53.08\% retention/omission split.  vLLM-Metal 0.29.0 qualifies the same
+6+6 requests at 100\% and 47.04\% retention, or 52.96\% omission.  Every cell
+re-encodes zero selected-history tokens, allocates zero selection-pack bytes,
+attaches without physical K/V copy, and clears its lifecycle gate.  vLLM's
+0.12-point lower omission is accounted for by 21-token complete-page rounding
+on each request.  These are frozen request-sequence mechanism results, not
+autonomous solves; unrelated host load excludes elapsed times from runtime
+economics.
 
 The same corrected request-9 gate does not yet qualify the direct MLX 14B
 path.  On MLX 0.32.2 / MLX-LM 0.31.3 with Qwen3-14B 4-bit, both fused and
@@ -4447,6 +4449,15 @@ copy, and clear the ownership, concurrent-borrow, cancellation, stale-fork,
 offload/restore, termination, and cleanup checks.  The host was under unrelated
 load, so elapsed time is excluded from runtime economics.  This is a frozen
 request-sequence result rather than an autonomous solve.
+
+SGLang-MLX at pinned revision \texttt{ef20fab} clears the same two sequences:
+6/6 \textsc{Full} requests at 100\% retention and 6/6 M2/P1 requests at the
+same 46.92\% weighted retention and 53.08\% omission as direct MLX.  It also
+reports zero selected-history re-encoding, selection-pack bytes, and physical
+attachment copies while clearing every lifecycle check.  Exact agreement with
+direct MLX establishes that the frozen policy ledger, rather than an engine-
+specific selector, determines token-level saving for these span-addressed
+consumers.  Unrelated host load again excludes elapsed time from economics.
 
 vLLM-Metal 0.29.0 now clears all six frozen Task~4 requests on the 48~GB M4
 Pro.  Every PRA-100 request matches an independent ordinary prefix-cache

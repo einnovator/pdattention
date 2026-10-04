@@ -1,0 +1,315 @@
+{
+  "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v5",
+  "probe": "sglang_mlx_real_radix_request_owned_sparse_kv",
+  "engine": "sglang-mlx",
+  "engine_version": "0.0.0.dev0",
+  "engine_revision": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
+  "mlx_version": "0.32.1",
+  "mlx_lm_version": "0.32.0",
+  "python_version": "3.12.12",
+  "hardware": "bigmac-m4pro-48gb-pressure-contaminated",
+  "model": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-0.6B-4bit/snapshots/73e3e38d981303bc594367cd910ea6eb48349da8",
+  "model_revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
+  "trajectory": null,
+  "request_replay": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_strict_v1/paper4_5_task4_request_replay.jsonl",
+  "selection_fixture": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_strict_v1/paper4_5_task4_frozen_plan.jsonl",
+  "request_index": 2,
+  "request_input_sha256": "1cae2d527d43b22a06cecab5867cb3d4cb1350694f69e84fdb34972db18d65a2",
+  "source_policy": "frontier_dag_m2_heuristic_p1",
+  "turn": null,
+  "retention_fraction": 0.4577287787044442,
+  "source_tokens": 17339,
+  "wire_suffix_tokens": 167,
+  "wire_prefill_step_size": 1,
+  "source_prefill_step_size": 512,
+  "selected_kv_tokens": 7846,
+  "materialized_history_tokens": 0,
+  "realized_retention_fraction": 0.4577287787044442,
+  "historical_kv_retention_fraction": 0.4525059115289232,
+  "source_position_base": 17339,
+  "has_holes": true,
+  "materialization_policy": "disjoint_segmented",
+  "physical_kv_copy": false,
+  "runtime_physical_kv_copy_report": null,
+  "pra_interval_pack_copy": false,
+  "physical_kv_copy_qualification": "qualified_zero_copy_interval_addressed_metal",
+  "consumer_implementation": "fused_interval_addressed_metal",
+  "reference_condition": "packed-value oracle with identical segment boundaries, original positions, and Metal consumer",
+  "selected_kv_segments": 3,
+  "logical_selected_intervals": 17,
+  "physical_kv_segments": 3,
+  "selection_pack_bytes": 0,
+  "selection_active_before_bytes": 6022856824,
+  "selection_active_after_bytes": 4345135224,
+  "selection_active_memory_delta_bytes": 0,
+  "selection_peak_memory_bytes": 0,
+  "selection_materialization_elapsed_ms": 0.443292,
+  "dense_reference_pack_bytes": 899842048,
+  "dense_reference_materialization_elapsed_ms": 17.873458,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 32137216,
+    "active_before_bytes": 4345143422,
+    "active_after_bytes": 4345417848,
+    "active_delta_bytes": 274426,
+    "absolute_peak_bytes": 4345425720,
+    "peak_delta_bytes": 282298,
+    "peak_delta_to_selected_layer_kv_ratio": 0.008784146081602091,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "allocation_measurement_method": {
+    "selection": "Reset the MLX peak allocator, construct the SGLang request's selected interval views, force every selected key/value array with mx.eval, and compare active/peak bytes to the baseline.",
+    "consumption": "Reset the MLX peak allocator, run one real first-layer attention query over every selected SGLang interval plus one local token, force the output with mx.eval, and compare peak delta with the selected first-layer K/V byte extent.",
+    "full_kv_sized_threshold": "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+  },
+  "required_runtime_fix": null,
+  "selected_text_reencoded_tokens": 0,
+  "candidate_token_ids": [
+    151667,
+    198
+  ],
+  "reference_token_ids": [
+    151667,
+    198
+  ],
+  "survivor_token_ids": [
+    151667,
+    198
+  ],
+  "restored_token_ids": [
+    151667,
+    198
+  ],
+  "source_kv_sha256": "9583bdb3c61f239dae434d0a4f885db218748369611b4d14e7d8ff6361134311",
+  "selected_kv_sha256": "678a3665a5f0f6a509077b05546bf52b2194e7d2a146a1fb64b44cc8ddd6b7a4",
+  "dense_reference_selected_kv_sha256": "678a3665a5f0f6a509077b05546bf52b2194e7d2a146a1fb64b44cc8ddd6b7a4",
+  "restored_selected_kv_sha256": "678a3665a5f0f6a509077b05546bf52b2194e7d2a146a1fb64b44cc8ddd6b7a4",
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_logit_exact": true,
+  "ordinary_full_engine_oracle_token_ids": null,
+  "ordinary_full_engine_oracle_mode": null,
+  "max_abs_logit_delta_ordinary_full_engine_oracle": null,
+  "offloaded_payload_type": "tuple",
+  "offloaded_payload_bytes": 1988596580,
+  "offloaded_payload_sha256": "656f574b7148978e91bd494440409dc3592260a301b0f58a5854c9a53eda9b9e",
+  "native_error": "KeyError: 'missing-request'",
+  "request_offsets": {
+    "scheduler_local": 168,
+    "attention_rope": 17507,
+    "position_base": 17339
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 4,
+      "cancelled": 2,
+      "error": 1
+    },
+    "physical_kv_copy_policy": "dense_interval_pack_or_unqualified_disjoint_views",
+    "selected_text_reencoded_tokens": 0
+  },
+  "bridge_capabilities": {
+    "integration_level": "E2",
+    "native_kv": true,
+    "radix_prefix_identity_separate": true,
+    "radix_prefix_and_native_same_request": true,
+    "hicache_external_namespace": false,
+    "shared_storage_lifecycle": false,
+    "live_prefix_kv_capture": true,
+    "live_prefix_kv_subset": true,
+    "source_positions_preserved": true,
+    "zero_selected_text_reencoding": true,
+    "positioned_materialized_history": true,
+    "explicit_materialized_history_reencoding_reported": true,
+    "disjoint_selection_requires_pack_copy": false,
+    "disjoint_attention_runtime_qualification_required": true,
+    "physical_kv_copy_reported": true,
+    "native_remove_request_terminal_hook": true,
+    "source_owner_pin_guard": true,
+    "source_owner_pool_bypass_on_offload": true,
+    "request_activation_callback": "MlxModelRunner.prefill_start",
+    "selected_cache_callbacks": [
+      "MlxModelRunner._acquire_cache",
+      "MlxModelRunner._cache_with_pool_backed_attention"
+    ],
+    "request_teardown_callback": "MlxModelRunner.remove_request",
+    "radix_pool_release_strips_selected_memory": true,
+    "hicache_metrics": null,
+    "patched_layers": 28
+  },
+  "selection_plan": {
+    "source_tokens": 17339,
+    "source_position_base": 17339,
+    "selected_tokens": 7846,
+    "full_retention": false,
+    "has_holes": true,
+    "physical_intervals": [
+      {
+        "start": 0,
+        "end": 1389
+      },
+      {
+        "start": 3506,
+        "end": 5454
+      },
+      {
+        "start": 12830,
+        "end": 17339
+      }
+    ],
+    "intervals": [
+      {
+        "start": 0,
+        "end": 116,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 116,
+        "end": 1389,
+        "record_id": "message:1:user",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 3506,
+        "end": 5454,
+        "record_id": "message:20:user",
+        "causal_group_id": "turn:18"
+      },
+      {
+        "start": 12830,
+        "end": 14382,
+        "record_id": "message:67:user",
+        "causal_group_id": "turn:65"
+      },
+      {
+        "start": 14382,
+        "end": 14385,
+        "record_id": "message:68:assistant",
+        "causal_group_id": "turn:68"
+      },
+      {
+        "start": 14385,
+        "end": 14612,
+        "record_id": "message:69:user",
+        "causal_group_id": "turn:68"
+      },
+      {
+        "start": 14612,
+        "end": 14615,
+        "record_id": "message:70:assistant",
+        "causal_group_id": "turn:70"
+      },
+      {
+        "start": 14615,
+        "end": 14973,
+        "record_id": "message:71:user",
+        "causal_group_id": "turn:70"
+      },
+      {
+        "start": 14973,
+        "end": 14976,
+        "record_id": "message:72:assistant",
+        "causal_group_id": "turn:72"
+      },
+      {
+        "start": 14976,
+        "end": 15388,
+        "record_id": "message:73:user",
+        "causal_group_id": "turn:72"
+      },
+      {
+        "start": 15388,
+        "end": 15391,
+        "record_id": "message:74:assistant",
+        "causal_group_id": "turn:74"
+      },
+      {
+        "start": 15391,
+        "end": 15603,
+        "record_id": "message:75:user",
+        "causal_group_id": "turn:74"
+      },
+      {
+        "start": 15603,
+        "end": 15606,
+        "record_id": "message:76:assistant",
+        "causal_group_id": "turn:76"
+      },
+      {
+        "start": 15606,
+        "end": 15742,
+        "record_id": "message:77:user",
+        "causal_group_id": "turn:76"
+      },
+      {
+        "start": 15742,
+        "end": 15745,
+        "record_id": "message:78:assistant",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 15745,
+        "end": 15978,
+        "record_id": "message:79:user",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 15978,
+        "end": 17339,
+        "record_id": "message:80:user",
+        "causal_group_id": "turn:78"
+      }
+    ]
+  },
+  "checks": {
+    "radix_cache_enabled": true,
+    "two_concurrent_borrowers": true,
+    "source_owner_removal_rejected_while_borrowed": true,
+    "offload_rejected_while_borrowed": true,
+    "eviction_rejected_while_borrowed": true,
+    "native_batched_decode_executed": true,
+    "normal_finish_released_exactly_once": true,
+    "cancel_released_exactly_once": true,
+    "error_callback_released_exactly_once": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "ordinary_full_engine_oracle_token_exact": true,
+    "ordinary_full_engine_oracle_logit_within_tolerance": true,
+    "concurrent_survivor_token_exact": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "engine_source_owner_released_on_offload": true,
+    "restore_reached_hot_tier": true,
+    "restored_selected_kv_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "selected_history_reencoding_equals_explicit_materialization": true,
+    "physical_kv_copy_reported": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "radix_pool_ownership_isolated": true
+  },
+  "experiment_revision": "2ca678c86e21a0761af827f05377d53b6b4c852d",
+  "implementation_files": {
+    "src/pra_sglang/mlx_native.py": "914059dfa75c2a7b3c6ebc3b62b0661268666fa826031ed4a56688a7dac45ea4",
+    "src/pra_sglang/native_executor.py": "de1bbe7d6f93126180b14d9d83d6b280556fa1daaf1f3e74c05e7318bdbcbac9",
+    "experiments/paper4_5_agent/run_sglang_live_agent_kv_lifecycle.py": "3b5ed94456c48ca68902ae63925c5d1ac5f53628c9466f8c982c51126b83afca"
+  },
+  "provenance_artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_provenance_cbf190e2.json",
+  "provenance_artifact_sha256": "e4d01a7f501036d695cfaaa86fa49dd84ccd730a46e792b96ca7c11e6c4b31c0",
+  "elapsed_seconds": 42.305490707978606,
+  "engine_request_callback_integration": true,
+  "engine_lifecycle_qualified": true,
+  "qualification_blockers": [],
+  "sglang_mlx_import_guard": {
+    "triton_import_stub_installed": true,
+    "torch_compile_guarded": true,
+    "torch_device_annotation_guarded": true,
+    "duplicate_config_registration_guarded": true,
+    "optional_vllm_import_shadowed": true,
+    "forbidden_execution_attempts": []
+  }
+}
