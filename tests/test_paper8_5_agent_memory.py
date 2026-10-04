@@ -62,6 +62,9 @@ from experiments.paper8_5_agent_memory.run_structural_screen import (
 from experiments.paper8_5_agent_memory.transactional_replace_tool import (
     TRANSACTIONAL_REPLACE_TOOL,
 )
+from experiments.paper8_5_agent_memory.miniswe_semantics import (
+    declared_turn_metadata,
+)
 from experiments.paper8_5_agent_memory.run_negative_heuristic_screen import (
     DEFAULT_POLICIES,
     negative_structural_screen,
@@ -1593,6 +1596,40 @@ def test_negative_operation_parser_retains_real_output_redirect_writes():
     assert classify_bash_operation(
         "pra_replace src/example.py 'old' 'new'"
     ) == BashOperation.WRITE
+    replacement = declared_turn_metadata(
+        command="pra_replace src/example.py 'self.old' 'self.new'",
+        observation_metadata={
+            "resource_version_fingerprints": {"src/example.py": "before"},
+            "post_resource_version_fingerprints": {"src/example.py": "after"},
+        },
+    )
+    assert replacement["changed_resource_ids"] == ["src/example.py"]
+    assert [
+        row["resource_id"] for row in replacement["resource_accesses"]
+    ] == ["src/example.py"]
+    receipt = build_bash_observation_metadata(
+        command="pra_replace src/example.py 'self.old' 'self.new'",
+        cwd="/testbed",
+        raw_output="PRA_REPLACE_OK",
+        return_code=0,
+        exception_info="",
+        pre_state={
+            "complete": True,
+            "workspace_version_fingerprint": "workspace-before",
+            "resource_version_fingerprints": {"src/example.py": "before"},
+        },
+        post_state={
+            "complete": True,
+            "workspace_version_fingerprint": "workspace-after",
+            "resource_version_fingerprints": {"src/example.py": "after"},
+        },
+        environment_fingerprint="environment",
+    )
+    assert receipt["tool_semantics"]["complete"] is True
+    assert receipt["tool_semantics"]["unknown_barrier"] is False
+    assert [
+        row["resource_id"] for row in receipt["tool_semantics"]["effects"]
+    ] == ["src/example.py"]
 
 
 def test_transactional_replace_tool_is_atomic_and_fails_closed(tmp_path):

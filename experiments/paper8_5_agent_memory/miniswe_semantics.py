@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shlex
 from typing import Any, Mapping
 
 from pra_hf.tool_semantics import EffectKind, OperationKind, ResourceAccess
@@ -64,7 +65,23 @@ def normalize_resource(value: str) -> str:
     return value
 
 
+def _pra_replace_arguments(command: str) -> tuple[str, str, str] | None:
+    try:
+        arguments = shlex.split(command)
+    except ValueError:
+        return None
+    if len(arguments) != 4 or arguments[0] != "pra_replace":
+        return None
+    return arguments[1], arguments[2], arguments[3]
+
+
 def extract_resource_ids(command: str | None, content: str) -> tuple[str, ...]:
+    command = command or ""
+    if re.match(r"^\s*pra_replace\b", command):
+        arguments = _pra_replace_arguments(command)
+        if arguments is not None:
+            return (normalize_resource(arguments[0]),)
+        return ()
     values: list[str] = []
     for value in _PATH.findall("\n".join(part for part in (command, content) if part)):
         normalized = value.rstrip(":,;)")
@@ -137,7 +154,11 @@ def _writes_workspace(command: str) -> bool:
 
 
 def bash_semantics_are_certifiable(command: str | None) -> bool:
-    if not command or "\n" in command or "\r" in command:
+    if not command:
+        return False
+    if _pra_replace_arguments(command) is not None:
+        return True
+    if "\n" in command or "\r" in command:
         return False
     if any(token in command for token in ("&&", "||", ";", "|", "`", "$(", ">", "<")):
         return False
