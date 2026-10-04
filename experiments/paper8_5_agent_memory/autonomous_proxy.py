@@ -433,6 +433,7 @@ class AutonomousSelectionConfig:
     frontier_recent_user_prompts: int = 2
     frontier_protocol_exemplars: int = 0
     frontier_workflow_exemplars: int = 0
+    frontier_allow_superseded_unfinished_after: int | None = None
     frontier_allow_heuristic: bool = False
     distance_task_distances: tuple[int, ...] = ()
     distance_task_at_least: int | None = None
@@ -512,6 +513,13 @@ class AutonomousSelectionConfig:
             raise ValueError("frontier_protocol_exemplars cannot be negative")
         if self.frontier_workflow_exemplars < 0:
             raise ValueError("frontier_workflow_exemplars cannot be negative")
+        if (
+            self.frontier_allow_superseded_unfinished_after is not None
+            and self.frontier_allow_superseded_unfinished_after < 1
+        ):
+            raise ValueError(
+                "frontier_allow_superseded_unfinished_after must be positive"
+            )
         if any(value < 1 for value in self.distance_task_distances):
             raise ValueError("distance task targets must be positive")
         if self.distance_task_at_least is not None and self.distance_task_at_least < 1:
@@ -642,6 +650,9 @@ class AutonomousSelectionConfig:
                 allow_heuristic=self.frontier_allow_heuristic,
                 valid_protocol_exemplars=self.frontier_protocol_exemplars,
                 valid_workflow_exemplars=self.frontier_workflow_exemplars,
+                allow_superseded_unfinished_after=(
+                    self.frontier_allow_superseded_unfinished_after
+                ),
             )
         if self.policy == "distance_conditioning_ablation":
             return DistanceConditioningSelector(DistanceConditioningConfig(
@@ -1146,6 +1157,9 @@ def transform_autonomous_payload(
         "keep_completed_task_statements": config.keep_completed_task_statements,
         "frontier_protocol_exemplars": config.frontier_protocol_exemplars,
         "frontier_workflow_exemplars": config.frontier_workflow_exemplars,
+        "frontier_allow_superseded_unfinished_after": (
+            config.frontier_allow_superseded_unfinished_after
+        ),
         "distance_task_distances": list(config.distance_task_distances),
         "distance_task_at_least": config.distance_task_at_least,
         "distance_tool_call_distances": list(config.distance_tool_call_distances),

@@ -192,6 +192,56 @@ def test_every_persistent_treatment_requires_exact_prefix_full_control():
     assert control["strategy"]["keep_completed_task_statements"] is True
 
 
+def test_frontier_superseded_unfinished_option_is_validated_and_forwarded(
+    tmp_path: Path,
+):
+    frontier_spec = (
+        ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+        "autonomous_v2_frozen_confirmation8_ctx131k.json"
+    )
+    spec = json.loads(frontier_spec.read_text(encoding="utf-8"))
+    treatment = next(
+        row for row in campaign_cells(spec)
+        if row["policy"] == "frontier_dag_retirement"
+    )
+    treatment["strategy"] = {
+        **treatment["strategy"],
+        "frontier_allow_superseded_unfinished_after": 2,
+    }
+    args = _args(tmp_path)
+    args.native_pra_builder = tmp_path / "native_builder.py"
+    args.upstream_curl_executable = None
+    args.upstream_relay_target = None
+    args.docker_pull_timeout_seconds = 900
+    command = _episode_command(
+        spec=spec,
+        benchmark=BASELINE_SUCCESS14_BENCHMARK,
+        cell=treatment,
+        instance_id=spec["sequences"][0]["instance_ids"][0],
+        episode_number=1,
+        output=tmp_path,
+        prefix=None,
+        session_id="session-test",
+        args=args,
+    )
+    option = "--frontier-allow-superseded-unfinished-after"
+    assert command[command.index(option) + 1] == "2"
+
+    invalid = json.loads(frontier_spec.read_text(encoding="utf-8"))
+    treatment_index = next(
+        index for index, row in enumerate(invalid["strategies"])
+        if row["policy"] == "frontier_dag_retirement"
+    )
+    invalid["strategies"][treatment_index][
+        "frontier_allow_superseded_unfinished_after"
+    ] = 0
+    benchmark = json.loads(
+        BASELINE_SUCCESS14_BENCHMARK.read_text(encoding="utf-8")
+    )
+    with pytest.raises(ValueError, match="must be positive"):
+        validate_spec(invalid, benchmark)
+
+
 def test_same_prefix_qualification_rejects_a_different_prefix(tmp_path):
     fields = {
         "instance_id": "repo__1",

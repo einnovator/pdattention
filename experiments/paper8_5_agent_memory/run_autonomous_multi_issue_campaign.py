@@ -248,6 +248,13 @@ def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None
             raise ValueError(
                 f"{strategy_id}: invalid unresolved same-prefix FULL action"
             )
+        superseded_after = strategy.get(
+            "frontier_allow_superseded_unfinished_after"
+        )
+        if superseded_after is not None and int(superseded_after) < 1:
+            raise ValueError(
+                f"{strategy_id}: superseded-unfinished distance must be positive"
+            )
         if unresolved_action == "carry_full_episode" and not (
             mode == "persistent" and strategy.get("policy") != "full"
         ):
@@ -352,6 +359,14 @@ def _episode_command(
             args, "docker_pull_timeout_seconds", 900
         )),
     ]
+    superseded_after = strategy.get(
+        "frontier_allow_superseded_unfinished_after"
+    )
+    if superseded_after is not None:
+        command.extend((
+            "--frontier-allow-superseded-unfinished-after",
+            str(superseded_after),
+        ))
     if strategy.get("frontier_allow_heuristic", False):
         command.append("--frontier-allow-heuristic")
     upstream_qualification_path = getattr(args, "upstream_qualification_path", None)

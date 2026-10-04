@@ -133,6 +133,8 @@ def _args(tmp_path: Path, agent: str):
         "--tokenizer-revision", "tokenizer-revision",
         "--model-config", str(tmp_path / "model.json"),
         "--policy", "frontier_dag_retirement",
+        "--frontier-workflow-exemplars", "1",
+        "--frontier-allow-superseded-unfinished-after", "2",
         "--frontier-allow-heuristic",
         "--allow-missing-sidecars",
     ])
@@ -144,6 +146,8 @@ def test_boundary_free_policy_budget_is_total_session_calls(tmp_path: Path) -> N
     assert config.boundary_mode.value == "boundary_free"
     assert config.frontier_recent_user_prompts == 2
     assert config.frontier_protocol_exemplars == 1
+    assert config.frontier_workflow_exemplars == 1
+    assert config.frontier_allow_superseded_unfinished_after == 2
     assert config.frontier_allow_heuristic is True
     assert config.require_exact_sidecars is False
     assert config.max_calls == 240

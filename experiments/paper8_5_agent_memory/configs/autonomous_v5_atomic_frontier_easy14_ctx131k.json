@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-v5-atomic-frontier-easy14-ctx131k",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "campaign_role": "post-diagnosis replacement cohort; all earlier policy rows remain quarantined",
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "history": {
+    "head_turns": 1,
+    "tail_turns": 1,
+    "search_delay_turns": 0,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 1,
+    "working_set_resources": 4
+  },
+  "sequences": [
+    {
+      "sequence_id": "baseline-success14-canonical-order-v5",
+      "sequence_stratum": "independent_cross_workspace_persistent_session",
+      "instance_ids": [
+        "django__django-15277",
+        "django__django-15368",
+        "scikit-learn__scikit-learn-13135",
+        "django__django-15741",
+        "pytest-dev__pytest-7982",
+        "django__django-16145",
+        "django__django-14089",
+        "sphinx-doc__sphinx-8721",
+        "scikit-learn__scikit-learn-14496",
+        "sympy__sympy-23534",
+        "scikit-learn__scikit-learn-12585",
+        "psf__requests-2317",
+        "sympy__sympy-16886",
+        "django__django-12741"
+      ]
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "ATOMIC_FRONTIER_M1_P1_W1_U1",
+      "strategy_config_id": "active1_protocol1_workflow1_superseded1_v1",
+      "session_mode": "persistent",
+      "policy": "frontier_dag_retirement",
+      "boundary_mode": "boundary_free",
+      "frontier_recent_user_prompts": 1,
+      "frontier_protocol_exemplars": 1,
+      "frontier_workflow_exemplars": 1,
+      "frontier_allow_superseded_unfinished_after": 1,
+      "frontier_allow_heuristic": true,
+      "keep_completed_task_statements": true,
+      "unresolved_same_prefix_full_action": "carry_full_episode",
+      "repeats": 1
+    }
+  ],
+  "primary_target": {
+    "minimum_saving_fraction": 0.30,
+    "maximum_saving_fraction": 0.50,
+    "official_resolution_delta_minimum": 0,
+    "lost_persistent_full_successes": 0,
+    "maximum_aggregate_call_delta": 0,
+    "claim": "paired task-clustered logical saving with no lost same-prefix FULL success and no aggregate call increase"
+  },
+  "depth_dependent_exploratory_range": {
+    "minimum_saving_fraction": 0.25,
+    "maximum_saving_fraction": 0.60,
+    "interpretation": "reported by N but not substituted for the frozen primary 30--50 percent gate"
+  },
+  "qualification": {
+    "status": "frozen before execution",
+    "pairing": "fresh exact-prefix FULL immediately before every selective episode",
+    "prefix_depths_reported": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+    "admission_order": "mini-swe-agent first; unchanged policy then transfers to every admitted agent",
+    "stop_conditions": [
+      "model or tokenizer identity mismatch",
+      "cache/start-state mismatch",
+      "workspace digest mismatch",
+      "unauditable selection ledger",
+      "transport or infrastructure contamination"
+    ]
+  },
+  "policy_contract": {
+    "task_boundary_signal_to_selector": false,
+    "task_or_repository_identity_signal_to_selector": false,
+    "all_genuine_user_prompts_preserved": true,
+    "active_instruction_component_preserved_whole": true,
+    "failed_action_error_recovery_atomic": true,
+    "mutation_verification_submission_atomic": true,
+    "synthetic_compaction": false,
+    "retirement": "only whole no-path components; closed or superseded by at least one newer genuine user prompt",
+    "workflow_exemplar": "latest harness-certified changed-resource -> successful verification -> valid completion component"
+  }
+}

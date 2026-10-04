@@ -1,0 +1,70 @@
+{
+  "schema_version": 3,
+  "campaign_id": "paper85-cross-agent-easy14-v3",
+  "status": "frozen post-diagnosis replacement campaign",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "model_identity": {
+    "primary_model": "qwen3-coder:30b",
+    "revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0
+  },
+  "ordered_instance_ids": [
+    "django__django-15277",
+    "django__django-15368",
+    "scikit-learn__scikit-learn-13135",
+    "django__django-15741",
+    "pytest-dev__pytest-7982",
+    "django__django-16145",
+    "django__django-14089",
+    "sphinx-doc__sphinx-8721",
+    "scikit-learn__scikit-learn-14496",
+    "sympy__sympy-23534",
+    "scikit-learn__scikit-learn-12585",
+    "psf__requests-2317",
+    "sympy__sympy-16886",
+    "django__django-12741"
+  ],
+  "agents": [
+    "mini-swe-agent",
+    "openhands",
+    "pra-agent",
+    "opencode",
+    "codex",
+    "pi",
+    "kilo"
+  ],
+  "session_depths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  "arms": [
+    "same-prefix FULL",
+    "ATOMIC_FRONTIER_M1_P1_W1_U1"
+  ],
+  "frozen_policy": {
+    "policy": "frontier_dag_retirement",
+    "boundary_mode": "boundary_free",
+    "frontier_recent_user_prompts": 1,
+    "frontier_protocol_exemplars": 1,
+    "frontier_workflow_exemplars": 1,
+    "frontier_allow_superseded_unfinished_after": 1,
+    "frontier_allow_heuristic": true,
+    "preserve_all_genuine_user_prompts": true,
+    "synthetic_compaction": false
+  },
+  "execution_rule": {
+    "admission": "an agent/task is scored only when its exact-prefix FULL comparator completes cleanly",
+    "prefix_curve": "one immutable N=14 trajectory supplies cumulative N=1..14 rows; prefixes are not independent samples",
+    "model_rule": "use the primary model for the cross-agent comparison; model-transfer cohorts are separate",
+    "quarantine": "pre-v3 selection rows are historical diagnostics and never pooled into v3 estimates"
+  },
+  "metrics": [
+    "official resolution by task and prefix depth",
+    "conditional paired-success preservation",
+    "own logical saving",
+    "paired cumulative workload saving",
+    "raw and effective action delta",
+    "first divergence and reacquisition",
+    "selected causal components and retirement distance",
+    "transport, context-ceiling and infrastructure failures"
+  ]
+}

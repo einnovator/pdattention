@@ -1050,6 +1050,9 @@ def run(args: argparse.Namespace) -> Path:
         frontier_recent_user_prompts=args.frontier_recent_user_prompts,
         frontier_protocol_exemplars=args.frontier_protocol_exemplars,
         frontier_workflow_exemplars=args.frontier_workflow_exemplars,
+        frontier_allow_superseded_unfinished_after=(
+            args.frontier_allow_superseded_unfinished_after
+        ),
         frontier_allow_heuristic=args.frontier_allow_heuristic,
         distance_task_distances=tuple(args.distance_task_distance),
         distance_task_at_least=args.distance_task_at_least,
@@ -1481,6 +1484,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Keep this many latest harness-certified mutation, verification, "
             "and completion workflow spines as atomic control exemplars."
+        ),
+    )
+    parser.add_argument(
+        "--frontier-allow-superseded-unfinished-after",
+        type=int,
+        help=(
+            "Permit atomic no-path retirement of an unfinished instruction "
+            "component after this many newer genuine user prompts. This is "
+            "boundary-free and never splits a causal component."
         ),
     )
     parser.add_argument(

@@ -85,6 +85,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--frontier-protocol-exemplars", type=int, default=0)
     parser.add_argument("--frontier-workflow-exemplars", type=int, default=0)
     parser.add_argument(
+        "--frontier-allow-superseded-unfinished-after", type=int
+    )
+    parser.add_argument(
         "--frontier-allow-heuristic", action=argparse.BooleanOptionalAction,
         default=False,
     )
@@ -160,6 +163,9 @@ def build_config(
         frontier_recent_user_prompts=args.frontier_recent_user_prompts,
         frontier_protocol_exemplars=args.frontier_protocol_exemplars,
         frontier_workflow_exemplars=args.frontier_workflow_exemplars,
+        frontier_allow_superseded_unfinished_after=(
+            args.frontier_allow_superseded_unfinished_after
+        ),
         frontier_allow_heuristic=args.frontier_allow_heuristic,
         keep_completed_task_statements=args.keep_completed_task_statements,
         boundary_mode=args.boundary_mode,
@@ -217,6 +223,9 @@ def main() -> None:
             "frontier_recent_user_prompts": config.frontier_recent_user_prompts,
             "frontier_protocol_exemplars": config.frontier_protocol_exemplars,
             "frontier_workflow_exemplars": config.frontier_workflow_exemplars,
+            "frontier_allow_superseded_unfinished_after": (
+                config.frontier_allow_superseded_unfinished_after
+            ),
             "frontier_allow_heuristic": config.frontier_allow_heuristic,
         },
         "generation": {

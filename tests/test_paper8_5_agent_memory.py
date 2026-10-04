@@ -372,7 +372,7 @@ def test_frontier_dag_selector_retires_closed_disconnected_components_atomically
         "closed-component:instruction-3",
     }
     assert all(
-        row.rule_id == "FRONTIER_CLOSED_COMPONENT_NO_PATH_M2_V1"
+        row.rule_id == "FRONTIER_CLOSED_COMPONENT_NO_PATH_M2_V2"
         for row in plan.exclusions
     )
     assert {
@@ -383,6 +383,71 @@ def test_frontier_dag_selector_retires_closed_disconnected_components_atomically
         "instruction-4", "action-4", "observation-4",
         "instruction-5", "action-5", "observation-5",
     }.issubset(plan.selected_record_ids)
+
+
+def test_frontier_dag_selector_keeps_unfinished_components_by_default():
+    history = _information_flow_chain(
+        [f"src/task_{index}.py" for index in range(4)],
+        workspace_scopes=[f"workspace-{index}" for index in range(4)],
+    )
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+
+    plan = FrontierDagRetirementSelector(
+        recent_user_prompts=1,
+        allow_heuristic=False,
+    ).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert plan.exclusions == ()
+    assert plan.selected_tokens == full_tokens
+
+
+def test_frontier_dag_selector_retires_superseded_unfinished_atomically():
+    history = _information_flow_chain(
+        [f"src/task_{index}.py" for index in range(4)],
+        workspace_scopes=[f"workspace-{index}" for index in range(4)],
+    )
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+
+    plan = FrontierDagRetirementSelector(
+        recent_user_prompts=1,
+        allow_heuristic=False,
+        allow_superseded_unfinished_after=2,
+    ).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert {row.causal_group_id for row in plan.exclusions} == {
+        "closed-component:instruction-0",
+        "closed-component:instruction-1",
+    }
+    assert all(
+        row.rule_id == "FRONTIER_SUPERSEDED_UNFINISHED_COMPONENT_NO_PATH_M1_V2"
+        for row in plan.exclusions
+    )
+    assert {
+        "instruction-0", "action-0", "observation-0",
+        "instruction-1", "action-1", "observation-1",
+    }.isdisjoint(plan.selected_record_ids)
+    assert {
+        "instruction-2", "action-2", "observation-2",
+        "instruction-3", "action-3", "observation-3",
+    }.issubset(plan.selected_record_ids)
+
+
+def test_frontier_dag_selector_rejects_invalid_superseded_distance():
+    with pytest.raises(ValueError, match="must be positive"):
+        FrontierDagRetirementSelector(
+            recent_user_prompts=1,
+            allow_superseded_unfinished_after=0,
+        )
 
 
 def _closed_information_flow_chain(resources, *, workspace_scopes):

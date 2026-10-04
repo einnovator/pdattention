@@ -190,6 +190,10 @@ def _policy(args: argparse.Namespace, tokenizer_identity: str) -> AutonomousSele
         "boundary_mode": BoundaryMode.BOUNDARY_FREE,
         "frontier_recent_user_prompts": args.frontier_recent_user_prompts,
         "frontier_protocol_exemplars": args.frontier_protocol_exemplars,
+        "frontier_workflow_exemplars": args.frontier_workflow_exemplars,
+        "frontier_allow_superseded_unfinished_after": (
+            args.frontier_allow_superseded_unfinished_after
+        ),
         "frontier_allow_heuristic": args.frontier_allow_heuristic,
         "require_exact_sidecars": not args.allow_missing_sidecars,
         "keep_completed_task_statements": True,
@@ -319,6 +323,10 @@ def _prepare_resume(
         "protected_tail_turns": args.protected_tail_turns,
         "frontier_recent_user_prompts": args.frontier_recent_user_prompts,
         "frontier_protocol_exemplars": args.frontier_protocol_exemplars,
+        "frontier_workflow_exemplars": args.frontier_workflow_exemplars,
+        "frontier_allow_superseded_unfinished_after": (
+            args.frontier_allow_superseded_unfinished_after
+        ),
         "frontier_allow_heuristic": args.frontier_allow_heuristic,
         "allow_missing_sidecars": args.allow_missing_sidecars,
     }
@@ -342,9 +350,13 @@ def _prepare_resume(
     observed_state = dict(state)
     if not carry_full_prefix:
         observed_parameters = dict(state.get("policy_parameters") or {})
-        # Campaigns written before this explicit safety switch are equivalent
-        # to the default fail-closed value.
+        # Campaigns written before these explicit switches are equivalent to
+        # their fail-closed defaults.
         observed_parameters.setdefault("allow_missing_sidecars", False)
+        observed_parameters.setdefault("frontier_workflow_exemplars", 0)
+        observed_parameters.setdefault(
+            "frontier_allow_superseded_unfinished_after", None
+        )
         observed_state["policy_parameters"] = observed_parameters
     mismatches = {
         key: {"expected": value, "observed": state.get(key)}
@@ -564,6 +576,10 @@ def run(args: argparse.Namespace) -> Path:
             "protected_tail_turns": args.protected_tail_turns,
             "frontier_recent_user_prompts": args.frontier_recent_user_prompts,
             "frontier_protocol_exemplars": args.frontier_protocol_exemplars,
+            "frontier_workflow_exemplars": args.frontier_workflow_exemplars,
+            "frontier_allow_superseded_unfinished_after": (
+                args.frontier_allow_superseded_unfinished_after
+            ),
             "frontier_allow_heuristic": args.frontier_allow_heuristic,
             "allow_missing_sidecars": args.allow_missing_sidecars,
         },
@@ -638,6 +654,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--protected-tail-turns", type=int, default=4)
     parser.add_argument("--frontier-recent-user-prompts", type=int, default=2)
     parser.add_argument("--frontier-protocol-exemplars", type=int, default=1)
+    parser.add_argument("--frontier-workflow-exemplars", type=int, default=0)
+    parser.add_argument(
+        "--frontier-allow-superseded-unfinished-after", type=int
+    )
     parser.add_argument("--frontier-allow-heuristic", action="store_true")
     parser.add_argument(
         "--allow-missing-sidecars",

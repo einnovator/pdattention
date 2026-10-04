@@ -1153,6 +1153,7 @@ class FrontierDagRetirementSelector:
         valid_protocol_exemplars: int = 0,
         valid_workflow_exemplars: int = 0,
         atomic_closed_components: bool = True,
+        allow_superseded_unfinished_after: int | None = None,
     ) -> None:
         if recent_user_prompts < 1:
             raise ValueError("recent_user_prompts must be positive")
@@ -1165,6 +1166,16 @@ class FrontierDagRetirementSelector:
             raise ValueError("valid_workflow_exemplars cannot be negative")
         self.valid_workflow_exemplars = valid_workflow_exemplars
         self.atomic_closed_components = atomic_closed_components
+        if (
+            allow_superseded_unfinished_after is not None
+            and allow_superseded_unfinished_after < 1
+        ):
+            raise ValueError(
+                "allow_superseded_unfinished_after must be positive"
+            )
+        self.allow_superseded_unfinished_after = (
+            allow_superseded_unfinished_after
+        )
 
     def select(
         self,
@@ -1200,6 +1211,7 @@ class FrontierDagRetirementSelector:
             candidates_by_group = {
                 row.causal_group_id: row for row in eligible
             }
+            latest_epoch = len(dag.epochs) - 1
             for interval in dag.epochs:
                 if interval.epoch_index in dag.frontier_epoch_indices:
                     continue
@@ -1213,8 +1225,14 @@ class FrontierDagRetirementSelector:
                     ))
                     for record_id in interval.record_ids
                 )
-                if (
+                distance = latest_epoch - interval.epoch_index
+                superseded_unfinished = bool(
                     not closed
+                    and self.allow_superseded_unfinished_after is not None
+                    and distance >= self.allow_superseded_unfinished_after
+                )
+                if (
+                    not (closed or superseded_unfinished)
                     or not interval_groups
                     or not interval_groups.issubset(eligible_groups)
                 ):
@@ -1241,21 +1259,35 @@ class FrontierDagRetirementSelector:
                     ),
                     record_ids=interval.record_ids,
                     rule_id=(
-                        f"FRONTIER_CLOSED_COMPONENT_NO_PATH_M"
-                        f"{self.recent_user_prompts}_V1"
+                        (
+                            "FRONTIER_SUPERSEDED_UNFINISHED_COMPONENT_NO_PATH"
+                            if superseded_unfinished else
+                            "FRONTIER_CLOSED_COMPONENT_NO_PATH"
+                        )
+                        + f"_M{self.recent_user_prompts}_V2"
                     ),
                     classification=confidence.value,
                     reason=(
-                        "observable instruction root has terminal evidence and "
-                        "no record in its closed component reaches the recent "
-                        "user-prompt frontier"
+                        (
+                            "observable instruction root is superseded by "
+                            f"{distance} later prompt(s)"
+                            if superseded_unfinished else
+                            "observable instruction root has terminal evidence"
+                        )
+                        + " and no record in its atomic component reaches the "
+                        "recent user-prompt frontier"
                     ),
                     resource_ids=resources,
                     witness_record_ids=dag.frontier_record_ids,
                     tombstone=(
                         f"INACTIVE component={interval.instruction_record_id} "
-                        f"rule=FRONTIER_CLOSED_COMPONENT_NO_PATH_M"
-                        f"{self.recent_user_prompts}_V1 "
+                        "rule="
+                        + (
+                            "FRONTIER_SUPERSEDED_UNFINISHED_COMPONENT_NO_PATH"
+                            if superseded_unfinished else
+                            "FRONTIER_CLOSED_COMPONENT_NO_PATH"
+                        )
+                        + f"_M{self.recent_user_prompts}_V2 "
                         f"confidence={confidence.value}"
                     ),
                     excluded_tokens=sum(
