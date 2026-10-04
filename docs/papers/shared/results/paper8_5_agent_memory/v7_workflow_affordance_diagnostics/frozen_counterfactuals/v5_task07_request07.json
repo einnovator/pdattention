@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_static_anchor_frozen_counterfactual",
+  "source_request_sha256": "920765a2666922927b5b8fa0de9223be013b83b3bdadd21fe44d4ae13c00353f",
+  "counterfactual_request_sha256": "7ab9f50243b9319c97c811a39e8fcef62c1f8087925ca96b90d5f359fc64ee8a",
+  "source_anchor": "coding_bounded_evidence_v2",
+  "candidate_anchor": "coding_transactional_replace_v5",
+  "generation": {
+    "model": "qwen3-coder:30b-ctx131k",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "top_k": 1,
+    "seed": 0,
+    "max_tokens": 1024
+  },
+  "repeat_count": 3,
+  "all_valid_single_action": true,
+  "exact_command_repeatability": true,
+  "rows": [
+    {
+      "repeat": 1,
+      "response_sha256": "88054594d924436165341971d1ebc6520661499c84b98ca262c9b597ce2f36fb",
+      "valid_single_action": true,
+      "command": "pra_replace ./django/utils/datastructures.py \"    def __len__(self):\n        return len(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\" \"    def __len__(self):\n        return len(self.dict)\n\n    def __reversed__(self):\n        return reversed(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\"",
+      "action_contract": {
+        "operation": "other",
+        "resources": [
+          "./django/utils/datastructures.py",
+          "self.dict"
+        ],
+        "output_bounded": false,
+        "stderr_suppressed": false,
+        "pipeline_stages": 1,
+        "submission": false
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 4339,
+        "prompt_tokens_details": {
+          "cached_tokens": 1517
+        },
+        "completion_tokens": 138,
+        "total_tokens": 4477
+      },
+      "content": "THOUGHT: Now I'll add the `__reversed__` method to the OrderedSet class. Based on the implementation, I need to insert it before the closing of the class definition. The method should return `reversed(self.dict)` to provide reverse iteration over the keys.\n\n```mswea_bash_command\npra_replace ./django/utils/datastructures.py \"    def __len__(self):\n        return len(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\" \"    def __len__(self):\n        return len(self.dict)\n\n    def __reversed__(self):\n        return reversed(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\"\n```"
+    },
+    {
+      "repeat": 2,
+      "response_sha256": "88054594d924436165341971d1ebc6520661499c84b98ca262c9b597ce2f36fb",
+      "valid_single_action": true,
+      "command": "pra_replace ./django/utils/datastructures.py \"    def __len__(self):\n        return len(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\" \"    def __len__(self):\n        return len(self.dict)\n\n    def __reversed__(self):\n        return reversed(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\"",
+      "action_contract": {
+        "operation": "other",
+        "resources": [
+          "./django/utils/datastructures.py",
+          "self.dict"
+        ],
+        "output_bounded": false,
+        "stderr_suppressed": false,
+        "pipeline_stages": 1,
+        "submission": false
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 4339,
+        "prompt_tokens_details": {
+          "cached_tokens": 4338
+        },
+        "completion_tokens": 138,
+        "total_tokens": 4477
+      },
+      "content": "THOUGHT: Now I'll add the `__reversed__` method to the OrderedSet class. Based on the implementation, I need to insert it before the closing of the class definition. The method should return `reversed(self.dict)` to provide reverse iteration over the keys.\n\n```mswea_bash_command\npra_replace ./django/utils/datastructures.py \"    def __len__(self):\n        return len(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\" \"    def __len__(self):\n        return len(self.dict)\n\n    def __reversed__(self):\n        return reversed(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\"\n```"
+    },
+    {
+      "repeat": 3,
+      "response_sha256": "88054594d924436165341971d1ebc6520661499c84b98ca262c9b597ce2f36fb",
+      "valid_single_action": true,
+      "command": "pra_replace ./django/utils/datastructures.py \"    def __len__(self):\n        return len(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\" \"    def __len__(self):\n        return len(self.dict)\n\n    def __reversed__(self):\n        return reversed(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\"",
+      "action_contract": {
+        "operation": "other",
+        "resources": [
+          "./django/utils/datastructures.py",
+          "self.dict"
+        ],
+        "output_bounded": false,
+        "stderr_suppressed": false,
+        "pipeline_stages": 1,
+        "submission": false
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 4339,
+        "prompt_tokens_details": {
+          "cached_tokens": 4338
+        },
+        "completion_tokens": 138,
+        "total_tokens": 4477
+      },
+      "content": "THOUGHT: Now I'll add the `__reversed__` method to the OrderedSet class. Based on the implementation, I need to insert it before the closing of the class definition. The method should return `reversed(self.dict)` to provide reverse iteration over the keys.\n\n```mswea_bash_command\npra_replace ./django/utils/datastructures.py \"    def __len__(self):\n        return len(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\" \"    def __len__(self):\n        return len(self.dict)\n\n    def __reversed__(self):\n        return reversed(self.dict)\n\n\nclass MultiValueDictKeyError(KeyError):\n\"\n```"
+    }
+  ]
+}
