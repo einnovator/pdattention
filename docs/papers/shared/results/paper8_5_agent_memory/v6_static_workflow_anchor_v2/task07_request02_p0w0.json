@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_persistent_first_divergence_oracle",
+  "evidence_class": "diagnostic_oracle_not_autonomous_task_quality",
+  "created_at": "2026-10-04T18:32:38.937654+00:00",
+  "instance_id": "django__django-14089",
+  "request_index": 2,
+  "active_message_prefix_length": 4,
+  "prefix_identity": {
+    "path": "/Users/admin.jorge.simao/git/rd/paper85-oracle-input/task07/prefix07.json",
+    "sha256": "194fce59a98d80798e015d2f59a48bdb7e8b5e8380715df3d6fe98e7c5ef6c25",
+    "episode_count": 6,
+    "instance_ids": [
+      "django__django-15277",
+      "django__django-15368",
+      "scikit-learn__scikit-learn-13135",
+      "django__django-15741",
+      "pytest-dev__pytest-7982",
+      "django__django-16145"
+    ],
+    "session_id": "paper85-v5-atomic-frontier-easy14-ctx131k:baseline-success14-canonical-order-v5__ATOMIC_FRONTIER_M1_P1_W1_U1-active1_protocol1_workflow1_superseded1_v1__r01"
+  },
+  "tokenizer": "/Users/admin.jorge.simao/git/rd/paper85-qwen3coder-tokenizer@06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "candidate_trace_selected_messages_sha256": "825ec96499f2bcffa50e6aa7536adeef18b7494db1d85922260f16c75e60d0e9",
+  "candidate_reconstruction_exact": true,
+  "static_workflow_anchor": "coding_bounded_evidence_v2",
+  "full_same_prefix_selected_messages_sha256": "7e4c9ce3d2bc688e230d1b4e60e86ddbdad7d9f784a51c639d0dc6087e69f84f",
+  "counterfactual_selection_overrides": null,
+  "counterfactual_selected_messages_sha256": null,
+  "preserved_completed_state": {
+    "mutation": {
+      "available": [],
+      "selected": []
+    },
+    "verification": {
+      "available": [],
+      "selected": []
+    },
+    "finalization": {
+      "available": [],
+      "selected": []
+    }
+  },
+  "excluded_group_count": 6,
+  "addback_mode": "causal_group",
+  "addback_epoch_filter": null,
+  "addback_causal_group_filter": [],
+  "addback_batch_count": 0,
+  "addback_batches": [],
+  "control_repeats": 2,
+  "diagnostic_served_model_override": null,
+  "diagnostic_max_tokens_override": 256,
+  "rows": [
+    {
+      "arm": "FULL_same_prefix",
+      "repeat": 1,
+      "request_sha256": "b21dfc4a5ee367e66b3b7dd33d05e95672f4d2a940629f623a2f9976c24c9027",
+      "selected_messages_sha256": "7e4c9ce3d2bc688e230d1b4e60e86ddbdad7d9f784a51c639d0dc6087e69f84f",
+      "selected_tokens": 35846,
+      "materialized_tokens": 35846,
+      "oracle_addback": null,
+      "response_content_sha256": "4a009741998312e7ec04c5a863d47c4995c6b11beecb3331c96cb80f24ae7889",
+      "response_content": "THOUGHT: I need to find where OrderedSet is defined. Let me search for it in the codebase:\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" -type f | xargs grep -l \"class OrderedSet\" | head -5\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" -type f | xargs grep -l \"class OrderedSet\" | head -5",
+      "command_sha256": "e793d03bdc365f68518a3f718d45abff7413b1afd3fb03c54a080710af104417",
+      "reported_usage": {
+        "prompt_tokens": 36764,
+        "prompt_tokens_details": {
+          "cached_tokens": 121
+        },
+        "completion_tokens": 67,
+        "total_tokens": 36831
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "candidate_same_prefix",
+      "repeat": 1,
+      "request_sha256": "7452b26c269732d86b8fa5033542dcc4c5267e321f5e58bae2388ede1ea54315",
+      "selected_messages_sha256": "b05fd9e635532af362f841da16d9eb8d416c770288394cc245f649294a61b948",
+      "selected_tokens": 2498,
+      "materialized_tokens": 2498,
+      "oracle_addback": null,
+      "response_content_sha256": "09571aff1f2bf9810e17202e2512943ab05c9fd337e2b82e6203fdf036dd3606",
+      "response_content": "THOUGHT: I can see this is a Django repository with a `django` directory. The OrderedSet implementation is likely in the django directory. Let me search for OrderedSet files to understand where it's implemented.\n\n```mswea_bash_command\nfind . -name \"*.py\" -type f | xargs grep -l \"OrderedSet\" | head -10\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "find . -name \"*.py\" -type f | xargs grep -l \"OrderedSet\" | head -10",
+      "command_sha256": "dbe1479e443f80dbfd6c8c714bcef38b4c8115f0b2c6b16b71895cab908968ee",
+      "reported_usage": {
+        "prompt_tokens": 2521,
+        "prompt_tokens_details": {
+          "cached_tokens": 230
+        },
+        "completion_tokens": 85,
+        "total_tokens": 2606
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "FULL_same_prefix",
+      "repeat": 2,
+      "request_sha256": "b21dfc4a5ee367e66b3b7dd33d05e95672f4d2a940629f623a2f9976c24c9027",
+      "selected_messages_sha256": "7e4c9ce3d2bc688e230d1b4e60e86ddbdad7d9f784a51c639d0dc6087e69f84f",
+      "selected_tokens": 35846,
+      "materialized_tokens": 35846,
+      "oracle_addback": null,
+      "response_content_sha256": "4a009741998312e7ec04c5a863d47c4995c6b11beecb3331c96cb80f24ae7889",
+      "response_content": "THOUGHT: I need to find where OrderedSet is defined. Let me search for it in the codebase:\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" -type f | xargs grep -l \"class OrderedSet\" | head -5\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" -type f | xargs grep -l \"class OrderedSet\" | head -5",
+      "command_sha256": "e793d03bdc365f68518a3f718d45abff7413b1afd3fb03c54a080710af104417",
+      "reported_usage": {
+        "prompt_tokens": 36764,
+        "prompt_tokens_details": {
+          "cached_tokens": 36763
+        },
+        "completion_tokens": 67,
+        "total_tokens": 36831
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "candidate_same_prefix",
+      "repeat": 2,
+      "request_sha256": "7452b26c269732d86b8fa5033542dcc4c5267e321f5e58bae2388ede1ea54315",
+      "selected_messages_sha256": "b05fd9e635532af362f841da16d9eb8d416c770288394cc245f649294a61b948",
+      "selected_tokens": 2498,
+      "materialized_tokens": 2498,
+      "oracle_addback": null,
+      "response_content_sha256": "09571aff1f2bf9810e17202e2512943ab05c9fd337e2b82e6203fdf036dd3606",
+      "response_content": "THOUGHT: I can see this is a Django repository with a `django` directory. The OrderedSet implementation is likely in the django directory. Let me search for OrderedSet files to understand where it's implemented.\n\n```mswea_bash_command\nfind . -name \"*.py\" -type f | xargs grep -l \"OrderedSet\" | head -10\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "find . -name \"*.py\" -type f | xargs grep -l \"OrderedSet\" | head -10",
+      "command_sha256": "dbe1479e443f80dbfd6c8c714bcef38b4c8115f0b2c6b16b71895cab908968ee",
+      "reported_usage": {
+        "prompt_tokens": 2521,
+        "prompt_tokens_details": {
+          "cached_tokens": 2520
+        },
+        "completion_tokens": 85,
+        "total_tokens": 2606
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    }
+  ],
+  "interpretation_guardrail": "Add-backs diagnose first-request sensitivity only. They do not establish autonomous resolution or a deployable selection policy."
+}

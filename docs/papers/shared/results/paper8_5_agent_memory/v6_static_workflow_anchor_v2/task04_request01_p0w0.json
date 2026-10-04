@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_persistent_first_divergence_oracle",
+  "evidence_class": "diagnostic_oracle_not_autonomous_task_quality",
+  "created_at": "2026-10-04T18:36:14.137845+00:00",
+  "instance_id": "django__django-15741",
+  "request_index": 1,
+  "active_message_prefix_length": 2,
+  "prefix_identity": {
+    "path": "/Users/admin.jorge.simao/git/rd/paper85-oracle-input/task04/prefix04.json",
+    "sha256": "0cf01caf20ecb00c5b0145ec6a124737404c202f7aa2dc8b99fcbcb3b9b12674",
+    "episode_count": 3,
+    "instance_ids": [
+      "django__django-15277",
+      "django__django-15368",
+      "scikit-learn__scikit-learn-13135"
+    ],
+    "session_id": "paper85-v5-atomic-frontier-easy14-ctx131k:baseline-success14-canonical-order-v5__ATOMIC_FRONTIER_M1_P1_W1_U1-active1_protocol1_workflow1_superseded1_v1__r01"
+  },
+  "tokenizer": "/Users/admin.jorge.simao/git/rd/paper85-qwen3coder-tokenizer@06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "candidate_trace_selected_messages_sha256": "3d90e4563e18cb9a8e5c04f410daa7cb69aa731bda5fa6d766d9426bffbcd761",
+  "candidate_reconstruction_exact": true,
+  "static_workflow_anchor": "coding_bounded_evidence_v2",
+  "full_same_prefix_selected_messages_sha256": "5b25db2887e8762f9ccbb8f831778f7f3af04f0596149dff69be87c9ebf3cbc3",
+  "counterfactual_selection_overrides": null,
+  "counterfactual_selected_messages_sha256": null,
+  "preserved_completed_state": {
+    "mutation": {
+      "available": [],
+      "selected": []
+    },
+    "verification": {
+      "available": [],
+      "selected": []
+    },
+    "finalization": {
+      "available": [],
+      "selected": []
+    }
+  },
+  "excluded_group_count": 3,
+  "addback_mode": "causal_group",
+  "addback_epoch_filter": null,
+  "addback_causal_group_filter": [],
+  "addback_batch_count": 0,
+  "addback_batches": [],
+  "control_repeats": 2,
+  "diagnostic_served_model_override": null,
+  "diagnostic_max_tokens_override": 256,
+  "rows": [
+    {
+      "arm": "FULL_same_prefix",
+      "repeat": 1,
+      "request_sha256": "711f25ed96976a1551f509fa1f82e9902fe058338b47e8111b533f3957da9207",
+      "selected_messages_sha256": "5b25db2887e8762f9ccbb8f831778f7f3af04f0596149dff69be87c9ebf3cbc3",
+      "selected_tokens": 22073,
+      "materialized_tokens": 22073,
+      "oracle_addback": null,
+      "response_content_sha256": "4b52fcbe70571edf6eefef7846b71b68aa75a6770b975df8416e1f2b7bb24f20",
+      "response_content": "THOUGHT: I need to analyze the issue about `django.utils.formats.get_format` not allowing lazy parameter. The problem is that when a lazy string (like from `_()` function) is passed to date template filter, it fails with \"TypeError: getattr(): attribute name must be string\" in `get_format`.\n\nLet me first find the get_format function:\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" -type f | xargs grep -l \"def get_format\" | head -5\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" -type f | xargs grep -l \"def get_format\" | head -5",
+      "command_sha256": "63598daf79d83e649f3ade7857664d3cf5c43474902cbad6651b946e8098bb9b",
+      "reported_usage": {
+        "prompt_tokens": 22656,
+        "prompt_tokens_details": {
+          "cached_tokens": 22655
+        },
+        "completion_tokens": 117,
+        "total_tokens": 22773
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "candidate_same_prefix",
+      "repeat": 1,
+      "request_sha256": "402a717e0edac84e6429289a5be4612fba1530e60484d2af7eaa2947cb581f88",
+      "selected_messages_sha256": "8a61768bbba648183438beddd6e41ed21035608c955edb400ecd555791443e2c",
+      "selected_tokens": 1521,
+      "materialized_tokens": 1521,
+      "oracle_addback": null,
+      "response_content_sha256": "d6eff36f758a6fabb3247c879537bfa7ab7d2454ddc93ce50c420a0bcdafc728",
+      "response_content": "THOUGHT: I need to understand the issue described in the PR. The problem is that `django.utils.formats.get_format` should allow lazy parameters but currently fails with a TypeError when receiving a lazy string. The error message indicates \"TypeError: getattr(): attribute name must be string\". This suggests that somewhere in the code, getattr() is being called with a non-string parameter. Let me first explore the codebase to find the relevant files.\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" -path \"*/utils/formats*\" | head -10\n```",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" -path \"*/utils/formats*\" | head -10",
+      "command_sha256": "ac93ba3adcb4d69730ab35d955e0bd65b4046f77f5b59ab0b71dd22bf63ad9d0",
+      "reported_usage": {
+        "prompt_tokens": 1534,
+        "prompt_tokens_details": {
+          "cached_tokens": 230
+        },
+        "completion_tokens": 124,
+        "total_tokens": 1658
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "FULL_same_prefix",
+      "repeat": 2,
+      "request_sha256": "711f25ed96976a1551f509fa1f82e9902fe058338b47e8111b533f3957da9207",
+      "selected_messages_sha256": "5b25db2887e8762f9ccbb8f831778f7f3af04f0596149dff69be87c9ebf3cbc3",
+      "selected_tokens": 22073,
+      "materialized_tokens": 22073,
+      "oracle_addback": null,
+      "response_content_sha256": "4b52fcbe70571edf6eefef7846b71b68aa75a6770b975df8416e1f2b7bb24f20",
+      "response_content": "THOUGHT: I need to analyze the issue about `django.utils.formats.get_format` not allowing lazy parameter. The problem is that when a lazy string (like from `_()` function) is passed to date template filter, it fails with \"TypeError: getattr(): attribute name must be string\" in `get_format`.\n\nLet me first find the get_format function:\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" -type f | xargs grep -l \"def get_format\" | head -5\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" -type f | xargs grep -l \"def get_format\" | head -5",
+      "command_sha256": "63598daf79d83e649f3ade7857664d3cf5c43474902cbad6651b946e8098bb9b",
+      "reported_usage": {
+        "prompt_tokens": 22656,
+        "prompt_tokens_details": {
+          "cached_tokens": 22655
+        },
+        "completion_tokens": 117,
+        "total_tokens": 22773
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "candidate_same_prefix",
+      "repeat": 2,
+      "request_sha256": "402a717e0edac84e6429289a5be4612fba1530e60484d2af7eaa2947cb581f88",
+      "selected_messages_sha256": "8a61768bbba648183438beddd6e41ed21035608c955edb400ecd555791443e2c",
+      "selected_tokens": 1521,
+      "materialized_tokens": 1521,
+      "oracle_addback": null,
+      "response_content_sha256": "d6eff36f758a6fabb3247c879537bfa7ab7d2454ddc93ce50c420a0bcdafc728",
+      "response_content": "THOUGHT: I need to understand the issue described in the PR. The problem is that `django.utils.formats.get_format` should allow lazy parameters but currently fails with a TypeError when receiving a lazy string. The error message indicates \"TypeError: getattr(): attribute name must be string\". This suggests that somewhere in the code, getattr() is being called with a non-string parameter. Let me first explore the codebase to find the relevant files.\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" -path \"*/utils/formats*\" | head -10\n```",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" -path \"*/utils/formats*\" | head -10",
+      "command_sha256": "ac93ba3adcb4d69730ab35d955e0bd65b4046f77f5b59ab0b71dd22bf63ad9d0",
+      "reported_usage": {
+        "prompt_tokens": 1534,
+        "prompt_tokens_details": {
+          "cached_tokens": 1533
+        },
+        "completion_tokens": 124,
+        "total_tokens": 1658
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    }
+  ],
+  "interpretation_guardrail": "Add-backs diagnose first-request sensitivity only. They do not establish autonomous resolution or a deployable selection policy."
+}
