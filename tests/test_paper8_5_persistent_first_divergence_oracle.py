@@ -81,6 +81,7 @@ def test_full_control_clone_disables_candidate_only_retirement_options():
         materialization_mode=MaterializationMode.TOOL_STRUCTURED_EVIDENCE,
         negative_realization=NegativeRealizationMode.DROP,
         negative_fallback="none",
+        static_workflow_anchor="coding_search_inspect_edit_verify_v1",
     )
 
     control = _full_control_config(candidate)
@@ -92,6 +93,7 @@ def test_full_control_clone_disables_candidate_only_retirement_options():
     assert control.negative_fallback == "none"
     assert control.compact_completed_finalizations is False
     assert control.retire_closed_instructions is False
+    assert control.static_workflow_anchor == "coding_search_inspect_edit_verify_v1"
 
 
 def test_counterfactual_clone_changes_only_declared_frontier_values():

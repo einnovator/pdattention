@@ -23,6 +23,7 @@ from pra_hf.agent_history import OpenAIRecordizer
 
 from .autonomous_proxy import (
     AutonomousSelectionConfig,
+    STATIC_WORKFLOW_ANCHORS,
     transform_autonomous_payload,
 )
 from .materialization import MaterializationMode
@@ -366,19 +367,35 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     count_tokens, tokenizer_identity = _exact_token_counter(
         args.tokenizer, manifest.get("tokenizer_revision"), allow_whitespace=False
     )
-    candidate_config = _selection_config(manifest)
-    end, frozen_payload, candidate = _find_frozen_request(
+    source_candidate_config = _selection_config(manifest)
+    end, frozen_payload, source_candidate = _find_frozen_request(
         trajectory=trajectory,
         target_request_digest=target["request_input_sha256"],
         target_selected_digest=target["selected_messages_sha256"],
         manifest=manifest,
-        config=candidate_config,
+        config=source_candidate_config,
         prior_episodes=prior_episodes,
         count_tokens=count_tokens,
         instrumentation_root=args.instrumentation_root,
     )
-    if candidate.trace["request_input_sha256"] != target["request_input_sha256"]:
+    if source_candidate.trace["request_input_sha256"] != target["request_input_sha256"]:
         raise AssertionError("reconstructed full request does not match candidate trace")
+    candidate_config = replace(
+        source_candidate_config,
+        static_workflow_anchor=args.static_workflow_anchor,
+    )
+    candidate = (
+        source_candidate
+        if candidate_config == source_candidate_config
+        else transform_autonomous_payload(
+            frozen_payload,
+            candidate_config,
+            count_tokens=count_tokens,
+            instrumentation_root=args.instrumentation_root,
+            allow_archived_receipt_prefix=True,
+            prior_episodes=prior_episodes,
+        )
+    )
     full_config = _full_control_config(candidate_config)
     full = transform_autonomous_payload(
         frozen_payload,
@@ -482,7 +499,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "status": "partial_controls_complete",
         "rows": rows,
     }, indent=2) + "\n", encoding="utf-8")
-    if args.addback_mode == "completed_epoch":
+    if args.skip_addbacks:
+        addback_batches = []
+    elif args.addback_mode == "completed_epoch":
         if args.addback_epoch is not None or args.addback_causal_group:
             raise ValueError(
                 "add-back filters require --addback-mode causal_group"
@@ -550,6 +569,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "tokenizer": tokenizer_identity,
         "candidate_trace_selected_messages_sha256": target["selected_messages_sha256"],
         "candidate_reconstruction_exact": True,
+        "static_workflow_anchor": args.static_workflow_anchor,
         "full_same_prefix_selected_messages_sha256": full.trace["selected_messages_sha256"],
         "counterfactual_selection_overrides": (
             {key: value for key, value in counterfactual_values.items()
@@ -599,6 +619,15 @@ def main() -> None:
     parser.add_argument("--request-index", type=int, default=1)
     parser.add_argument("--control-repeats", type=int, default=3)
     parser.add_argument(
+        "--static-workflow-anchor",
+        choices=tuple(STATIC_WORKFLOW_ANCHORS),
+        default="none",
+        help=(
+            "After exact source-request reconstruction, apply this matched "
+            "ingest-time scaffold to FULL, candidate, and counterfactual arms."
+        ),
+    )
+    parser.add_argument(
         "--counterfactual-frontier-recent-user-prompts", type=int,
         help="diagnostically override the frozen frontier M value",
     )
@@ -622,6 +651,11 @@ def main() -> None:
             "restore one excluded causal group at a time, or restore every "
             "excluded group from one evaluator-hidden completed source epoch"
         ),
+    )
+    parser.add_argument(
+        "--skip-addbacks",
+        action="store_true",
+        help="Run only repeated FULL/candidate/counterfactual same-prefix controls.",
     )
     parser.add_argument(
         "--addback-epoch",
