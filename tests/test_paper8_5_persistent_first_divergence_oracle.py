@@ -1,3 +1,5 @@
+import hashlib
+import json
 from types import SimpleNamespace
 
 from experiments.paper8_5_agent_memory import run_persistent_first_divergence_oracle as oracle
@@ -6,7 +8,9 @@ from experiments.paper8_5_agent_memory.run_persistent_first_divergence_oracle im
     _causal_group_addback_batches,
     _completed_epoch_addback_batches,
     _counterfactual_config,
+    _find_frozen_request,
     _full_control_config,
+    _payload,
 )
 from experiments.paper8_5_agent_memory.autonomous_proxy import (
     AutonomousSelectionConfig,
@@ -126,6 +130,64 @@ def test_counterfactual_clone_rejects_negative_frontier_values():
         assert "frontier_workflow_exemplars" in str(exc)
     else:
         raise AssertionError("negative frontier override was accepted")
+
+
+def test_frozen_request_reconstruction_joins_archived_receipts(tmp_path):
+    command = "cat target.py"
+    messages = [
+        {"role": "system", "content": "Use one command."},
+        {"role": "user", "content": "Inspect target.py."},
+        {"role": "assistant", "content": (
+            "THOUGHT: inspect\n```mswea_bash_command\n"
+            + command + "\n```"
+        )},
+        {"role": "user", "content": "<returncode>0</returncode>\n<output>x</output>"},
+    ]
+    receipt_dir = tmp_path / "receipts"
+    receipt_dir.mkdir()
+    (receipt_dir / "execution_0000.json").write_text(json.dumps({
+        "schema_version": 1,
+        "step": 0,
+        "command_sha256": hashlib.sha256(command.encode()).hexdigest(),
+        "observation_metadata": {
+            "return_code": 0,
+            "output_complete": True,
+            "resource_version_fingerprints": {"target.py": "v1"},
+        },
+    }))
+    manifest = {
+        "served_model": "locked-model",
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "seed": 0,
+        "max_completion_tokens": 32,
+    }
+    config = AutonomousSelectionConfig(
+        policy="frontier_dag_retirement",
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+        expected_model="locked-model",
+        task_id="task-1",
+        frontier_allow_heuristic=True,
+    )
+    frozen_payload = _payload(manifest, messages)
+    expected = oracle.transform_autonomous_payload(
+        frozen_payload,
+        config,
+        instrumentation_root=tmp_path,
+    )
+
+    end, _, reconstructed = _find_frozen_request(
+        trajectory={"messages": messages},
+        target_selected_digest=expected.trace["selected_messages_sha256"],
+        manifest=manifest,
+        config=config,
+        prior_episodes=(),
+        count_tokens=lambda value: len(value.split()),
+        instrumentation_root=tmp_path,
+    )
+
+    assert end == 4
+    assert reconstructed.trace["selection_abstained_for_sidecar"] is False
 
 
 def test_completed_epoch_batches_cover_each_exclusion_once():

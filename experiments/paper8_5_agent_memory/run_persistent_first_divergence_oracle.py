@@ -241,6 +241,7 @@ def _find_frozen_request(
     config: AutonomousSelectionConfig,
     prior_episodes: Sequence[Mapping[str, Any]],
     count_tokens,
+    instrumentation_root: Path | None = None,
 ):
     messages = trajectory.get("messages")
     if not isinstance(messages, list):
@@ -248,13 +249,17 @@ def _find_frozen_request(
     matches = []
     for end in range(1, len(messages) + 1):
         candidate = _payload(manifest, messages[:end])
-        # A chat request always ends in user/task/observation state.
-        if str(messages[end - 1].get("role")) not in {"user", "system"}:
+        # A mini-swe decision request ends in a task or observation, both of
+        # which use the OpenAI ``user`` role.  A system-only prefix is not an
+        # agent decision and some selectors intentionally require an active
+        # user instruction.
+        if str(messages[end - 1].get("role")) != "user":
             continue
         transformed = transform_autonomous_payload(
             candidate,
             config,
             count_tokens=count_tokens,
+            instrumentation_root=instrumentation_root,
             prior_episodes=prior_episodes,
         )
         if transformed.trace["selected_messages_sha256"] == target_selected_digest:
@@ -359,6 +364,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         config=candidate_config,
         prior_episodes=prior_episodes,
         count_tokens=count_tokens,
+        instrumentation_root=args.instrumentation_root,
     )
     if candidate.trace["request_input_sha256"] != target["request_input_sha256"]:
         raise AssertionError("reconstructed full request does not match candidate trace")
@@ -367,6 +373,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         frozen_payload,
         full_config,
         count_tokens=count_tokens,
+        instrumentation_root=args.instrumentation_root,
         prior_episodes=prior_episodes,
     )
     _apply_diagnostic_generation_overrides(
@@ -396,6 +403,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             frozen_payload,
             counterfactual_config,
             count_tokens=count_tokens,
+            instrumentation_root=args.instrumentation_root,
             prior_episodes=prior_episodes,
         )
         _apply_diagnostic_generation_overrides(
@@ -484,6 +492,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             frozen_payload,
             candidate_config,
             count_tokens=count_tokens,
+            instrumentation_root=args.instrumentation_root,
             prior_episodes=prior_episodes,
             oracle_addback_causal_group_ids=batch["causal_group_ids"],
         )
@@ -564,6 +573,13 @@ def main() -> None:
     parser.add_argument("--candidate-trace", type=Path, required=True)
     parser.add_argument("--persistent-prefix", type=Path, required=True)
     parser.add_argument("--tokenizer", type=Path, required=True)
+    parser.add_argument(
+        "--instrumentation-root", type=Path,
+        help=(
+            "archived execution-receipt directory required to reconstruct "
+            "post-action mini-swe requests exactly"
+        ),
+    )
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--request-index", type=int, default=1)
