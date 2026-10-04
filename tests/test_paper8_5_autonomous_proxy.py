@@ -18,6 +18,7 @@ from pra_hf.agent_history import OpenAIRecordizer
 from experiments.paper8_5_agent_memory.autonomous_proxy import (
     AutonomousSelectionConfig,
     AutonomousSelectionProxy,
+    STATIC_WORKFLOW_ANCHORS,
     join_instrumentation_sidecars,
     summarize_openai_tool_receipts,
     transform_autonomous_payload,
@@ -68,6 +69,61 @@ def test_default_typed_tool_semantics_use_portable_resource_arguments():
     assert DEFAULT_TOOL_SEMANTICS["read_file"]["operation_kind"] == "read"
     assert DEFAULT_TOOL_SEMANTICS["search_text"]["resource_arguments"] == ["path"]
     assert DEFAULT_TOOL_SEMANTICS["replace_text"]["operation_kind"] == "write"
+
+
+def test_static_workflow_anchor_is_ingest_time_counted_and_non_mutating():
+    payload = {
+        "model": "locked-model",
+        "messages": [
+            {"role": "system", "content": "Use exactly one Bash action."},
+            {"role": "user", "content": "Fix the regression."},
+        ],
+    }
+    original = json.loads(json.dumps(payload))
+    result = transform_autonomous_payload(
+        payload,
+        AutonomousSelectionConfig(
+            policy="full",
+            expected_model="locked-model",
+            task_id="task-1",
+            static_workflow_anchor="coding_search_inspect_edit_verify_v1",
+        ),
+    )
+
+    assert payload == original
+    system = result.payload["messages"][0]["content"]
+    assert STATIC_WORKFLOW_ANCHORS[
+        "coding_search_inspect_edit_verify_v1"
+    ] in system
+    assert result.trace["static_workflow_anchor_tokens"] > 0
+    assert result.trace["exact_request_passthrough"] is False
+    assert result.trace["exact_scaffold_normalized_passthrough"] is True
+    assert result.trace["source_request_input_sha256"] != result.trace[
+        "request_input_sha256"
+    ]
+
+
+def test_static_workflow_anchor_rejects_unknown_and_double_application():
+    with pytest.raises(ValueError, match="static_workflow_anchor"):
+        AutonomousSelectionConfig(static_workflow_anchor="unknown")
+    anchor = STATIC_WORKFLOW_ANCHORS[
+        "coding_search_inspect_edit_verify_v1"
+    ]
+    with pytest.raises(ValueError, match="already present"):
+        transform_autonomous_payload(
+            {
+                "model": "locked-model",
+                "messages": [
+                    {"role": "system", "content": anchor},
+                    {"role": "user", "content": "Fix it."},
+                ],
+            },
+            AutonomousSelectionConfig(
+                policy="full",
+                expected_model="locked-model",
+                static_workflow_anchor="coding_search_inspect_edit_verify_v1",
+            ),
+        )
 
 
 def test_proxy_resume_counters_are_explicit_and_validated(tmp_path: Path):

@@ -1001,6 +1001,23 @@ design: use negative selection conservatively, retain protocol and mutation
 floors, and promote policies on paired cumulative work rather than on nominal
 token omission.
 
+\paragraph{Closed-task conditioning is neither uniformly helpful nor safely
+recoverable from arbitrary old K/V.}
+The frozen Task~4/Task~7 diagnosis sharpens that constraint.  Removing all
+closed-task exemplars repairs stale-task continuation on Task~4 (12 calls
+versus 13 for \textsc{Full}, with 68.01\% paired token saving), but Task~7
+then fails at the 40-call limit although every active-task message is retained.
+Its own-trajectory saving is 80.70\%, yet the longer trajectory reduces raw
+paired saving to 10.65\% and failure-aware saving to zero.  Old histories can
+therefore provide useful workflow conditioning while also supplying harmful
+task identity.  Selecting only old command-token K/V is not a task-neutral
+repair: those vectors were themselves computed while attending to the old
+task and rationale.  The next gate uses a short task-neutral workflow anchor
+encoded once in the static system prefix, then retires closed components
+completely.  This treatment must repair Task~7 without regressing Task~4
+before cohort expansion; it is compared against an anchored \textsc{Full}
+control so scaffold effects are not credited as memory-policy gains.
+
 \paragraph{Oracle scope.}
 Leave-one-bundle-out and bounded subset search answer whether headroom exists
 on a frozen successful trajectory.  They cannot predict the new trajectory
@@ -5716,6 +5733,58 @@ prefix curves without the 105 task episodes required by separately rerunning
 every prefix; those shared prefixes are not independent samples or confidence
 intervals.  Held-out sequences, additional models, and additional harnesses
 remain the confirmation frontier.
+
+\paragraph{Closed-task retirement exposes a workflow-conditioning tradeoff.}
+The next frozen Easy-14 diagnostic removes protocol/workflow exemplars from
+the atomic frontier (P0/W0) while retaining the live component.  At Task~4's
+first request, P1/W1 retains the complete immediately preceding
+\texttt{KBinsDiscretizer} task.  In two of two repeats the model explicitly
+reports conflicting tasks and resumes the stale one.  P0/W0 selects only
+1,420 of 21,972 tokens and restores a task-correct Django action in two of two
+repeats.  This is direct evidence against using a semantically complete old
+task as a generic workflow exemplar.
+
+The autonomous outcome is heterogeneous (Table~\ref{tab:p0w0-autonomous}).
+On Task~4, atomic R3/P0/W0 resolves officially in 12 calls versus
+\textsc{Full}'s 13 and sends 68.01\% fewer tokens than the paired control.
+On Task~7 it retains every message of the active task, but reaches the 40-call
+limit and fails.  Its 80.70\% own-trajectory saving contracts to only 10.65\%
+against the shorter paired \textsc{Full} trajectory and receives zero
+failure-aware credit.  Thus the failure is not progress-state deletion:
+\textsc{Full}'s older histories condition a search--targeted-read--bounded-edit
+workflow, whereas P0/W0 begins with directory listing and a whole-file read,
+then globally edits every matching method and spends the remaining horizon
+repairing the damage.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Frozen-prefix autonomous R3/P0/W0 diagnosis.  Own saving uses the
+candidate trajectory's counterfactual full-history workload; paired saving
+uses the contemporaneous \textsc{Full} control.}
+\label{tab:p0w0-autonomous}
+\begin{tabular}{lrrrrr}
+\toprule
+Task & FULL & R3/P0/W0 & Calls (F/S) & Own saving & Paired saving \\
+\midrule
+4 & pass & pass & 13/12 & 71.97\% & 68.01\% \\
+7 & pass & fail & 10/40 & 80.70\% & 10.65\%$^{*}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The asterisk marks a failed treatment, for which primary failure-aware saving
+is zero.  A post-hoc \emph{action-skeleton} made from old command K/V is not
+actually task-neutral: every retained vector was contextualized by the old
+task and free-form rationale when it was first computed.  Textually replacing
+those records would instead create new tokens and require re-encoding.  The
+predeclared successor is therefore a short, task-neutral workflow anchor
+encoded once in the static system prefix, followed by P0/W0 retirement of the
+closed components.  Anchored \textsc{Full} is the matched scaffold control.
+The treatment must repair Task~7 without regressing Task~4 before any Easy-14
+expansion or Paper~4.5 transfer.  Frozen requests and autonomous evidence are released in
+\path{v5_first_divergence_oracle_p0w0_v1} and
+\path{v5_atomic_frontier_r3_p0w0_v1}.
 
 \section{Artifact Schema}
 

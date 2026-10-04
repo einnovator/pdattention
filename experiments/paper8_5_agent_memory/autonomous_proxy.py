@@ -108,6 +108,59 @@ AUTONOMOUS_POLICIES = (
 )
 
 
+STATIC_WORKFLOW_ANCHORS = {
+    "none": "",
+    "coding_search_inspect_edit_verify_v1": (
+        "<pra_workflow_anchor version=\"coding-search-inspect-edit-verify-v1\">\n"
+        "For each coding request: locate the relevant resource with a targeted "
+        "search; inspect only the relevant span; make the smallest justified "
+        "edit; verify the changed behavior; submit once the evidence is "
+        "sufficient. After a tool error, diagnose that error before changing "
+        "the plan. Do not continue broad exploration after a verified minimal "
+        "fix.\n</pra_workflow_anchor>"
+    ),
+}
+
+
+def _apply_static_workflow_anchor(
+    messages: Sequence[Mapping[str, Any]],
+    anchor_id: str,
+    *,
+    count_tokens: TokenCounter,
+) -> tuple[list[dict[str, Any]], int]:
+    """Append one task-neutral anchor to the immutable system prefix.
+
+    The anchor is an ingest-time scaffold treatment, not a compressed receipt
+    synthesized from already contextualized history.  It is therefore encoded
+    once with the system prefix and can be shared by ordinary prefix caching
+    and PRA.  Both FULL and selective arms must use the same anchor ID.
+    """
+
+    if anchor_id not in STATIC_WORKFLOW_ANCHORS:
+        raise ValueError(
+            "static_workflow_anchor must be one of "
+            + ", ".join(sorted(STATIC_WORKFLOW_ANCHORS))
+        )
+    copied = [dict(row) for row in messages]
+    anchor = STATIC_WORKFLOW_ANCHORS[anchor_id]
+    if not anchor:
+        return copied, 0
+    system_indices = [
+        index for index, row in enumerate(copied)
+        if str(row.get("role", "")) == "system"
+    ]
+    if len(system_indices) != 1:
+        raise ValueError("static workflow anchor requires exactly one system message")
+    index = system_indices[0]
+    original = str(copied[index].get("content", ""))
+    marker = '<pra_workflow_anchor version="coding-search-inspect-edit-verify-v1">'
+    if marker in original:
+        raise ValueError("static workflow anchor is already present")
+    anchored = original.rstrip() + "\n\n" + anchor
+    copied[index]["content"] = anchored
+    return copied, count_tokens(anchored) - count_tokens(original)
+
+
 def _digest(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
@@ -462,6 +515,7 @@ class AutonomousSelectionConfig:
         default_factory=dict
     )
     fill_missing_generation_parameters: bool = False
+    static_workflow_anchor: str = "none"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "boundary_mode", BoundaryMode(self.boundary_mode))
@@ -476,6 +530,11 @@ class AutonomousSelectionConfig:
         if self.input_protocol not in {"mini_swe_bash", "openai_tools"}:
             raise ValueError(
                 "input_protocol must be mini_swe_bash or openai_tools"
+            )
+        if self.static_workflow_anchor not in STATIC_WORKFLOW_ANCHORS:
+            raise ValueError(
+                "static_workflow_anchor must be one of "
+                + ", ".join(sorted(STATIC_WORKFLOW_ANCHORS))
             )
         if self.matched_tail_boundary_compaction not in {
             "legacy", "declared_safe", "disabled",
@@ -788,6 +847,7 @@ def transform_autonomous_payload(
         current_selector_messages = incoming_messages
         sidecar_join = summarize_openai_tool_receipts(current_selector_messages)
     current_episode_start = 0
+    source_request_input_sha256 = _digest(incoming_messages)
     if prior_episodes:
         if config.input_protocol != "mini_swe_bash":
             raise ValueError(
@@ -809,24 +869,39 @@ def transform_autonomous_payload(
                 "persistent prefix episode count does not match episode_index"
             )
         typed_selector_messages = composed["messages"]
-        messages = [
-            {"role": str(row.get("role", "")), "content": str(row.get("content", ""))}
-            for row in typed_selector_messages
-        ]
         current_visible_count = len(current_episode["messages"])
         if (
             current_episode["messages"]
             and current_episode["messages"][0].get("role") == "system"
         ):
             current_visible_count -= 1
-        current_episode_start = len(messages) - current_visible_count
+        current_episode_start = len(typed_selector_messages) - current_visible_count
     else:
-        messages = incoming_messages
         typed_selector_messages = (
             annotate_minisweagent_messages(current_selector_messages)
             if config.input_protocol == "mini_swe_bash"
             else current_selector_messages
         )
+    typed_selector_messages, static_workflow_anchor_tokens = (
+        _apply_static_workflow_anchor(
+            typed_selector_messages,
+            config.static_workflow_anchor,
+            count_tokens=count_tokens,
+        )
+    )
+    if prior_episodes:
+        messages = [
+            {"role": str(row.get("role", "")), "content": str(row.get("content", ""))}
+            for row in typed_selector_messages
+        ]
+    else:
+        messages, plain_anchor_tokens = _apply_static_workflow_anchor(
+            incoming_messages,
+            config.static_workflow_anchor,
+            count_tokens=count_tokens,
+        )
+        if plain_anchor_tokens != static_workflow_anchor_tokens:
+            raise AssertionError("typed and plain workflow-anchor token deltas disagree")
     recordization = OpenAIRecordizer().recordize(
         typed_selector_messages,
         request_metadata={
@@ -1139,6 +1214,7 @@ def transform_autonomous_payload(
         "wire_plan_digest": wire_plan.digest,
         "wire_plan": wire_plan.to_dict(),
         "request_input_sha256": _digest(messages),
+        "source_request_input_sha256": source_request_input_sha256,
         "selected_messages_sha256": _digest(selected_messages),
         "request_message_roles": [str(row.get("role", "")) for row in messages],
         "request_message_content_sha256": [
@@ -1151,10 +1227,16 @@ def transform_autonomous_payload(
         ],
         "message_content_digest_scheme": "raw-string-or-canonical-json-v1",
         "exact_request_passthrough": bool(
+            (config.policy == "full" or exact_logical_noop)
+            and config.static_workflow_anchor == "none"
+        ),
+        "exact_scaffold_normalized_passthrough": bool(
             config.policy == "full" or exact_logical_noop
         ),
         "tokenizer": config.tokenizer_identity,
         "token_accounting_scope": "message_content_only_excludes_chat_template",
+        "static_workflow_anchor": config.static_workflow_anchor,
+        "static_workflow_anchor_tokens": static_workflow_anchor_tokens,
         "requested_budget_fraction": config.budget_fraction,
         "requested_budget_tokens": budget_tokens,
         "full_tokens": full_tokens,

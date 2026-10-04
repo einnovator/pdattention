@@ -28,6 +28,7 @@ from .auxiliary_workspace_state import (
 )
 from .autonomous_proxy import (
     AUTONOMOUS_POLICIES,
+    STATIC_WORKFLOW_ANCHORS,
     AutonomousSelectionConfig,
     AutonomousSelectionProxy,
     join_instrumentation_sidecars,
@@ -1066,6 +1067,7 @@ def run(args: argparse.Namespace) -> Path:
         require_exact_sidecars=args.require_exact_sidecars,
         negative_realization=NegativeRealizationMode(args.negative_realization),
         negative_fallback=args.negative_fallback,
+        static_workflow_anchor=args.static_workflow_anchor,
     )
     trace_path = output / "request_selection.jsonl"
     agent_output = output / "agent"
@@ -1575,6 +1577,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--tokenizer-revision", required=True)
     parser.add_argument("--policy", choices=AUTONOMOUS_POLICIES, default="full")
+    parser.add_argument(
+        "--static-workflow-anchor",
+        choices=tuple(STATIC_WORKFLOW_ANCHORS),
+        default="none",
+        help=(
+            "Encode a task-neutral coding workflow once in the immutable system "
+            "prefix. This is an ingest-time scaffold treatment; matched FULL "
+            "and selective arms must use the same value."
+        ),
+    )
     parser.add_argument(
         "--negative-realization",
         choices=tuple(mode.value for mode in NegativeRealizationMode),
