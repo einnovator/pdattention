@@ -1,0 +1,620 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_persistent_first_divergence_oracle",
+  "evidence_class": "diagnostic_oracle_not_autonomous_task_quality",
+  "created_at": "2026-10-04T16:23:38.409266+00:00",
+  "instance_id": "django__django-14089",
+  "request_index": 2,
+  "active_message_prefix_length": 4,
+  "prefix_identity": {
+    "path": "/Users/admin.jorge.simao/git/rd/paper85-oracle-input/task07/prefix07.json",
+    "sha256": "194fce59a98d80798e015d2f59a48bdb7e8b5e8380715df3d6fe98e7c5ef6c25",
+    "episode_count": 6,
+    "instance_ids": [
+      "django__django-15277",
+      "django__django-15368",
+      "scikit-learn__scikit-learn-13135",
+      "django__django-15741",
+      "pytest-dev__pytest-7982",
+      "django__django-16145"
+    ],
+    "session_id": "paper85-v5-atomic-frontier-easy14-ctx131k:baseline-success14-canonical-order-v5__ATOMIC_FRONTIER_M1_P1_W1_U1-active1_protocol1_workflow1_superseded1_v1__r01"
+  },
+  "tokenizer": "/Users/admin.jorge.simao/git/rd/paper85-qwen3coder-tokenizer@06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "candidate_trace_selected_messages_sha256": "0198842b4143a9bd2133b9ffdaa79ac74fa61317f1f31c05f825a1a43a4da89a",
+  "candidate_reconstruction_exact": true,
+  "full_same_prefix_selected_messages_sha256": "7079d0497ebb08cb1131b88e069f9687c72a40bddd97643b0400d58a7a8f75f9",
+  "counterfactual_selection_overrides": {
+    "protocol_exemplars": 0,
+    "workflow_exemplars": 0
+  },
+  "counterfactual_selected_messages_sha256": "f16a0566725abb76382473518d3dad4d2b77fe39891205c273ea657f706422c1",
+  "preserved_completed_state": {
+    "mutation": {
+      "available": [],
+      "selected": []
+    },
+    "verification": {
+      "available": [],
+      "selected": []
+    },
+    "finalization": {
+      "available": [],
+      "selected": []
+    }
+  },
+  "excluded_group_count": 5,
+  "addback_mode": "completed_epoch",
+  "addback_epoch_filter": null,
+  "addback_causal_group_filter": [],
+  "addback_batch_count": 5,
+  "addback_batches": [
+    {
+      "epoch_index": 1,
+      "causal_group_ids": [
+        "closed-component:record-000001"
+      ],
+      "excluded_tokens": 8815
+    },
+    {
+      "epoch_index": 2,
+      "causal_group_ids": [
+        "closed-component:record-000056"
+      ],
+      "excluded_tokens": 5732
+    },
+    {
+      "epoch_index": 3,
+      "causal_group_ids": [
+        "closed-component:record-000089"
+      ],
+      "excluded_tokens": 6005
+    },
+    {
+      "epoch_index": 4,
+      "causal_group_ids": [
+        "closed-component:record-000115"
+      ],
+      "excluded_tokens": 3424
+    },
+    {
+      "epoch_index": 6,
+      "causal_group_ids": [
+        "closed-component:record-000141"
+      ],
+      "excluded_tokens": 6974
+    }
+  ],
+  "control_repeats": 2,
+  "diagnostic_served_model_override": null,
+  "diagnostic_max_tokens_override": 256,
+  "rows": [
+    {
+      "arm": "FULL_same_prefix",
+      "repeat": 1,
+      "request_sha256": "05ecbb8185233c5e4d58587770fef98e732825c2666a39dd5820e862584adf6b",
+      "selected_messages_sha256": "7079d0497ebb08cb1131b88e069f9687c72a40bddd97643b0400d58a7a8f75f9",
+      "selected_tokens": 34872,
+      "materialized_tokens": 34872,
+      "oracle_addback": null,
+      "response_content_sha256": "c1deb30d7fbd7b35ecc7c3065e86322a8026be45575e49d1aeb8f5700f0c3e89",
+      "response_content": "THOUGHT: Let me examine the OrderedSet implementation in datastructures.py:\n\n```mswea_bash_command\ncat /testbed/django/utils/datastructures.py | grep -A 50 \"class OrderedSet\"\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "cat /testbed/django/utils/datastructures.py | grep -A 50 \"class OrderedSet\"",
+      "command_sha256": "73ec37ef3ff6213d1efbe324aecfc5c0f495035ccbb2d6c94586664eda04f2ee",
+      "reported_usage": {
+        "prompt_tokens": 35790,
+        "prompt_tokens_details": {
+          "cached_tokens": 9219
+        },
+        "completion_tokens": 53,
+        "total_tokens": 35843
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "candidate_same_prefix",
+      "repeat": 1,
+      "request_sha256": "b0d28e3b0c21a7f459f0e7ef804f796af41ce16bd0b389a46d23774a3fee0fae",
+      "selected_messages_sha256": "0198842b4143a9bd2133b9ffdaa79ac74fa61317f1f31c05f825a1a43a4da89a",
+      "selected_tokens": 3922,
+      "materialized_tokens": 3922,
+      "oracle_addback": null,
+      "response_content_sha256": "c922e3e8769fde34d437723ec920c3b050c5b1c6487299c0500e7281ce51718e",
+      "response_content": "THOUGHT: I found the OrderedSet class in django/utils/datastructures.py. Let me examine this file to understand its current implementation and see what needs to be added for the __reversed__ method:\n\n```mswea_bash_command\ncat /testbed/django/utils/datastructures.py\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "cat /testbed/django/utils/datastructures.py",
+      "command_sha256": "e07d4ffd2a2da88a164d8915ab1910526c1e15d545e6be230c60154176d5c290",
+      "reported_usage": {
+        "prompt_tokens": 4010,
+        "prompt_tokens_details": {
+          "cached_tokens": 129
+        },
+        "completion_tokens": 68,
+        "total_tokens": 4078
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "counterfactual_same_prefix",
+      "repeat": 1,
+      "request_sha256": "5d49113add1dfb8c231a43be56fbab75d337d3138d6fa8d42c85bcf1b8712ceb",
+      "selected_messages_sha256": "f16a0566725abb76382473518d3dad4d2b77fe39891205c273ea657f706422c1",
+      "selected_tokens": 1524,
+      "materialized_tokens": 1524,
+      "oracle_addback": null,
+      "response_content_sha256": "fd32fb4b1ae80d51acec72956a4a33c5112d30d77be5b929f2921c528882bd3f",
+      "response_content": "THOUGHT: I found the OrderedSet class definition in `/testbed/django/utils/datastructures.py`. Now I need to examine this file to understand its current implementation and see what needs to be added to support `reversed()` functionality. The PR description mentions that we need to add a `__reversed__()` method to OrderedSet.\n\n```mswea_bash_command\ncat /testbed/django/utils/datastructures.py\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "cat /testbed/django/utils/datastructures.py",
+      "command_sha256": "e07d4ffd2a2da88a164d8915ab1910526c1e15d545e6be230c60154176d5c290",
+      "reported_usage": {
+        "prompt_tokens": 1547,
+        "prompt_tokens_details": {
+          "cached_tokens": 129
+        },
+        "completion_tokens": 96,
+        "total_tokens": 1643
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "FULL_same_prefix",
+      "repeat": 2,
+      "request_sha256": "05ecbb8185233c5e4d58587770fef98e732825c2666a39dd5820e862584adf6b",
+      "selected_messages_sha256": "7079d0497ebb08cb1131b88e069f9687c72a40bddd97643b0400d58a7a8f75f9",
+      "selected_tokens": 34872,
+      "materialized_tokens": 34872,
+      "oracle_addback": null,
+      "response_content_sha256": "c1deb30d7fbd7b35ecc7c3065e86322a8026be45575e49d1aeb8f5700f0c3e89",
+      "response_content": "THOUGHT: Let me examine the OrderedSet implementation in datastructures.py:\n\n```mswea_bash_command\ncat /testbed/django/utils/datastructures.py | grep -A 50 \"class OrderedSet\"\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "cat /testbed/django/utils/datastructures.py | grep -A 50 \"class OrderedSet\"",
+      "command_sha256": "73ec37ef3ff6213d1efbe324aecfc5c0f495035ccbb2d6c94586664eda04f2ee",
+      "reported_usage": {
+        "prompt_tokens": 35790,
+        "prompt_tokens_details": {
+          "cached_tokens": 35789
+        },
+        "completion_tokens": 53,
+        "total_tokens": 35843
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "candidate_same_prefix",
+      "repeat": 2,
+      "request_sha256": "b0d28e3b0c21a7f459f0e7ef804f796af41ce16bd0b389a46d23774a3fee0fae",
+      "selected_messages_sha256": "0198842b4143a9bd2133b9ffdaa79ac74fa61317f1f31c05f825a1a43a4da89a",
+      "selected_tokens": 3922,
+      "materialized_tokens": 3922,
+      "oracle_addback": null,
+      "response_content_sha256": "c922e3e8769fde34d437723ec920c3b050c5b1c6487299c0500e7281ce51718e",
+      "response_content": "THOUGHT: I found the OrderedSet class in django/utils/datastructures.py. Let me examine this file to understand its current implementation and see what needs to be added for the __reversed__ method:\n\n```mswea_bash_command\ncat /testbed/django/utils/datastructures.py\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "cat /testbed/django/utils/datastructures.py",
+      "command_sha256": "e07d4ffd2a2da88a164d8915ab1910526c1e15d545e6be230c60154176d5c290",
+      "reported_usage": {
+        "prompt_tokens": 4010,
+        "prompt_tokens_details": {
+          "cached_tokens": 4009
+        },
+        "completion_tokens": 68,
+        "total_tokens": 4078
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "counterfactual_same_prefix",
+      "repeat": 2,
+      "request_sha256": "5d49113add1dfb8c231a43be56fbab75d337d3138d6fa8d42c85bcf1b8712ceb",
+      "selected_messages_sha256": "f16a0566725abb76382473518d3dad4d2b77fe39891205c273ea657f706422c1",
+      "selected_tokens": 1524,
+      "materialized_tokens": 1524,
+      "oracle_addback": null,
+      "response_content_sha256": "fd32fb4b1ae80d51acec72956a4a33c5112d30d77be5b929f2921c528882bd3f",
+      "response_content": "THOUGHT: I found the OrderedSet class definition in `/testbed/django/utils/datastructures.py`. Now I need to examine this file to understand its current implementation and see what needs to be added to support `reversed()` functionality. The PR description mentions that we need to add a `__reversed__()` method to OrderedSet.\n\n```mswea_bash_command\ncat /testbed/django/utils/datastructures.py\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "cat /testbed/django/utils/datastructures.py",
+      "command_sha256": "e07d4ffd2a2da88a164d8915ab1910526c1e15d545e6be230c60154176d5c290",
+      "reported_usage": {
+        "prompt_tokens": 1547,
+        "prompt_tokens_details": {
+          "cached_tokens": 1546
+        },
+        "completion_tokens": 96,
+        "total_tokens": 1643
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256
+    },
+    {
+      "arm": "addback_epoch_01",
+      "repeat": 1,
+      "request_sha256": "17bfed3fa8ef648fc7cb0dbd2fb8442e074c37b9e85a634e3c4d3dcccce9c74f",
+      "selected_messages_sha256": "031096c54386e58d1c258a84a0f2d3fae512029985e3ebc73cb03632b2444daf",
+      "selected_tokens": 12737,
+      "materialized_tokens": 12737,
+      "oracle_addback": {
+        "requested_causal_group_ids": [
+          "closed-component:record-000001"
+        ],
+        "restored_causal_group_ids": [
+          "closed-component:record-000001"
+        ],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [
+          "record-000001",
+          "record-000002",
+          "record-000003",
+          "record-000004",
+          "record-000005",
+          "record-000006",
+          "record-000007",
+          "record-000008",
+          "record-000009",
+          "record-000010",
+          "record-000011",
+          "record-000012",
+          "record-000013",
+          "record-000014",
+          "record-000015",
+          "record-000016",
+          "record-000017",
+          "record-000018",
+          "record-000019",
+          "record-000020",
+          "record-000021",
+          "record-000022",
+          "record-000023",
+          "record-000024",
+          "record-000025",
+          "record-000026",
+          "record-000027",
+          "record-000028",
+          "record-000029",
+          "record-000030",
+          "record-000031",
+          "record-000032",
+          "record-000033",
+          "record-000034",
+          "record-000035",
+          "record-000036",
+          "record-000037",
+          "record-000038",
+          "record-000039",
+          "record-000040",
+          "record-000041",
+          "record-000042",
+          "record-000043",
+          "record-000044",
+          "record-000045",
+          "record-000046",
+          "record-000047",
+          "record-000048",
+          "record-000049",
+          "record-000050",
+          "record-000051",
+          "record-000052",
+          "record-000053",
+          "record-000054",
+          "record-000055"
+        ],
+        "restored_tokens": 8815
+      },
+      "response_content_sha256": "4cfbb15a69f9e2e2c68af17ae6afaeb4741daa37f26ea788514d3249576afc20",
+      "response_content": "THOUGHT: I found the OrderedSet class in django/utils/datastructures.py. Let me examine this file to understand its current implementation:\n\n```mswea_bash_command\ncat /testbed/django/utils/datastructures.py | grep -A 50 \"class OrderedSet\"\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "cat /testbed/django/utils/datastructures.py | grep -A 50 \"class OrderedSet\"",
+      "command_sha256": "73ec37ef3ff6213d1efbe324aecfc5c0f495035ccbb2d6c94586664eda04f2ee",
+      "reported_usage": {
+        "prompt_tokens": 13100,
+        "prompt_tokens_details": {
+          "cached_tokens": 9219
+        },
+        "completion_tokens": 65,
+        "total_tokens": 13165
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256,
+      "addback_epoch_index": 1,
+      "addback_causal_group_ids": [
+        "closed-component:record-000001"
+      ],
+      "addback_excluded_tokens": 8815
+    },
+    {
+      "arm": "addback_epoch_02",
+      "repeat": 1,
+      "request_sha256": "bddff43ffaa0aac73904d2590b9ee0f3feb5dad8463b512cadc437a848689188",
+      "selected_messages_sha256": "8f4968c2a8ae63547aa26adb3689943d0d2b479237bb7093573e3cc9818997b0",
+      "selected_tokens": 9654,
+      "materialized_tokens": 9654,
+      "oracle_addback": {
+        "requested_causal_group_ids": [
+          "closed-component:record-000056"
+        ],
+        "restored_causal_group_ids": [
+          "closed-component:record-000056"
+        ],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [
+          "record-000056",
+          "record-000057",
+          "record-000058",
+          "record-000059",
+          "record-000060",
+          "record-000061",
+          "record-000062",
+          "record-000063",
+          "record-000064",
+          "record-000065",
+          "record-000066",
+          "record-000067",
+          "record-000068",
+          "record-000069",
+          "record-000070",
+          "record-000071",
+          "record-000072",
+          "record-000073",
+          "record-000074",
+          "record-000075",
+          "record-000076",
+          "record-000077",
+          "record-000078",
+          "record-000079",
+          "record-000080",
+          "record-000081",
+          "record-000082",
+          "record-000083",
+          "record-000084",
+          "record-000085",
+          "record-000086",
+          "record-000087",
+          "record-000088"
+        ],
+        "restored_tokens": 5732
+      },
+      "response_content_sha256": "de50d38b1c2689dabc6b2cfc9c34363273259b89fd299b79934c5313e1d4670e",
+      "response_content": "THOUGHT: Let me examine the OrderedSet class definition in datastructures.py:\n\n```mswea_bash_command\ngrep -n \"class OrderedSet\" /testbed/django/utils/datastructures.py\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "grep -n \"class OrderedSet\" /testbed/django/utils/datastructures.py",
+      "command_sha256": "221e7107bf9df18462451c5d09f1cfca4398340a7672303d64bd5e3dd72aeef3",
+      "reported_usage": {
+        "prompt_tokens": 9907,
+        "prompt_tokens_details": {
+          "cached_tokens": 6026
+        },
+        "completion_tokens": 50,
+        "total_tokens": 9957
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256,
+      "addback_epoch_index": 2,
+      "addback_causal_group_ids": [
+        "closed-component:record-000056"
+      ],
+      "addback_excluded_tokens": 5732
+    },
+    {
+      "arm": "addback_epoch_03",
+      "repeat": 1,
+      "request_sha256": "8b234fbaadcd91aeaee0a0edb1828d6b8ce40104c1d727ffd2ee3183654b3aa2",
+      "selected_messages_sha256": "f22caee3c8996675f9f1a15011b064618a4416aad5251a029ba9aa07f7b3aa1d",
+      "selected_tokens": 9927,
+      "materialized_tokens": 9927,
+      "oracle_addback": {
+        "requested_causal_group_ids": [
+          "closed-component:record-000089"
+        ],
+        "restored_causal_group_ids": [
+          "closed-component:record-000089"
+        ],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [
+          "record-000089",
+          "record-000090",
+          "record-000091",
+          "record-000092",
+          "record-000093",
+          "record-000094",
+          "record-000095",
+          "record-000096",
+          "record-000097",
+          "record-000098",
+          "record-000099",
+          "record-000100",
+          "record-000101",
+          "record-000102",
+          "record-000103",
+          "record-000104",
+          "record-000105",
+          "record-000106",
+          "record-000107",
+          "record-000108",
+          "record-000109",
+          "record-000110",
+          "record-000111",
+          "record-000112",
+          "record-000113",
+          "record-000114"
+        ],
+        "restored_tokens": 6005
+      },
+      "response_content_sha256": "2db878df9bcd1423bec7ba8f8f36e47365b3aae8acd9b16ebaa1d1db9484de2e",
+      "response_content": "THOUGHT: Let me examine the OrderedSet implementation in the datastructures.py file:\n\n```mswea_bash_command\ngrep -n \"class OrderedSet\" /testbed/django/utils/datastructures.py\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "grep -n \"class OrderedSet\" /testbed/django/utils/datastructures.py",
+      "command_sha256": "221e7107bf9df18462451c5d09f1cfca4398340a7672303d64bd5e3dd72aeef3",
+      "reported_usage": {
+        "prompt_tokens": 10145,
+        "prompt_tokens_details": {
+          "cached_tokens": 6264
+        },
+        "completion_tokens": 51,
+        "total_tokens": 10196
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256,
+      "addback_epoch_index": 3,
+      "addback_causal_group_ids": [
+        "closed-component:record-000089"
+      ],
+      "addback_excluded_tokens": 6005
+    },
+    {
+      "arm": "addback_epoch_04",
+      "repeat": 1,
+      "request_sha256": "2de4dd8e10cf5a50303fb65b03045f8b2b5c3fd112f0d4582e3c295e8ebffdae",
+      "selected_messages_sha256": "5a90409a14bad119ee33a7ce1482b508b86f3a590df86250bfcc2babf9408b60",
+      "selected_tokens": 7346,
+      "materialized_tokens": 7346,
+      "oracle_addback": {
+        "requested_causal_group_ids": [
+          "closed-component:record-000115"
+        ],
+        "restored_causal_group_ids": [
+          "closed-component:record-000115"
+        ],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [
+          "record-000115",
+          "record-000116",
+          "record-000117",
+          "record-000118",
+          "record-000119",
+          "record-000120",
+          "record-000121",
+          "record-000122",
+          "record-000123",
+          "record-000124",
+          "record-000125",
+          "record-000126",
+          "record-000127"
+        ],
+        "restored_tokens": 3424
+      },
+      "response_content_sha256": "6db0805cb743631d77532cfdda4105ff6449f15105e80ab044e73d92a9ea6c53",
+      "response_content": "THOUGHT: I found the OrderedSet class in django/utils/datastructures.py. Let me examine this file to understand its current implementation and add the `__reversed__()` method:\n\n```mswea_bash_command\ngrep -n \"class OrderedSet\" /testbed/django/utils/datastructures.py\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "grep -n \"class OrderedSet\" /testbed/django/utils/datastructures.py",
+      "command_sha256": "221e7107bf9df18462451c5d09f1cfca4398340a7672303d64bd5e3dd72aeef3",
+      "reported_usage": {
+        "prompt_tokens": 7499,
+        "prompt_tokens_details": {
+          "cached_tokens": 1433
+        },
+        "completion_tokens": 71,
+        "total_tokens": 7570
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256,
+      "addback_epoch_index": 4,
+      "addback_causal_group_ids": [
+        "closed-component:record-000115"
+      ],
+      "addback_excluded_tokens": 3424
+    },
+    {
+      "arm": "addback_epoch_06",
+      "repeat": 1,
+      "request_sha256": "e3011a3f7c640535dac9e28fd56351629f182eaee5f915b353598aa58a041cad",
+      "selected_messages_sha256": "c99a8af42a7bf4a7dcff0ed9822ae13a73ad08ff0a656466a07068b122649a26",
+      "selected_tokens": 10896,
+      "materialized_tokens": 10896,
+      "oracle_addback": {
+        "requested_causal_group_ids": [
+          "closed-component:record-000141"
+        ],
+        "restored_causal_group_ids": [
+          "closed-component:record-000141"
+        ],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [
+          "record-000141",
+          "record-000142",
+          "record-000143",
+          "record-000144",
+          "record-000145",
+          "record-000146",
+          "record-000147",
+          "record-000148",
+          "record-000149",
+          "record-000150",
+          "record-000151",
+          "record-000152",
+          "record-000153",
+          "record-000154",
+          "record-000155",
+          "record-000156",
+          "record-000157",
+          "record-000158",
+          "record-000159",
+          "record-000160",
+          "record-000161",
+          "record-000162",
+          "record-000163",
+          "record-000164",
+          "record-000165",
+          "record-000166",
+          "record-000167",
+          "record-000168",
+          "record-000169",
+          "record-000170",
+          "record-000171",
+          "record-000172",
+          "record-000173",
+          "record-000174",
+          "record-000175",
+          "record-000176",
+          "record-000177",
+          "record-000178",
+          "record-000179"
+        ],
+        "restored_tokens": 6974
+      },
+      "response_content_sha256": "de50d38b1c2689dabc6b2cfc9c34363273259b89fd299b79934c5313e1d4670e",
+      "response_content": "THOUGHT: Let me examine the OrderedSet class definition in datastructures.py:\n\n```mswea_bash_command\ngrep -n \"class OrderedSet\" /testbed/django/utils/datastructures.py\n```\n</format_example>",
+      "finish_reason": "stop",
+      "action_valid": true,
+      "command": "grep -n \"class OrderedSet\" /testbed/django/utils/datastructures.py",
+      "command_sha256": "221e7107bf9df18462451c5d09f1cfca4398340a7672303d64bd5e3dd72aeef3",
+      "reported_usage": {
+        "prompt_tokens": 11179,
+        "prompt_tokens_details": {
+          "cached_tokens": 2592
+        },
+        "completion_tokens": 50,
+        "total_tokens": 11229
+      },
+      "diagnostic_served_model": "qwen3-coder:30b-ctx131k",
+      "diagnostic_max_tokens": 256,
+      "addback_epoch_index": 6,
+      "addback_causal_group_ids": [
+        "closed-component:record-000141"
+      ],
+      "addback_excluded_tokens": 6974
+    }
+  ],
+  "interpretation_guardrail": "Add-backs diagnose first-request sensitivity only. They do not establish autonomous resolution or a deployable selection policy."
+}
