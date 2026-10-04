@@ -96,7 +96,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if not 1 <= args.request_index <= len(decisions):
         raise ValueError("--request-index is outside the frozen replay")
     decision = decisions[args.request_index - 1]
-    geometry = frozen_live_kv_geometry(tokenizer, decision)
+    geometry = frozen_live_kv_geometry(
+        tokenizer,
+        decision,
+        full_retention=args.frozen_full_retention,
+    )
     materialized_tokens = sum(
         len(span.token_ids) for span in geometry.materialized_history_spans
     )
@@ -209,6 +213,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "tokenizer_revision": args.tokenizer_revision,
         "tokenizer_fingerprint": args.tokenizer_fingerprint,
         "request_index": decision.request_index,
+        "frozen_full_retention": args.frozen_full_retention,
         "request_input_sha256": decision.request_input_sha256,
         "source_policy": decision.source_policy,
         "logical_source_tokens": source_tokens,
@@ -259,6 +264,11 @@ def main() -> None:
     parser.add_argument("--request-replay", type=Path, required=True)
     parser.add_argument("--selection-fixture", type=Path, required=True)
     parser.add_argument("--request-index", type=int, default=9)
+    parser.add_argument(
+        "--frozen-full-retention",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tokenizer", default="Qwen/Qwen3-0.6B")
     parser.add_argument("--tokenizer-revision")
