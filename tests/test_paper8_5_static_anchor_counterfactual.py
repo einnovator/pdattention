@@ -63,3 +63,32 @@ def test_replace_static_anchor_fails_closed_on_ambiguous_or_missing_source():
             source_anchor="coding_bounded_evidence_v2",
             candidate_anchor="coding_compact_state_machine_v4",
         )
+
+
+def test_replace_static_anchor_can_move_candidate_to_declared_user_message():
+    source = request()
+    transformed = replace_static_anchor(
+        source,
+        source_anchor="coding_bounded_evidence_v2",
+        candidate_anchor="coding_minimal_transaction_v7",
+        candidate_message_index=1,
+    )
+
+    assert STATIC_WORKFLOW_ANCHORS["coding_bounded_evidence_v2"] not in transformed[
+        "messages"
+    ][0]["content"]
+    assert STATIC_WORKFLOW_ANCHORS["coding_minimal_transaction_v7"] not in transformed[
+        "messages"
+    ][0]["content"]
+    assert transformed["messages"][1]["content"].startswith("Fix it.")
+    assert STATIC_WORKFLOW_ANCHORS["coding_minimal_transaction_v7"] in transformed[
+        "messages"
+    ][1]["content"]
+
+    with pytest.raises(ValueError, match="user message"):
+        replace_static_anchor(
+            source,
+            source_anchor="coding_bounded_evidence_v2",
+            candidate_anchor="coding_minimal_transaction_v7",
+            candidate_message_index=0,
+        )

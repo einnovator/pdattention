@@ -31,8 +31,15 @@ def replace_static_anchor(
     *,
     source_anchor: str,
     candidate_anchor: str,
+    candidate_message_index: int | None = None,
 ) -> dict[str, Any]:
-    """Return a copy with exactly one declared system-anchor substitution."""
+    """Return a copy with exactly one declared anchor substitution or move.
+
+    ``candidate_message_index`` is zero based and exists only for frozen
+    salience diagnostics.  It removes the source anchor from the system
+    message and appends the candidate to one explicitly declared user message;
+    it never infers a task boundary from evaluator state.
+    """
 
     if source_anchor == candidate_anchor:
         raise ValueError("source and candidate anchors must differ")
@@ -48,8 +55,8 @@ def replace_static_anchor(
     messages = transformed.get("messages")
     if not isinstance(messages, list):
         raise ValueError("captured request must contain a message list")
-    replacements = 0
-    for message in messages:
+    source_locations: list[int] = []
+    for message_index, message in enumerate(messages):
         if not isinstance(message, dict) or message.get("role") != "system":
             continue
         content = message.get("content")
@@ -59,12 +66,26 @@ def replace_static_anchor(
         if occurrences:
             if occurrences != 1:
                 raise ValueError("source anchor occurs more than once in one message")
-            message["content"] = content.replace(source, candidate)
-            replacements += 1
-    if replacements != 1:
+            source_locations.append(message_index)
+    if len(source_locations) != 1:
         raise ValueError(
-            f"expected exactly one source-anchor occurrence, found {replacements}"
+            f"expected exactly one source-anchor occurrence, found {len(source_locations)}"
         )
+    system_index = source_locations[0]
+    system_content = str(messages[system_index]["content"])
+    if candidate_message_index is None:
+        messages[system_index]["content"] = system_content.replace(source, candidate)
+        return transformed
+    if not 0 <= candidate_message_index < len(messages):
+        raise ValueError("candidate message index is out of range")
+    target = messages[candidate_message_index]
+    if not isinstance(target, dict) or target.get("role") != "user":
+        raise ValueError("candidate message must be a user message")
+    target_content = target.get("content")
+    if not isinstance(target_content, str):
+        raise ValueError("candidate message content must be text")
+    messages[system_index]["content"] = system_content.replace(source, "")
+    target["content"] = target_content + "\n\n" + candidate
     return transformed
 
 
@@ -85,6 +106,7 @@ def replay_counterfactual(
     endpoint: str,
     source_anchor: str,
     candidate_anchor: str,
+    candidate_message_index: int | None,
     repeats: int,
     timeout: float,
 ) -> dict[str, Any]:
@@ -94,6 +116,7 @@ def replay_counterfactual(
         payload,
         source_anchor=source_anchor,
         candidate_anchor=candidate_anchor,
+        candidate_message_index=candidate_message_index,
     )
     rows = []
     for repeat in range(1, repeats + 1):
@@ -121,6 +144,7 @@ def replay_counterfactual(
         "counterfactual_request_sha256": _digest(transformed),
         "source_anchor": source_anchor,
         "candidate_anchor": candidate_anchor,
+        "candidate_message_index": candidate_message_index,
         "generation": {
             key: transformed.get(key)
             for key in ("model", "temperature", "top_p", "top_k", "seed", "max_tokens")
@@ -138,6 +162,14 @@ def main() -> None:
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--source-anchor", choices=tuple(STATIC_WORKFLOW_ANCHORS), required=True)
     parser.add_argument("--candidate-anchor", choices=tuple(STATIC_WORKFLOW_ANCHORS), required=True)
+    parser.add_argument(
+        "--candidate-message-index",
+        type=int,
+        help=(
+            "One-based explicit user-message index for a frozen salience move; "
+            "omitting it keeps the candidate in the system prefix."
+        ),
+    )
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=1200.0)
     parser.add_argument("--output", type=Path, required=True)
@@ -149,6 +181,11 @@ def main() -> None:
         endpoint=args.endpoint,
         source_anchor=args.source_anchor,
         candidate_anchor=args.candidate_anchor,
+        candidate_message_index=(
+            args.candidate_message_index - 1
+            if args.candidate_message_index is not None
+            else None
+        ),
         repeats=args.repeats,
         timeout=args.timeout,
     )
