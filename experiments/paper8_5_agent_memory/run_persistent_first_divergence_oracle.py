@@ -471,15 +471,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if not endpoint.endswith("/v1/chat/completions"):
         endpoint += "/v1/chat/completions"
     rows = []
+
+    def checkpoint_controls(status: str) -> None:
+        """Persist every expensive generation before starting the next one."""
+
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps({
+            "schema_version": 1,
+            "study": "paper8_5_persistent_first_divergence_oracle",
+            "evidence_class": "diagnostic_oracle_not_autonomous_task_quality",
+            "status": status,
+            "static_workflow_anchor": args.static_workflow_anchor,
+            "rows": rows,
+        }, indent=2) + "\n", encoding="utf-8")
+
     for repeat in range(1, args.control_repeats + 1):
         rows.append(_generation_row(
             arm="FULL_same_prefix", repeat=repeat, transformation=full,
             endpoint=endpoint, timeout=args.timeout_seconds,
         ))
+        checkpoint_controls("partial_controls_running")
         rows.append(_generation_row(
             arm="candidate_same_prefix", repeat=repeat, transformation=candidate,
             endpoint=endpoint, timeout=args.timeout_seconds,
         ))
+        checkpoint_controls("partial_controls_running")
         if counterfactual is not None:
             rows.append(_generation_row(
                 arm="counterfactual_same_prefix",
@@ -488,17 +504,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 endpoint=endpoint,
                 timeout=args.timeout_seconds,
             ))
+            checkpoint_controls("partial_controls_running")
     # Preserve expensive matched-input controls even if a later diagnostic
     # add-back fails. This file is deliberately marked partial until the
     # complete result replaces it below.
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps({
-        "schema_version": 1,
-        "study": "paper8_5_persistent_first_divergence_oracle",
-        "evidence_class": "diagnostic_oracle_not_autonomous_task_quality",
-        "status": "partial_controls_complete",
-        "rows": rows,
-    }, indent=2) + "\n", encoding="utf-8")
+    checkpoint_controls("partial_controls_complete")
     if args.skip_addbacks:
         addback_batches = []
     elif args.addback_mode == "completed_epoch":
