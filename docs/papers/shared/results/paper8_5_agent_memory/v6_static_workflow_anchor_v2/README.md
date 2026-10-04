@@ -34,4 +34,5 @@ P0/W0 pair is required before this policy can be promoted to Paper 4.5.
 - Served model: `qwen3-coder:30b-ctx131k`
 - Temperature/top-p/seed: `0.0 / 1.0 / 0`
 - Frozen rows: `2 FULL + 2 candidate` per task
-
+- Regression suite: `93 passed` across the autonomous proxy and frozen-oracle
+  tests on the execution host.

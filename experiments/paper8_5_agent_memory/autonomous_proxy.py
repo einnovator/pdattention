@@ -2011,6 +2011,18 @@ class AutonomousSelectionProxy:
                 })
             raise
 
+        if self.request_capture_directory is not None:
+            # Preserve the exact upstream body paired with the already-captured
+            # logical and selected requests.  A response hash alone is not
+            # enough to diagnose format recovery or an early trajectory
+            # divergence, and those failures can otherwise disappear when a
+            # temperature-zero local backend is replayed.  OpenAI-compatible
+            # endpoints normally return JSON; write the raw bytes so the file
+            # remains hash-identical even for a non-JSON HTTP error body.
+            (self.request_capture_directory / f"{stem}_response.json").write_bytes(
+                response_body
+            )
+
         if transformation is not None and 200 <= int(status) < 300:
             with self._lock:
                 expected = self._successful_request_count + 1

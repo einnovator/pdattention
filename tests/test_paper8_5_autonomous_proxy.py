@@ -2238,13 +2238,20 @@ def test_proxy_captures_every_logical_and_selected_request(tmp_path):
     paths = sorted(path.name for path in captures.glob("*.json"))
     assert paths == [
         "request_0001_logical.json",
+        "request_0001_response.json",
         "request_0001_selected.json",
         "request_0002_logical.json",
+        "request_0002_response.json",
         "request_0002_selected.json",
     ]
     assert json.loads(
         (captures / "request_0002_selected.json").read_text()
     )["messages"] == payload["messages"]
+    assert json.loads(
+        (captures / "request_0002_response.json").read_text()
+    )["choices"][0]["message"]["content"] == (
+        "```mswea_bash_command\ncat a.py\n```"
+    )
 
 
 def test_proxy_captures_first_logical_request_with_real_exclusions(tmp_path):
