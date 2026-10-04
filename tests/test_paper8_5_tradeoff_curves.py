@@ -42,6 +42,7 @@ def _run(
         "tokenizer_revision": "tokenizer-revision",
         "temperature": 0.0,
         "top_p": 1.0,
+        "top_k": 1,
         "seed": 0,
         "max_calls": 40,
         "max_completion_tokens": 1024,

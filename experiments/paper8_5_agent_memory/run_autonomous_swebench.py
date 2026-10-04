@@ -972,6 +972,7 @@ def run(args: argparse.Namespace) -> Path:
     transactional_anchors = {
         "coding_transactional_replace_v5",
         "coding_content_search_replace_v6",
+        "coding_minimal_transaction_v7",
     }
     if args.static_workflow_anchor in transactional_anchors:
         if not getattr(args, "transactional_replace_tool", False):

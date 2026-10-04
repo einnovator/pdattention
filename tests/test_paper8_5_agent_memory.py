@@ -1636,7 +1636,10 @@ def test_transactional_replace_tool_is_atomic_and_fails_closed(tmp_path):
     script = tmp_path / "pra_replace"
     script.write_text(TRANSACTIONAL_REPLACE_TOOL, encoding="utf-8")
     target = tmp_path / "sample.py"
-    target.write_text("alpha\nbeta\n", encoding="utf-8")
+    # The tool deliberately matches exact bytes.  Avoid host newline
+    # translation so this Linux-deployed compatibility command has the same
+    # fixture on Windows development hosts.
+    target.write_bytes(b"alpha\nbeta\n")
 
     replaced = subprocess.run(
         [

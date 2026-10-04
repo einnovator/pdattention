@@ -123,6 +123,10 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "Never search filenames for a code symbol" in content_search
     assert "xargs grep -l" in content_search
     assert "pra_replace PATH" in content_search
+    minimal_transaction = STATIC_WORKFLOW_ANCHORS["coding_minimal_transaction_v7"]
+    assert "shortest unique old text" in minimal_transaction
+    assert "normally one complete source line" in minimal_transaction
+    assert "never fall back to sed" in minimal_transaction
     with pytest.raises(ValueError, match="static_workflow_anchor"):
         AutonomousSelectionConfig(static_workflow_anchor="unknown")
     anchor = STATIC_WORKFLOW_ANCHORS[

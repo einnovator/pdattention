@@ -170,6 +170,19 @@ STATIC_WORKFLOW_ANCHORS = {
         "and submit. Emit exactly one tool action per response.\n"
         "</pra_workflow_anchor>"
     ),
+    "coding_minimal_transaction_v7": (
+        "<pra_workflow_anchor version=\"coding-minimal-transaction-v7\">\n"
+        "Search file contents for the named symbol and inspect one bounded "
+        "target span. Edit with pra_replace PATH 'EXACT_OLD_TEXT' "
+        "'EXACT_NEW_TEXT'. Choose the shortest unique old text that expresses "
+        "the intended change, normally one complete source line; do not copy a "
+        "whole function, class, or docstring when a unique line is sufficient. "
+        "Represent embedded newlines as \\n. If pra_replace fails, inspect its "
+        "error and retry the smallest corrected transaction once; never fall "
+        "back to sed, global substitution, or line-number insertion. Then "
+        "inspect git diff, run one targeted verification, and submit. Emit "
+        "exactly one tool action per response.\n</pra_workflow_anchor>"
+    ),
 }
 
 
