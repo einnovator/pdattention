@@ -409,10 +409,35 @@ class PRASparseConnector(PRASemanticConnector):
         ):
             manager = self._scheduler_kv_manager
             if command is not None and command.mode == "store":
-                source_tokens = int(command.source_tokens)
-                if int(request.num_computed_tokens) < source_tokens:
+                minimum_source_tokens = int(command.source_tokens)
+                if int(request.num_computed_tokens) < minimum_source_tokens:
                     raise RuntimeError(
                         "Cannot publish an incompletely computed CUDA source."
+                    )
+                block_sizes = tuple(
+                    int(item.block_size)
+                    for item in manager.coordinator.single_type_managers
+                )
+                if len(block_sizes) != 1:
+                    raise NotImplementedError(
+                        "CUDA scheduler aliases currently require one homogeneous "
+                        "KV group."
+                    )
+                block_size = block_sizes[0]
+                # Ordinary live turns publish every complete page filled during
+                # decode so later requests do not silently re-prefill generated
+                # history.  A hidden source-bootstrap sample instead publishes
+                # only its declared extent: the discarded capture token is not
+                # logical agent history and must never become resident source.
+                source_tokens = int(command.source_tokens)
+                if command.publish_computed_extent:
+                    source_tokens = (
+                        int(request.num_computed_tokens) // block_size
+                    ) * block_size
+                if source_tokens < minimum_source_tokens:
+                    raise RuntimeError(
+                        "Completed CUDA source extent is smaller than its declared "
+                        "minimum."
                     )
                 generation = int(getattr(command, "source_generation", 1))
                 self._scheduler_alias_registry.publish_source(
@@ -420,11 +445,13 @@ class PRASparseConnector(PRASemanticConnector):
                     generation=generation,
                     source_tokens=source_tokens,
                     blocks_by_group=manager.get_blocks(request.request_id).blocks,
-                    block_sizes=tuple(
-                        int(item.block_size)
-                        for item in manager.coordinator.single_type_managers
-                    ),
+                    block_sizes=block_sizes,
                     block_pool=manager.block_pool,
+                )
+                self._scheduler_committed_sources[str(request.request_id)] = (
+                    str(command.logical_key),
+                    generation,
+                    source_tokens,
                 )
             elif command is not None and command.mode == "load":
                 manifest_path = self._directory(command.logical_key) / "manifest.json"

@@ -695,6 +695,7 @@ class VLLMCudaAgentHistoryExecutor:
                     source_generation=state.generation,
                     residency="warm",
                     request_scope=f"{state.session_id}-call1",
+                    publish_computed_extent=not source_bootstrap,
                 )
                 receipt = self.driver.generate(
                     prompt,
@@ -703,7 +704,25 @@ class VLLMCudaAgentHistoryExecutor:
                 )
                 if int(receipt.callback_delta.get("source_pin_events", 0)) != 1:
                     raise RuntimeError("vLLM store request lacks its source-pin callback.")
-                state.source_tokens = source_tokens
+                if receipt.committed_source is None:
+                    raise RuntimeError(
+                        "vLLM store request omitted its live source-extent receipt."
+                    )
+                committed_key, committed_generation, committed_tokens = (
+                    receipt.committed_source
+                )
+                if (committed_key, committed_generation) != (
+                    state.source_key,
+                    state.generation,
+                ):
+                    raise RuntimeError(
+                        "vLLM store request committed a different source generation."
+                    )
+                if committed_tokens < source_tokens or committed_tokens % block:
+                    raise RuntimeError(
+                        "vLLM store request returned an invalid complete-page extent."
+                    )
+                state.source_tokens = committed_tokens
                 if source_bootstrap:
                     # The sampled capture token is never returned, committed,
                     # or added to logical history. vLLM's public generation
@@ -711,8 +730,8 @@ class VLLMCudaAgentHistoryExecutor:
                     # this hidden bootstrap work explicitly.
                     bootstrap_discarded_tokens = len(receipt.token_ids)
                     state.history_tokens = list(prompt[:source_tokens])
-                page_indices = tuple(range(source_tokens // block))
-                selected_tokens = source_tokens
+                page_indices = tuple(range(state.source_tokens // block))
+                selected_tokens = state.source_tokens
                 submitted_suffix_tokens = len(prompt)
                 mode = "initial_store"
 
