@@ -148,6 +148,16 @@ STATIC_WORKFLOW_ANCHORS = {
         "tool action per response. Do not repeat a completed state unless its "
         "observation reports failure.\n</pra_workflow_anchor>"
     ),
+    "coding_transactional_replace_v5": (
+        "<pra_workflow_anchor version=\"coding-transactional-replace-v5\">\n"
+        "Search file contents for the named symbol and inspect one bounded "
+        "target span. For an edit, use the available transactional command "
+        "pra_replace PATH 'EXACT_OLD_TEXT' 'EXACT_NEW_TEXT'; represent embedded "
+        "newlines as \\n. The command changes the file only when EXACT_OLD_TEXT "
+        "occurs once. Then inspect git diff, run one targeted verification, "
+        "and submit. Emit exactly one tool action per response.\n"
+        "</pra_workflow_anchor>"
+    ),
 }
 
 

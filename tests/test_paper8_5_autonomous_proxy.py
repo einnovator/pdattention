@@ -116,6 +116,9 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     compact = STATIC_WORKFLOW_ANCHORS["coding_compact_state_machine_v4"]
     assert "content search -> bounded inspection -> exact edit" in compact
     assert "Emit exactly one tool action per response" in compact
+    transactional = STATIC_WORKFLOW_ANCHORS["coding_transactional_replace_v5"]
+    assert "pra_replace PATH" in transactional
+    assert "changes the file only when EXACT_OLD_TEXT occurs once" in transactional
     with pytest.raises(ValueError, match="static_workflow_anchor"):
         AutonomousSelectionConfig(static_workflow_anchor="unknown")
     anchor = STATIC_WORKFLOW_ANCHORS[
