@@ -17,7 +17,7 @@
 \title{Agent Memory Selection under Bounded Context:\\
 \large State, Provenance, and Trajectory Economics}
 \author{Jorge Sim\~ao}
-\date{Draft --- September 2026}
+\date{Draft --- October 2026}
 
 \newcommand{\pra}{\textsc{PRA}}
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
@@ -67,6 +67,15 @@ $+3$ to $+27$.  The completed six-task selective trajectory resolves 5/6 and
 saves 51.36\% against its own counterfactual, but has no valid paired N=6
 denominator because Full's cold 53,484-token Task-6 request produces no
 response before the frozen timeout.
+
+A stricter decoding audit finds that nominal temperature zero is not an exact
+trajectory control on the served Qwen endpoint: identical requests vary from
+one valid action to twelve code blocks while the model retains a top-$k$ of
+20.  Explicit top-$k=1$ makes the selective first request identical in 5/5
+repeats.  Under that control, a task-neutral static workflow anchor plus
+closed-task P0/W0 retirement preserves the official Task~7 solve and cuts
+paired cumulative input by 75.24\%, but uses 14 calls rather than Full's six.
+This mechanism point preserves capability while failing the action-cost gate.
 
 Finally, per-request omission can reverse end-to-end: one six-issue policy
 resolves 6/6 and omits 55.34\% against its own trajectory, yet expands from 60
@@ -850,6 +859,7 @@ Recent Frontier M2/P1 & OpenHands single epoch & 1 & 1/1; 1/1 & 25/33 & 186,635/
 Recent Frontier M2/P1 & Pi prospective $N=3$ & 3 & 2/3; 3/3 & 115/107 & 2,847,310/2,042,277 & 20.05/28.27\% & preserves 2/2; one recovery diagnostic \\
 Recent Frontier M2/P1 & Pi matched $N=5$ & 5 & 3/5; 4/5 & 152/155 & 4,572,641/2,857,534 & 40.92/37.51\% & preserves 3/3; one recovery; $+3$ calls \\
 Recent Frontier M2/P1 & Pi selective $N=6$ & 6 & ---; 5/6 & ---/194 & ---/3,446,052 & 51.36/n.a.\% & Full Task~6 timeout; no paired claim \\
+Static anchor + P0/W0 & greedy Task~7 mechanism & 1 & 1/1; 1/1 & 6/14 & 213,287/52,807 & 89.84/75.24\% & capability preserved; $+8$ calls; not promoted \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
@@ -1012,11 +1022,29 @@ paired saving to 10.65\% and failure-aware saving to zero.  Old histories can
 therefore provide useful workflow conditioning while also supplying harmful
 task identity.  Selecting only old command-token K/V is not a task-neutral
 repair: those vectors were themselves computed while attending to the old
-task and rationale.  The next gate uses a short task-neutral workflow anchor
-encoded once in the static system prefix, then retires closed components
-completely.  This treatment must repair Task~7 without regressing Task~4
-before cohort expansion; it is compared against an anchored \textsc{Full}
-control so scaffold effects are not credited as memory-policy gains.
+task and rationale.  A short task-neutral workflow anchor encoded once in the
+static system prefix repairs the frozen first-action failure on both Task~4
+and Task~7: P0/W0 reduces the reconstructed requests by 93.1\% and 93.0\%,
+respectively, with stable bounded searches in 2/2 repeats per arm.
+
+The subsequent autonomous Task~7 pair exposes two further controls.  First,
+nominal temperature zero is not operationally deterministic on this endpoint:
+the served Modelfile retains temperature 0.7, top-$k$ 20, and top-$p$ 0.8
+defaults, and exact replays vary from one valid action to twelve code blocks.
+Declaring top-$k=1$ makes the selective first request identical in 5/5 repeats
+and is now a mandatory pairing coordinate.  Second, under this genuinely
+greedy control, anchored \textsc{Full} and P0/W0 both resolve officially.
+P0/W0 selects 52,807 cumulative input tokens versus Full's 213,287, for
+75.24\% clean paired saving (89.84\% against its own 519,679-token
+counterfactual), but uses 14 calls rather than six.  The extra work is an
+inefficient search followed by fragile Bash \texttt{sed} insertion and repeated
+inspect/revert/re-edit cycles, even though every active-task message is kept.
+Keeping the immediately preceding task whole restores the targeted first
+search but repeats the same edit loop and is stopped after 15 recorded
+selections.  Thus capability and input economy pass on this identity, while
+the action-cost gate fails.  The next treatment must provide a task-neutral
+pre-ingest reliable-edit affordance (or a typed edit primitive), identically to
+Full and selective arms; it must not summarize or re-encode resident K/V.
 
 \paragraph{Oracle scope.}
 Leave-one-bundle-out and bounded subset search answer whether headroom exists
