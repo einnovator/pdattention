@@ -158,6 +158,9 @@ def test_stateful_bridge_stores_then_loads_only_suffix_with_exact_commands() -> 
     first = executor.generate(_request(initial, range(len(initial))))
     assert driver.commands[0].mode == "store"
     assert first.trace[0]["consumption_mode"] == "initial_store"
+    assert first.trace[0]["effective_attention_prompt_tokens"] == first.trace[0][
+        "logical_prompt_tokens"
+    ]
 
     logical = tuple(executor._sessions["s"].ledger.messages) + (
         {"role": "user", "content": "new-result"},
@@ -171,6 +174,9 @@ def test_stateful_bridge_stores_then_loads_only_suffix_with_exact_commands() -> 
     )
     assert second.trace[0]["consumption_mode"] == "dense_semantic_noop"
     assert second.trace[0]["full_retention"] is True
+    assert second.trace[0]["effective_attention_prompt_tokens"] == second.trace[0][
+        "logical_prompt_tokens"
+    ]
     assert second.trace[0]["realized_retention_fraction"] == 1.0
     assert second.trace[0]["selected_history_reencoded_tokens"] == 0
     assert second.trace[0]["selected_history_kv_copy_bytes"] == 0

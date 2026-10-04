@@ -15,10 +15,6 @@ from typing import Any, Mapping, Sequence
 os.environ.setdefault("VLLM_USE_V2_MODEL_RUNNER", "0")
 os.environ.setdefault("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
 
-import torch
-import vllm
-from vllm import LLM, SamplingParams
-
 from pra_hf.agent_executor import (
     configure_append_stable_template,
     validate_append_stable_template,
@@ -30,6 +26,39 @@ from pra_vllm.agent_executor import (
     record_rounded_selected_indices,
     validate_retention_fractions,
 )
+
+
+def _llm_options(args: argparse.Namespace, storage: Path) -> dict[str, Any]:
+    """Build an explicit, serializable vLLM admission configuration."""
+
+    options: dict[str, Any] = {
+        "model": args.model,
+        "dtype": args.dtype,
+        "max_model_len": args.max_model_len,
+        "max_num_seqs": 2,
+        "gpu_memory_utilization": args.gpu_memory_utilization,
+        "cpu_offload_gb": args.cpu_offload_gb,
+        "enable_prefix_caching": True,
+        "enforce_eager": True,
+        "disable_hybrid_kv_cache_manager": True,
+        "kv_transfer_config": {
+            "kv_connector": "PRASparseConnector",
+            "kv_connector_module_path": "pra_vllm.cuda_sparse_connector",
+            "kv_role": "kv_both",
+            "kv_buffer_size": args.kv_transfer_buffer_bytes,
+            "kv_connector_extra_config": {
+                "storage_path": str(storage),
+                "scheduler_page_aliases": True,
+            },
+        },
+    }
+    if args.revision:
+        options["revision"] = args.revision
+    if args.max_num_batched_tokens is not None:
+        options["max_num_batched_tokens"] = args.max_num_batched_tokens
+    if args.kv_cache_memory_bytes is not None:
+        options["kv_cache_memory_bytes"] = args.kv_cache_memory_bytes
+    return options
 
 
 def _sha256(path: Path) -> str:
@@ -109,6 +138,8 @@ def _run_arm(
     max_tokens: int,
     dense_reference: bool,
 ) -> dict[str, Any]:
+    from vllm import SamplingParams
+
     session_id = f"vllm-agent-bridge-{int(retention * 100)}"
     executor = VLLMCudaAgentHistoryExecutor(
         driver,
@@ -208,29 +239,17 @@ def _run_arm(
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    import torch
+    import vllm
+    from vllm import LLM
+
     trajectory = args.trajectory.expanduser().resolve()
     output = args.output.expanduser().resolve()
     storage = args.storage.expanduser().resolve()
     storage.mkdir(parents=True, exist_ok=True)
     frozen = json.loads(trajectory.read_text(encoding="utf-8"))
-    llm = LLM(
-        model=args.model,
-        max_model_len=args.max_model_len,
-        max_num_seqs=2,
-        gpu_memory_utilization=args.gpu_memory_utilization,
-        enable_prefix_caching=True,
-        enforce_eager=True,
-        disable_hybrid_kv_cache_manager=True,
-        kv_transfer_config={
-            "kv_connector": "PRASparseConnector",
-            "kv_connector_module_path": "pra_vllm.cuda_sparse_connector",
-            "kv_role": "kv_both",
-            "kv_connector_extra_config": {
-                "storage_path": str(storage),
-                "scheduler_page_aliases": True,
-            },
-        },
-    )
+    llm_options = _llm_options(args, storage)
+    llm = LLM(**llm_options)
     tokenizer = llm.get_tokenizer()
     digest = configure_append_stable_template(tokenizer, "pure-chatml-stable")
     validate_append_stable_template(tokenizer)
@@ -314,6 +333,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": args.model,
         "resolved_model": str(model_config.model),
         "model_revision": getattr(hf_config, "_commit_hash", None),
+        "requested_model_revision": args.revision,
+        "dtype": str(model_config.dtype),
+        "quantization": model_config.quantization,
+        "admission_config": {
+            "max_model_len": args.max_model_len,
+            "max_num_batched_tokens": args.max_num_batched_tokens,
+            "max_num_seqs": 2,
+            "gpu_memory_utilization": args.gpu_memory_utilization,
+            "cpu_offload_gb": args.cpu_offload_gb,
+            "kv_transfer_buffer_bytes": args.kv_transfer_buffer_bytes,
+            "kv_cache_memory_bytes": args.kv_cache_memory_bytes,
+            "prefix_caching": True,
+            "enforce_eager": True,
+        },
         "engine": "vllm-cuda",
         "engine_version": vllm.__version__,
         "torch_version": torch.__version__,
@@ -335,6 +368,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "host_to_device_bytes": sum(row["trace"]["host_to_device_bytes"] for row in rows),
             "total_kv_copy_bytes": sum(row["trace"]["total_kv_copy_bytes"] for row in rows),
             "consumer_temporary_bytes_peak": max(int(row["trace"]["consumer_temporary_bytes"] or 0) for row in rows),
+        },
+        "token_accounting": {
+            "initial_source_capture_prefill_tokens": sum(
+                int(row["trace"]["new_suffix_tokens_submitted"])
+                for row in rows
+                if row["trace"]["consumption_mode"] == "initial_store"
+            ),
+            "incremental_suffix_tokens_submitted": sum(
+                int(row["trace"]["new_suffix_tokens_submitted"])
+                for row in rows
+                if row["trace"]["consumption_mode"] != "initial_store"
+            ),
+            "new_suffix_tokens_submitted": sum(
+                int(row["trace"]["new_suffix_tokens_submitted"]) for row in rows
+            ),
+            "new_request_suffix_tokens": sum(
+                int(row["trace"]["new_request_suffix_tokens"]) for row in rows
+            ),
+            "uncached_partial_history_reencoded_tokens": sum(
+                int(row["trace"]["uncached_partial_history_reencoded_tokens"])
+                for row in rows
+            ),
         },
         "consumer": {
             "scheduler_alias_calls": callbacks,
@@ -369,6 +424,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--revision")
+    parser.add_argument("--dtype", default="auto")
     parser.add_argument("--trajectory", type=Path, required=True)
     parser.add_argument("--storage", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -376,6 +433,10 @@ def main() -> None:
     parser.add_argument("--max-tokens", type=int, default=8)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.72)
+    parser.add_argument("--cpu-offload-gb", type=float, default=0.0)
+    parser.add_argument("--max-num-batched-tokens", type=int)
+    parser.add_argument("--kv-cache-memory-bytes", type=int)
+    parser.add_argument("--kv-transfer-buffer-bytes", type=int, default=1_000_000_000)
     parser.add_argument("--dense-reference", action="store_true")
     parser.add_argument(
         "--retention-fractions",

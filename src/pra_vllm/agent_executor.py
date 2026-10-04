@@ -886,7 +886,9 @@ class VLLMCudaAgentHistoryExecutor:
                 "new_request_suffix_tokens": new_request_tokens,
                 "logical_prompt_tokens": len(prompt),
                 "effective_attention_prompt_tokens": (
-                    selected_tokens + submitted_suffix_tokens
+                    submitted_suffix_tokens
+                    if mode == "initial_store"
+                    else selected_tokens + submitted_suffix_tokens
                 ),
                 "completion_tokens": len(receipt.token_ids),
                 "uncommitted_partial_page_tokens": len(state.history_tokens) - state.source_tokens,
