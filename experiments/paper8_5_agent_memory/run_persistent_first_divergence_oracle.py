@@ -450,6 +450,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 endpoint=endpoint,
                 timeout=args.timeout_seconds,
             ))
+    # Preserve expensive matched-input controls even if a later diagnostic
+    # add-back fails. This file is deliberately marked partial until the
+    # complete result replaces it below.
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps({
+        "schema_version": 1,
+        "study": "paper8_5_persistent_first_divergence_oracle",
+        "evidence_class": "diagnostic_oracle_not_autonomous_task_quality",
+        "status": "partial_controls_complete",
+        "rows": rows,
+    }, indent=2) + "\n", encoding="utf-8")
     if args.addback_mode == "completed_epoch":
         if args.addback_epoch is not None or args.addback_causal_group:
             raise ValueError(

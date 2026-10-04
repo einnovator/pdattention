@@ -888,6 +888,7 @@ def transform_autonomous_payload(
             if config.policy not in {
                 "persistent_episode_retirement",
                 "persistent_instruction_epoch_retirement",
+                "frontier_dag_retirement",
             }:
                 raise ValueError(
                     "autonomous oracle add-back is restricted to "

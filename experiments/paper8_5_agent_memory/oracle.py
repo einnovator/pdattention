@@ -25,23 +25,36 @@ def restore_causal_groups(
     records_by_group: dict[str, list[Any]] = {}
     for record in history.records:
         records_by_group.setdefault(record.causal_group_id, []).append(record)
+    exclusions_by_group = {
+        exclusion.causal_group_id: exclusion for exclusion in plan.exclusions
+    }
     selected_before = set(plan.selected_record_ids)
     restored_groups: list[str] = []
     already_selected: list[str] = []
     absent: list[str] = []
     restored_records: list[str] = []
+    restored_record_group: dict[str, str] = {}
     for group_id in requested:
         group_records = records_by_group.get(group_id)
+        if not group_records and group_id in exclusions_by_group:
+            # Frontier-DAG retirement names an atomically excluded connected
+            # component rather than reusing one source turn ID.  Its exclusion
+            # ledger is authoritative about the complete record set.
+            group_records = [
+                history.record_by_id[record_id]
+                for record_id in exclusions_by_group[group_id].record_ids
+                if record_id in history.record_by_id
+            ]
         if not group_records:
             absent.append(group_id)
         elif all(row.record_id in selected_before for row in group_records):
             already_selected.append(group_id)
         else:
             restored_groups.append(group_id)
-            restored_records.extend(
-                row.record_id for row in group_records
-                if row.record_id not in selected_before
-            )
+            for row in group_records:
+                if row.record_id not in selected_before:
+                    restored_records.append(row.record_id)
+                    restored_record_group[row.record_id] = group_id
     selected = selected_before | set(restored_records)
     selected_record_ids = tuple(
         row.record_id for row in history.records if row.record_id in selected
@@ -53,7 +66,7 @@ def restore_causal_groups(
     ))
     reasons = dict(plan.selection_reasons)
     for record_id in restored_records:
-        group_id = history.record_by_id[record_id].causal_group_id
+        group_id = restored_record_group[record_id]
         reasons[record_id] = f"oracle_addback:{group_id}"
     selected_tokens = sum(
         count_tokens(history.record_by_id[record_id].content)

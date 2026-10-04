@@ -623,6 +623,46 @@ def test_instruction_epoch_oracle_addback_restores_retired_turn():
     assert len(restored.plan.exclusions) == len(candidate.plan.exclusions) - 1
 
 
+def test_frontier_oracle_addback_restores_retired_component(tmp_path):
+    config = AutonomousSelectionConfig(
+        policy="frontier_dag_retirement",
+        boundary_mode="boundary_free",
+        expected_model="locked-model",
+        task_id="repo__current-3",
+        session_id="session-locked",
+        episode_index=3,
+        frontier_recent_user_prompts=1,
+        frontier_protocol_exemplars=0,
+        frontier_workflow_exemplars=0,
+        frontier_allow_heuristic=True,
+        frontier_allow_superseded_unfinished_after=1,
+    )
+    prior = (
+        _completed_episode("repo__old-1"),
+        _completed_episode("repo__old-2"),
+    )
+    for step, command in enumerate(("cat a.py", "cat b.py", "cat c.py", "cat d.py")):
+        _write_receipt(tmp_path, step, command, {
+            "return_code": 0,
+            "output_complete": True,
+            "resource_version_fingerprints": {command.split()[-1]: "v1"},
+        })
+    candidate = transform_autonomous_payload(
+        _payload(), config, prior_episodes=prior, instrumentation_root=tmp_path,
+    )
+    exclusion = candidate.plan.exclusions[0]
+    restored = transform_autonomous_payload(
+        _payload(), config, prior_episodes=prior, instrumentation_root=tmp_path,
+        oracle_addback_causal_group_ids=(exclusion.causal_group_id,),
+    )
+
+    assert restored.trace["oracle_addback"]["restored_causal_group_ids"] == (
+        exclusion.causal_group_id,
+    )
+    assert restored.trace["oracle_addback"]["restored_tokens"] > 0
+    assert len(restored.plan.exclusions) == len(candidate.plan.exclusions) - 1
+
+
 def test_persistent_protocol_floor_keeps_clean_action_observation_exemplar():
     result = transform_autonomous_payload(
         _payload(),
