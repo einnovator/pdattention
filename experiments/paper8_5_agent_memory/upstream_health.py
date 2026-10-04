@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import http.client
 import json
-import math
 import subprocess
 from time import monotonic, sleep
 from typing import Any, Callable
@@ -15,6 +14,21 @@ import urllib.request
 def _chat_url(base_url: str) -> str:
     root = base_url.rstrip("/")
     return f"{root}/chat/completions" if root.endswith("/v1") else f"{root}/v1/chat/completions"
+
+
+def _run_curl_with_connect_retries(
+    runner: Callable[..., Any], command: list[str], *,
+    attempts: int, retry_seconds: float, **kwargs: Any,
+) -> tuple[Any, int]:
+    """Retry only curl's pre-delivery connection failure (exit code 7)."""
+
+    completed: Any = None
+    for attempt in range(1, attempts + 1):
+        completed = runner(command, **kwargs)
+        if completed.returncode != 7 or attempt == attempts:
+            return completed, attempt
+        sleep(retry_seconds)
+    raise AssertionError("positive connection-attempt validation was bypassed")
 
 
 def normalize_ollama_cold_start(
@@ -216,27 +230,26 @@ def probe_generation_health(
     runtime_context: dict[str, Any] | None = None
     connection: Any | None = None
     chat_url = _chat_url(base_url)
-    curl_retry_arguments = [
-        "--retry", str(max(0, connect_attempts - 1)),
-        "--retry-connrefused",
-        "--retry-delay", str(int(math.ceil(connect_retry_seconds))),
-    ]
     if qualification_path is not None and curl_executable is not None:
         parsed = urlparse(chat_url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
 
-        def curl_get_json(path: str) -> tuple[dict[str, Any], int, float]:
+        def curl_get_json(
+            path: str,
+        ) -> tuple[dict[str, Any], int, float, int]:
             started = monotonic()
-            completed = curl_runner(
+            completed, transport_attempts = _run_curl_with_connect_retries(
+                curl_runner,
                 [
                     curl_executable,
                     "--silent", "--show-error",
                     "--max-time", str(timeout_seconds),
-                    *curl_retry_arguments,
                     "--request", "GET",
                     "--output", "-", "--write-out", "\n%{http_code}",
                     origin + path,
                 ],
+                attempts=connect_attempts,
+                retry_seconds=connect_retry_seconds,
                 capture_output=True,
                 timeout=timeout_seconds + 10,
                 check=False,
@@ -253,12 +266,16 @@ def probe_generation_health(
                 json.loads(raw_body.decode("utf-8")),
                 int(status_text),
                 monotonic() - started,
+                transport_attempts,
             )
 
         try:
-            _qualification_body, qualification_status, qualification_latency = (
-                curl_get_json(qualification_path)
-            )
+            (
+                _qualification_body,
+                qualification_status,
+                qualification_latency,
+                qualification_attempts,
+            ) = curl_get_json(qualification_path)
             if qualification_status >= 500:
                 raise OSError(
                     f"qualification returned HTTP {qualification_status}"
@@ -269,11 +286,15 @@ def probe_generation_health(
                 "latency_seconds": qualification_latency,
                 "healthy": True,
                 "transport": "curl",
+                "transport_attempts": qualification_attempts,
             }
             if runtime_state_path is not None:
-                context_body, context_status, context_latency = curl_get_json(
-                    runtime_state_path
-                )
+                (
+                    context_body,
+                    context_status,
+                    context_latency,
+                    context_attempts,
+                ) = curl_get_json(runtime_state_path)
                 active_models = list(context_body.get("models") or ())
                 active = next((
                     row for row in active_models
@@ -300,6 +321,7 @@ def probe_generation_health(
                     "minimum_active_context_tokens": minimum_active_context_tokens,
                     "healthy": context_healthy,
                     "transport": "curl",
+                    "transport_attempts": context_attempts,
                 }
                 if not context_healthy:
                     raise OSError(
@@ -424,18 +446,20 @@ def probe_generation_health(
         try:
             response_status = 200
             if curl_executable is not None:
-                completed = curl_runner(
+                completed, transport_attempts = _run_curl_with_connect_retries(
+                    curl_runner,
                     [
                         curl_executable,
                         "--silent", "--show-error",
                         "--max-time", str(timeout_seconds),
-                        *curl_retry_arguments,
                         "--request", "POST",
                         "--header", "Content-Type: application/json",
                         "--data-binary", "@-",
                         "--output", "-", "--write-out", "\n%{http_code}",
                         chat_url,
                     ],
+                    attempts=connect_attempts,
+                    retry_seconds=connect_retry_seconds,
                     input=payload,
                     capture_output=True,
                     timeout=timeout_seconds + 10,
@@ -478,6 +502,10 @@ def probe_generation_health(
                 "response_exact": valid,
                 "within_latency_ceiling": within_ceiling,
                 "healthy": valid and within_ceiling,
+                **(
+                    {"transport_attempts": transport_attempts}
+                    if curl_executable is not None else {}
+                ),
             })
             if not valid or not within_ceiling:
                 break

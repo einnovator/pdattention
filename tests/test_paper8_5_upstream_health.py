@@ -207,7 +207,7 @@ def test_generation_health_can_use_direct_curl_transport() -> None:
     assert len(calls) == 3
     assert all(call[0][-1].endswith("/v1/chat/completions") for call in calls)
     assert all(call[1]["check"] is False for call in calls)
-    assert all(call[0][call[0].index("--retry") + 1] == "0" for call in calls)
+    assert all(row["transport_attempts"] == 1 for row in result["probes"])
 
 
 def test_curl_health_qualifies_model_and_active_context_before_generation() -> None:
@@ -261,15 +261,52 @@ def test_curl_health_qualifies_model_and_active_context_before_generation() -> N
         "minimum_active_context_tokens": 131072,
         "healthy": True,
         "transport": "curl",
+        "transport_attempts": 1,
     }
     assert [call[0][-1] for call in calls] == [
         "http://engine.test:11435/api/tags",
         "http://engine.test:11435/api/ps",
         "http://engine.test:11435/v1/chat/completions",
     ]
-    assert all(
-        call[0][call[0].index("--retry") + 1] == "4" for call in calls
+
+
+def test_curl_health_retries_connection_refusal_before_delivery() -> None:
+    calls = []
+
+    class Completed:
+        stderr = b""
+
+        def __init__(self, returncode, stdout=b""):
+            self.returncode = returncode
+            self.stdout = stdout
+
+    responses = [
+        Completed(7),
+        Completed(7),
+        Completed(
+            0, b'{"choices":[{"message":{"content":"OK"}}]}\n200'
+        ),
+    ]
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return responses.pop(0)
+
+    result = probe_generation_health(
+        base_url="http://engine.test:11435/v1",
+        model="locked-model",
+        count=1,
+        latency_ceiling_seconds=1,
+        timeout_seconds=2,
+        connect_attempts=3,
+        connect_retry_seconds=0,
+        curl_executable="/usr/bin/curl",
+        curl_runner=runner,
     )
+
+    assert result["healthy"] is True
+    assert result["probes"][0]["transport_attempts"] == 3
+    assert len(calls) == 3
 
 
 def test_generation_health_requires_active_runtime_context() -> None:
