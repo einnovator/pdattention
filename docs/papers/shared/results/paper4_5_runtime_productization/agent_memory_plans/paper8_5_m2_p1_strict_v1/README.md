@@ -55,3 +55,22 @@ gate. All 22 requests map under the Qwen3-4B tokenizer without restoring an
 excluded record. Mean realized retention is 88.21%, 46.89%, and 49.67% for
 Tasks 3, 4, and 5. This confirms the expected logical opportunity in engine
 tokens but is not yet native-K/V execution evidence.
+
+## Native Task-4 request sequences
+
+The `engine_sequences/` cells execute the same six hash-bound Task-4 requests.
+They qualify policy realization only; they are not autonomous task reruns and
+do not add policy-accuracy observations.
+
+| Engine | Arm | Qualified | Weighted retention | K/V omission | Re-encoded history | Selection pack | Attachment copy |
+|---|---|---:|---:|---:|---:|---:|---:|
+| MLX-LM 0.31.3 / MLX 0.32.2 | Full | 6/6 | 100.00% | 0.00% | 0 | 0 B | 0/6 |
+| MLX-LM 0.31.3 / MLX 0.32.2 | M2/P1 | 6/6 | 46.92% | 53.08% | 0 | 0 B | 0/6 |
+| vLLM-Metal 0.29.0 | Full | 6/6 | 100.00% | 0.00% | 0 | 0 B | 0/6 |
+| vLLM-Metal 0.29.0 | M2/P1 | 6/6 | 47.04% | 52.96% | 0 | 0 B | 0/6 |
+
+MLX consumes exact selected spans. vLLM-Metal rounds each request to complete
+pages, adding 21 tokens per request and 126 tokens across the sequence. This
+accounts for the approximately 0.12-point omission difference without changing
+the logical selection ledger. The MLX host carried unrelated load, so its
+elapsed times are provenance rather than runtime-economics evidence.

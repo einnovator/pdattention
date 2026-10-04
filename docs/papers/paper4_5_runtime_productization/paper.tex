@@ -691,6 +691,18 @@ K/V, and clears every lifecycle check.  Thus the corrected SGLang mechanism is
 qualified at $N=3$, while $N=6$ remains a capacity boundary rather than a
 correctness or performance result.
 
+The strict Paper~8.5 Task~4 M2/P1 handoff now also has complete matched
+six-request sequences on two engines.  Direct MLX-LM 0.31.3 / MLX 0.32.2
+qualifies 6/6 \textsc{Full} requests at 100\% retention and 6/6 M2/P1 requests
+at 46.92\% weighted retention, or 53.08\% resident-K/V omission.  vLLM-Metal
+0.29.0 independently qualifies the same 6+6 requests at 100\% and 47.04\%
+retention, or 52.96\% omission.  Every cell re-encodes zero selected-history
+tokens, allocates zero selection-pack bytes, attaches without physical K/V
+copy, and clears its lifecycle gate.  vLLM's 0.12-point lower omission is
+accounted for by 21-token complete-page rounding on each request.  These are
+frozen request-sequence mechanism results, not autonomous solves; unrelated
+load on the MLX host also excludes its elapsed times from runtime economics.
+
 The same corrected request-9 gate does not yet qualify the direct MLX 14B
 path.  On MLX 0.32.2 / MLX-LM 0.31.3 with Qwen3-14B 4-bit, both fused and
 eager disjoint consumers differ from the native dense identical-subset
@@ -4424,6 +4436,18 @@ Metal command-buffer out-of-memory error on the 16-GB M5 and emits no receipt;
 it is retained as fail-closed admission evidence, not as a numerical or
 lifecycle failure.
 
+Direct MLX-LM 0.31.3 on MLX 0.32.2 now clears both six-request Task~4
+sequences on the 48~GB M4 Pro.  The \textsc{Full} arm qualifies 6/6 requests
+at exactly 100\% retention.  Frozen M2/P1 also qualifies 6/6 against the
+identical-subset reference, with weighted total visible retention of 46.92\%
+and therefore 53.08\% resident-K/V omission; per-request retention ranges from
+45.26\% to 48.37\%.  Both arms re-encode zero selected-history tokens, allocate
+zero selection-pack bytes, attach the resident arrays without physical K/V
+copy, and clear the ownership, concurrent-borrow, cancellation, stale-fork,
+offload/restore, termination, and cleanup checks.  The host was under unrelated
+load, so elapsed time is excluded from runtime economics.  This is a frozen
+request-sequence result rather than an autonomous solve.
+
 vLLM-Metal 0.29.0 now clears all six frozen Task~4 requests on the 48~GB M4
 Pro.  Every PRA-100 request matches an independent ordinary prefix-cache
 control with a complete source-prefix hit.  Every M2/P1 request matches its
@@ -4437,7 +4461,9 @@ source concurrently.  The separately reported offload/restore exercise does
 copy K/V across the residency boundary and is not counted as request reuse.
 This is a complete frozen request sequence, but not yet an autonomous Task~4
 solve; it establishes engine realization of the policy rather than policy
-accuracy.
+accuracy.  Its 52.96\% omission is within 0.12 percentage points of direct
+MLX's 53.08\%; the small difference is the explicitly charged 21-token
+complete-page rounding on each vLLM-Metal request, not a policy difference.
 
 The current campaign freezes one end-to-end task per qualified engine before
 any Easy-14 expansion.  Its first post-fix row is llama.cpp with
