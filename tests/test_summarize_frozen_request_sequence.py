@@ -5,7 +5,7 @@ import pytest
 from experiments.paper4_5_agent.summarize_frozen_request_sequence import summarize
 
 
-def _artifact(tmp_path, index, retention=1.0, digest=None):
+def _artifact(tmp_path, index, retention=1.0, digest=None, *, hf_pack=False):
     path = tmp_path / f"request_{index}.json"
     path.write_text(
         json.dumps(
@@ -20,7 +20,7 @@ def _artifact(tmp_path, index, retention=1.0, digest=None):
                 "selected_kv_tokens": int(100 * retention),
                 "realized_retention_fraction": retention,
                 "selected_text_reencoded_tokens": 0,
-                "selection_pack_bytes": 0,
+                **({"interval_pack_bytes": 0} if hf_pack else {"selection_pack_bytes": 0}),
                 "physical_kv_copy": False,
                 "engine_lifecycle_qualified": True,
                 "qualification_blockers": [],
@@ -57,3 +57,10 @@ def test_duplicate_request_digest_is_rejected(tmp_path):
     ]
     with pytest.raises(ValueError, match="not unique"):
         summarize(paths, (1, 2), expect_full_retention=False)
+
+
+def test_hf_interval_pack_bytes_maps_to_common_selection_pack_gate(tmp_path):
+    paths = [_artifact(tmp_path, 1, 0.5, hf_pack=True)]
+    result = summarize(paths, (1,), expect_full_retention=False)
+    assert result["sequence_qualified"] is True
+    assert result["selection_pack_bytes"] == 0

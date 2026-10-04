@@ -79,7 +79,12 @@ def summarize(
             "selected_history_reencoded_tokens": int(
                 payload["selected_text_reencoded_tokens"]
             ),
-            "selection_pack_bytes": int(payload.get("selection_pack_bytes", 0)),
+            "selection_pack_bytes": int(
+                payload.get(
+                    "selection_pack_bytes",
+                    payload.get("interval_pack_bytes", 0),
+                )
+            ),
             "attachment_physical_kv_copy": _attachment_copy(payload),
             "engine_lifecycle_qualified": bool(
                 payload["engine_lifecycle_qualified"]

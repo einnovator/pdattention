@@ -35,6 +35,9 @@ def _args(tmp_path: Path, engine: str = "mlx") -> argparse.Namespace:
         source_prefill_step_size=512,
         max_abs_logit_delta=0.01,
         hardware_label="test-host",
+        device="cuda",
+        dtype="bfloat16",
+        local_files_only=True,
     )
 
 
@@ -52,6 +55,18 @@ def test_sglang_command_binds_provenance_and_revision(tmp_path):
     assert command[command.index("--provenance") + 1] == str(args.provenance)
     assert command[command.index("--revision") + 1] == "test-revision"
     assert "--fused-disjoint-attention" not in command
+
+
+def test_hf_command_binds_cuda_dtype_without_mlx_only_arguments(tmp_path):
+    args = _args(tmp_path, engine="hf")
+    command = build_command(args, 1, tmp_path / "request.json")
+    assert "experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle" in command
+    assert command[command.index("--device") + 1] == "cuda"
+    assert command[command.index("--dtype") + 1] == "bfloat16"
+    assert "--local-files-only" in command
+    assert "--source-prefill-step-size" not in command
+    assert "--materialization-policy" not in command
+    assert "--hardware-label" not in command
 
 
 def test_existing_output_directory_is_never_overwritten(tmp_path):

@@ -19,6 +19,7 @@ from experiments.paper4_5_agent.summarize_frozen_request_sequence import summari
 
 
 ENGINE_MODULES = {
+    "hf": "experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle",
     "mlx": "experiments.paper4_5_agent.run_mlx_live_agent_kv_lifecycle",
     "sglang": "experiments.paper4_5_agent.run_sglang_live_agent_kv_lifecycle",
 }
@@ -60,20 +61,29 @@ def build_command(args: argparse.Namespace, request_index: int, output: Path) ->
         str(args.continuation_tokens),
         "--prefill-step-size",
         str(args.prefill_step_size),
-        "--source-prefill-step-size",
-        str(args.source_prefill_step_size),
-        "--materialization-policy",
-        "disjoint_segmented",
         "--max-abs-logit-delta",
         str(args.max_abs_logit_delta),
-        "--hardware-label",
-        args.hardware_label,
     ]
     if args.full_retention:
         command.append("--frozen-full-retention")
+    if args.engine == "hf":
+        command.extend(["--device", args.device, "--dtype", args.dtype])
+        if args.local_files_only:
+            command.append("--local-files-only")
+    else:
+        command.extend(
+            [
+                "--source-prefill-step-size",
+                str(args.source_prefill_step_size),
+                "--materialization-policy",
+                "disjoint_segmented",
+                "--hardware-label",
+                args.hardware_label,
+            ]
+        )
     if args.engine == "mlx":
         command.append("--fused-disjoint-attention")
-    else:
+    elif args.engine == "sglang":
         command.extend(["--provenance", str(args.provenance), "--revision", args.revision])
     return command
 
@@ -135,6 +145,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-prefill-step-size", type=int, default=512)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.01)
     parser.add_argument("--hardware-label", required=True)
+    parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--dtype",
+        choices=("float32", "float16", "bfloat16"),
+        default="bfloat16",
+    )
+    parser.add_argument("--local-files-only", action="store_true")
     return parser.parse_args()
 
 
