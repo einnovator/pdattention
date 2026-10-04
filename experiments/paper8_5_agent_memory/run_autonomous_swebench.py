@@ -1090,6 +1090,7 @@ def run(args: argparse.Namespace) -> Path:
         negative_realization=NegativeRealizationMode(args.negative_realization),
         negative_fallback=args.negative_fallback,
         static_workflow_anchor=args.static_workflow_anchor,
+        static_workflow_anchor_location=args.static_workflow_anchor_location,
     )
     trace_path = output / "request_selection.jsonl"
     agent_output = output / "agent"
@@ -1611,6 +1612,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Encode a task-neutral coding workflow once in the immutable system "
             "prefix. This is an ingest-time scaffold treatment; matched FULL "
             "and selective arms must use the same value."
+        ),
+    )
+    parser.add_argument(
+        "--static-workflow-anchor-location",
+        choices=("system_prefix", "current_instruction"),
+        default="system_prefix",
+        help=(
+            "Place the matched workflow scaffold in the immutable system prefix "
+            "or on the current genuine user instruction. The latter is encoded "
+            "once with that instruction and is not synthesized from cached history."
         ),
     )
     parser.add_argument(

@@ -103,6 +103,76 @@ def test_static_workflow_anchor_is_ingest_time_counted_and_non_mutating():
     ]
 
 
+def test_static_workflow_anchor_can_bind_to_current_user_instruction():
+    payload = {
+        "model": "locked-model",
+        "messages": [
+            {"role": "system", "content": "Use exactly one Bash action."},
+            {"role": "user", "content": "Fix the regression."},
+            {"role": "assistant", "content": "sed -n '1,80p' a.py"},
+            {"role": "user", "content": "tool output"},
+        ],
+    }
+    result = transform_autonomous_payload(
+        payload,
+        AutonomousSelectionConfig(
+            policy="full",
+            expected_model="locked-model",
+            task_id="task-1",
+            static_workflow_anchor="coding_minimal_transaction_v7",
+            static_workflow_anchor_location="current_instruction",
+        ),
+    )
+
+    anchor = STATIC_WORKFLOW_ANCHORS["coding_minimal_transaction_v7"]
+    assert anchor not in result.payload["messages"][0]["content"]
+    assert anchor in result.payload["messages"][1]["content"]
+    assert anchor not in result.payload["messages"][3]["content"]
+    assert result.trace["static_workflow_anchor_location"] == "current_instruction"
+
+
+def test_current_instruction_anchor_targets_active_persistent_episode():
+    prior = {
+        "instance_id": "old-task",
+        "messages": [
+            {"role": "system", "content": "Use Bash."},
+            {"role": "user", "content": "Old instruction."},
+            {"role": "assistant", "content": "echo done"},
+            {"role": "user", "content": "done"},
+        ],
+        "info": {"exit_status": "Submitted", "submission": "diff --git a/a b/a"},
+    }
+    payload = {
+        "model": "locked-model",
+        "messages": [
+            {"role": "system", "content": "Use Bash."},
+            {"role": "user", "content": "Current instruction."},
+        ],
+    }
+    result = transform_autonomous_payload(
+        payload,
+        AutonomousSelectionConfig(
+            policy="full",
+            expected_model="locked-model",
+            task_id="current-task",
+            session_id="persistent-test",
+            episode_index=2,
+            static_workflow_anchor="coding_minimal_transaction_v7",
+            static_workflow_anchor_location="current_instruction",
+        ),
+        prior_episodes=(prior,),
+    )
+
+    anchor = STATIC_WORKFLOW_ANCHORS["coding_minimal_transaction_v7"]
+    anchored = [
+        row for row in result.payload["messages"]
+        if anchor in str(row.get("content", ""))
+    ]
+    assert len(anchored) == 1
+    assert "Current instruction." in anchored[0]["content"]
+    assert "Old instruction." not in anchored[0]["content"]
+
+
 def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "coding_bounded_evidence_v2" in STATIC_WORKFLOW_ANCHORS
     assert "whole large file" in STATIC_WORKFLOW_ANCHORS[
@@ -129,6 +199,8 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "never fall back to sed" in minimal_transaction
     with pytest.raises(ValueError, match="static_workflow_anchor"):
         AutonomousSelectionConfig(static_workflow_anchor="unknown")
+    with pytest.raises(ValueError, match="static_workflow_anchor_location"):
+        AutonomousSelectionConfig(static_workflow_anchor_location="unknown")
     anchor = STATIC_WORKFLOW_ANCHORS[
         "coding_search_inspect_edit_verify_v1"
     ]

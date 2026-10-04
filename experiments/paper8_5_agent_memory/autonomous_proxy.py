@@ -191,13 +191,17 @@ def _apply_static_workflow_anchor(
     anchor_id: str,
     *,
     count_tokens: TokenCounter,
+    location: str = "system_prefix",
+    current_episode_start: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Append one task-neutral anchor to the immutable system prefix.
+    """Append one task-neutral anchor at its declared ingest-time location.
 
     The anchor is an ingest-time scaffold treatment, not a compressed receipt
-    synthesized from already contextualized history.  It is therefore encoded
-    once with the system prefix and can be shared by ordinary prefix caching
-    and PRA.  Both FULL and selective arms must use the same anchor ID.
+    synthesized from already contextualized history.  A system-prefix anchor
+    is encoded once globally.  A current-instruction anchor is encoded once
+    with each genuine user instruction and remains an ordinary cacheable
+    record.  Both FULL and selective arms must use the same anchor and
+    location.
     """
 
     if anchor_id not in STATIC_WORKFLOW_ANCHORS:
@@ -209,16 +213,47 @@ def _apply_static_workflow_anchor(
     anchor = STATIC_WORKFLOW_ANCHORS[anchor_id]
     if not anchor:
         return copied, 0
-    system_indices = [
-        index for index, row in enumerate(copied)
-        if str(row.get("role", "")) == "system"
-    ]
-    if len(system_indices) != 1:
-        raise ValueError("static workflow anchor requires exactly one system message")
-    index = system_indices[0]
-    original = str(copied[index].get("content", ""))
-    if "<pra_workflow_anchor " in original:
+    if location not in {"system_prefix", "current_instruction"}:
+        raise ValueError(
+            "static_workflow_anchor_location must be system_prefix or "
+            "current_instruction"
+        )
+    if any("<pra_workflow_anchor " in str(row.get("content", "")) for row in copied):
         raise ValueError("static workflow anchor is already present")
+    if location == "system_prefix":
+        candidates = [
+            index for index, row in enumerate(copied)
+            if str(row.get("role", "")) == "system"
+        ]
+        if len(candidates) != 1:
+            raise ValueError(
+                "system-prefix workflow anchor requires exactly one system message"
+            )
+    else:
+        candidates = []
+        for index in range(current_episode_start, len(copied)):
+            row = copied[index]
+            if str(row.get("role", "")) != "user":
+                continue
+            metadata = row.get("metadata")
+            declaration = (
+                metadata.get("pra_record")
+                if isinstance(metadata, Mapping) else None
+            )
+            primary_role = (
+                str(declaration.get("primary_role", ""))
+                if isinstance(declaration, Mapping) else ""
+            )
+            if not primary_role or primary_role in {"task", "user_input"}:
+                candidates.append(index)
+                break
+        if len(candidates) != 1:
+            raise ValueError(
+                "current-instruction workflow anchor requires one genuine user "
+                "instruction in the current episode"
+            )
+    index = candidates[0]
+    original = str(copied[index].get("content", ""))
     anchored = original.rstrip() + "\n\n" + anchor
     copied[index]["content"] = anchored
     return copied, count_tokens(anchored) - count_tokens(original)
@@ -580,6 +615,7 @@ class AutonomousSelectionConfig:
     )
     fill_missing_generation_parameters: bool = False
     static_workflow_anchor: str = "none"
+    static_workflow_anchor_location: str = "system_prefix"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "boundary_mode", BoundaryMode(self.boundary_mode))
@@ -599,6 +635,13 @@ class AutonomousSelectionConfig:
             raise ValueError(
                 "static_workflow_anchor must be one of "
                 + ", ".join(sorted(STATIC_WORKFLOW_ANCHORS))
+            )
+        if self.static_workflow_anchor_location not in {
+            "system_prefix", "current_instruction",
+        }:
+            raise ValueError(
+                "static_workflow_anchor_location must be system_prefix or "
+                "current_instruction"
             )
         if self.matched_tail_boundary_compaction not in {
             "legacy", "declared_safe", "disabled",
@@ -953,6 +996,8 @@ def transform_autonomous_payload(
             typed_selector_messages,
             config.static_workflow_anchor,
             count_tokens=count_tokens,
+            location=config.static_workflow_anchor_location,
+            current_episode_start=current_episode_start,
         )
     )
     if prior_episodes:
@@ -965,6 +1010,8 @@ def transform_autonomous_payload(
             incoming_messages,
             config.static_workflow_anchor,
             count_tokens=count_tokens,
+            location=config.static_workflow_anchor_location,
+            current_episode_start=0,
         )
         if plain_anchor_tokens != static_workflow_anchor_tokens:
             raise AssertionError("typed and plain workflow-anchor token deltas disagree")
@@ -1302,6 +1349,7 @@ def transform_autonomous_payload(
         "tokenizer": config.tokenizer_identity,
         "token_accounting_scope": "message_content_only_excludes_chat_template",
         "static_workflow_anchor": config.static_workflow_anchor,
+        "static_workflow_anchor_location": config.static_workflow_anchor_location,
         "static_workflow_anchor_tokens": static_workflow_anchor_tokens,
         "requested_budget_fraction": config.budget_fraction,
         "requested_budget_tokens": budget_tokens,
