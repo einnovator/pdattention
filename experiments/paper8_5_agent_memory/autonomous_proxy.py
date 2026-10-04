@@ -130,6 +130,17 @@ STATIC_WORKFLOW_ANCHORS = {
         "evidence is sufficient. After a tool error, diagnose that error before "
         "changing the plan.\n</pra_workflow_anchor>"
     ),
+    "coding_guarded_edit_v3": (
+        "<pra_workflow_anchor version=\"coding-guarded-edit-v3\">\n"
+        "For each coding request: locate named symbols by searching file "
+        "contents, not filenames, unless the request names a filename pattern; "
+        "inspect the exact target span; make the smallest justified edit with "
+        "a guarded exact-text replacement that fails unless the target occurs "
+        "exactly once; inspect the resulting git diff immediately; run one "
+        "bounded verification; and submit after that verification passes. "
+        "Do not repeat an inspection, edit, or verification unless new evidence "
+        "shows that the preceding action failed.\n</pra_workflow_anchor>"
+    ),
 }
 
 

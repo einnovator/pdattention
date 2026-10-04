@@ -108,6 +108,11 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "whole large file" in STATIC_WORKFLOW_ANCHORS[
         "coding_bounded_evidence_v2"
     ]
+    guarded = STATIC_WORKFLOW_ANCHORS["coding_guarded_edit_v3"]
+    assert "searching file contents, not filenames" in guarded
+    assert "fails unless the target occurs exactly once" in guarded
+    assert "inspect the resulting git diff immediately" in guarded
+    assert "submit after that verification passes" in guarded
     with pytest.raises(ValueError, match="static_workflow_anchor"):
         AutonomousSelectionConfig(static_workflow_anchor="unknown")
     anchor = STATIC_WORKFLOW_ANCHORS[
