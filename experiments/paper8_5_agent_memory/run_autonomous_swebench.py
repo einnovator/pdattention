@@ -270,6 +270,9 @@ def build_agent_command(
             "-c",
             "environment.canonicalize_unordered_search_output="
             f"{str(bool(getattr(args, 'canonicalize_unordered_search_output', False))).lower()}",
+            "-c",
+            "environment.transactional_replace_tool="
+            f"{str(bool(getattr(args, 'transactional_replace_tool', False))).lower()}",
         ))
     command.extend((
         "-c",
@@ -966,6 +969,19 @@ def _unreported_submission_result(
 
 
 def run(args: argparse.Namespace) -> Path:
+    transactional_anchors = {
+        "coding_transactional_replace_v5",
+        "coding_content_search_replace_v6",
+    }
+    if args.static_workflow_anchor in transactional_anchors:
+        if not getattr(args, "transactional_replace_tool", False):
+            raise ValueError(
+                f"{args.static_workflow_anchor} requires --transactional-replace-tool"
+            )
+        if not args.instrument_observations:
+            raise ValueError(
+                "transactional replacement requires the instrumented environment"
+            )
     card, instance_id, task_index = load_locked_task(
         args.benchmark_card,
         task_index=args.task_index,
@@ -1163,6 +1179,9 @@ def run(args: argparse.Namespace) -> Path:
         "instrument_observations": args.instrument_observations,
         "canonicalize_unordered_search_output": bool(
             args.canonicalize_unordered_search_output
+        ),
+        "transactional_replace_tool": bool(
+            getattr(args, "transactional_replace_tool", False)
         ),
         "instrumentation_output_root": str(args.instrumentation_output_root),
         "agent_command_template": agent_command,
@@ -1716,6 +1735,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Lexicographically order independent lines from simple recursive "
             "find/grep searches. This evaluation control is recorded separately "
             "from PRA selection and is disabled by default."
+        ),
+    )
+    parser.add_argument(
+        "--transactional-replace-tool",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Install the generic fail-closed pra_replace compatibility command "
+            "inside the task environment. Its digest is recorded in the run "
+            "manifest and it is never enabled implicitly."
         ),
     )
     parser.add_argument("--skip-grading", action="store_true")

@@ -29,7 +29,7 @@ _READ_ONLY = re.compile(
     r"^\s*(?:cat|head|tail|sed\s+-n|rg|grep|find|ls|pwd|git\s+(?:status|diff|show))\b"
 )
 _WRITE = re.compile(
-    r"(?:apply_patch|sed\s+-i|perl\s+-pi|git\s+apply|patch\s+-p|"
+    r"(?:pra_replace\b|apply_patch|sed\s+-i|perl\s+-pi|git\s+apply|patch\s+-p|"
     r"(?:write_text|write_bytes|open\([^)]*,\s*['\"]w)|(?:^|[;&|]\s*)rm\b)"
 )
 _OUTPUT_REDIRECT = re.compile(

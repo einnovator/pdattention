@@ -1,6 +1,7 @@
 import json
 import hashlib
 import subprocess
+import sys
 import tarfile
 from dataclasses import replace
 import pytest
@@ -57,6 +58,9 @@ from experiments.paper8_5_agent_memory.export_review_history import (
 from experiments.paper8_5_agent_memory.run_structural_screen import (
     STRUCTURAL_POLICIES,
     structural_screen,
+)
+from experiments.paper8_5_agent_memory.miniswe_environment import (
+    TRANSACTIONAL_REPLACE_TOOL,
 )
 from experiments.paper8_5_agent_memory.run_negative_heuristic_screen import (
     DEFAULT_POLICIES,
@@ -1586,6 +1590,43 @@ def test_negative_operation_parser_separates_discovery_from_source_grep():
 def test_negative_operation_parser_retains_real_output_redirect_writes():
     assert classify_bash_operation("python generate.py > src/generated.py") == BashOperation.WRITE
     assert classify_bash_operation("printf x 2> errors.log") == BashOperation.WRITE
+    assert classify_bash_operation(
+        "pra_replace src/example.py 'old' 'new'"
+    ) == BashOperation.WRITE
+
+
+def test_transactional_replace_tool_is_atomic_and_fails_closed(tmp_path):
+    script = tmp_path / "pra_replace"
+    script.write_text(TRANSACTIONAL_REPLACE_TOOL, encoding="utf-8")
+    target = tmp_path / "sample.py"
+    target.write_text("alpha\nbeta\n", encoding="utf-8")
+
+    replaced = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(target),
+            r"alpha\nbeta",
+            r"alpha\ngamma",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert replaced.returncode == 0
+    assert "PRA_REPLACE_OK" in replaced.stdout
+    assert target.read_text(encoding="utf-8") == "alpha\ngamma\n"
+
+    before = target.read_bytes()
+    rejected = subprocess.run(
+        [sys.executable, str(script), str(target), "missing", "replacement"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert rejected.returncode == 2
+    assert "PRA_REPLACE_REJECTED occurrences=0" in rejected.stderr
+    assert target.read_bytes() == before
 
 
 def test_h1_retires_consumed_search_only_after_kf_delay():

@@ -28,12 +28,85 @@ from .submission_protocol import (
 )
 
 
+TRANSACTIONAL_REPLACE_TOOL = r'''#!/usr/bin/env python3
+import hashlib
+import os
+from pathlib import Path
+import stat
+import sys
+import tempfile
+
+
+def decode(value):
+    mapping = {"n": "\n", "r": "\r", "t": "\t", "\\": "\\"}
+    result = []
+    index = 0
+    while index < len(value):
+        if value[index] == "\\" and index + 1 < len(value):
+            escaped = value[index + 1]
+            if escaped in mapping:
+                result.append(mapping[escaped])
+                index += 2
+                continue
+        result.append(value[index])
+        index += 1
+    return "".join(result)
+
+
+def main():
+    if len(sys.argv) != 4:
+        print("usage: pra_replace PATH EXACT_OLD_TEXT EXACT_NEW_TEXT", file=sys.stderr)
+        return 2
+    path = Path(sys.argv[1])
+    if path.is_symlink() or not path.is_file():
+        print("PRA_REPLACE_REJECTED path must be a regular non-symlink file", file=sys.stderr)
+        return 2
+    old = decode(sys.argv[2]).encode("utf-8")
+    new = decode(sys.argv[3]).encode("utf-8")
+    data = path.read_bytes()
+    occurrences = data.count(old)
+    if not old or occurrences != 1:
+        print(
+            f"PRA_REPLACE_REJECTED occurrences={occurrences}; file unchanged",
+            file=sys.stderr,
+        )
+        return 2
+    updated = data.replace(old, new, 1)
+    original_mode = stat.S_IMODE(path.stat().st_mode)
+    descriptor, temporary = tempfile.mkstemp(prefix=path.name + ".pra-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(updated)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, original_mode)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    print(
+        "PRA_REPLACE_OK "
+        f"path={path} old_sha256={hashlib.sha256(data).hexdigest()} "
+        f"new_sha256={hashlib.sha256(updated).hexdigest()}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+TRANSACTIONAL_REPLACE_TOOL_SHA256 = hashlib.sha256(
+    TRANSACTIONAL_REPLACE_TOOL.encode("utf-8")
+).hexdigest()
+
+
 class InstrumentedDockerEnvironmentConfig(DockerEnvironmentConfig):
     instrumentation_output_root: str | None = None
     capture_workspace_checkpoints: bool = True
     visible_output_limit: int = 10_000
     require_unified_diff_submission: bool = False
     canonicalize_unordered_search_output: bool = False
+    transactional_replace_tool: bool = False
 
 
 class InstrumentedDockerEnvironment(DockerEnvironment):
@@ -41,6 +114,9 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
 
     def __init__(self, **kwargs):
         super().__init__(config_class=InstrumentedDockerEnvironmentConfig, **kwargs)
+        self._transactional_replace_tool_sha256: str | None = None
+        if self.config.transactional_replace_tool:
+            self._install_transactional_replace_tool()
         self._instrumentation_step = 0
         self._instrumentation_directory: Path | None = None
         if self.config.instrumentation_output_root:
@@ -55,6 +131,9 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
             "env": self.config.env,
             "forward_env": self.config.forward_env,
             "interpreter": self.config.interpreter,
+            "transactional_replace_tool_sha256": (
+                self._transactional_replace_tool_sha256
+            ),
         })
         # Opaque, generic resource namespace.  It identifies a live workspace
         # lineage without exposing an evaluator task/issue ID to the policy.
@@ -75,9 +154,29 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
                     if self._instrumentation_directory else None
                 ),
                 "executed_actions": self._instrumentation_step,
+                "transactional_replace_tool_sha256": (
+                    self._transactional_replace_tool_sha256
+                ),
             },
         }
         return serialized
+
+    def _install_transactional_replace_tool(self) -> None:
+        encoded = base64.b64encode(
+            TRANSACTIONAL_REPLACE_TOOL.encode("utf-8")
+        ).decode("ascii")
+        command = (
+            "printf '%s' '" + encoded + "' | base64 -d > "
+            "/usr/local/bin/pra_replace && chmod 0755 /usr/local/bin/pra_replace "
+            "&& /usr/local/bin/pra_replace 2>&1 || test $? -eq 2"
+        )
+        result = DockerEnvironment.execute(self, {"command": command}, cwd=self.config.cwd)
+        if int(result.get("returncode", -1)) != 0:
+            raise RuntimeError(
+                "failed to install transactional replacement tool: "
+                + str(result.get("output", ""))
+            )
+        self._transactional_replace_tool_sha256 = TRANSACTIONAL_REPLACE_TOOL_SHA256
 
     def _check_finished(self, output: dict) -> None:
         """Reject malformed terminal payloads as recoverable observations."""
