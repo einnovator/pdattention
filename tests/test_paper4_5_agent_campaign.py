@@ -3892,6 +3892,13 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
             assert body["pra"]["metadata"]["source_bootstrap_contract"] == (
                 "full-logical-history-once-v1"
             )
+            assert body["pra"]["metadata"]["source_bootstrap_logical_messages"] == [{
+                "role": "system",
+                "content": "PRA selected-context consumption probe.",
+            }, {
+                "role": "user",
+                "content": "Reply with OK.",
+            }]
             assert body["pra"]["metadata"]["mandatory_message_indices"] == [1]
             assert body["pra"]["resources"][0]["metadata"]["message_index"] == 0
             assert body["pra"]["resources"][0]["metadata"]["segment_index"] == 0
