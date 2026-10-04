@@ -222,12 +222,12 @@ def test_curl_health_qualifies_model_and_active_context_before_generation() -> N
 
     responses = [
         Completed({"models": [{"name": "locked-model"}]}),
+        Completed({"choices": [{"message": {"content": "OK"}}]}),
         Completed({
             "models": [{
                 "name": "locked-model", "context_length": 131072,
             }],
         }),
-        Completed({"choices": [{"message": {"content": "OK"}}]}),
     ]
 
     def runner(command, **kwargs):
@@ -265,8 +265,8 @@ def test_curl_health_qualifies_model_and_active_context_before_generation() -> N
     }
     assert [call[0][-1] for call in calls] == [
         "http://engine.test:11435/api/tags",
-        "http://engine.test:11435/api/ps",
         "http://engine.test:11435/v1/chat/completions",
+        "http://engine.test:11435/api/ps",
     ]
 
 

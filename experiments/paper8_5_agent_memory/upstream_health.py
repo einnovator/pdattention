@@ -288,47 +288,6 @@ def probe_generation_health(
                 "transport": "curl",
                 "transport_attempts": qualification_attempts,
             }
-            if runtime_state_path is not None:
-                (
-                    context_body,
-                    context_status,
-                    context_latency,
-                    context_attempts,
-                ) = curl_get_json(runtime_state_path)
-                active_models = list(context_body.get("models") or ())
-                active = next((
-                    row for row in active_models
-                    if str(row.get("name") or row.get("model")) == model
-                ), None)
-                active_context = (
-                    int(active.get("context_length"))
-                    if active is not None
-                    and active.get("context_length") is not None else None
-                )
-                context_healthy = (
-                    context_status < 500
-                    and active_context is not None
-                    and (
-                        minimum_active_context_tokens is None
-                        or active_context >= minimum_active_context_tokens
-                    )
-                )
-                runtime_context = {
-                    "status": context_status,
-                    "latency_seconds": context_latency,
-                    "model_found": active is not None,
-                    "active_context_tokens": active_context,
-                    "minimum_active_context_tokens": minimum_active_context_tokens,
-                    "healthy": context_healthy,
-                    "transport": "curl",
-                    "transport_attempts": context_attempts,
-                }
-                if not context_healthy:
-                    raise OSError(
-                        "active runtime context is missing or below the "
-                        f"required {minimum_active_context_tokens} tokens: "
-                        f"observed {active_context}"
-                    )
         except Exception as error:
             qualification = {
                 "attempt": connect_attempts,
@@ -518,9 +477,67 @@ def probe_generation_health(
                 "error_detail": str(error),
             })
             break
+    if (
+        curl_executable is not None
+        and runtime_state_path is not None
+        and qualification is not None
+        and qualification.get("healthy", False)
+        and len(probes) == count
+        and all(row["healthy"] for row in probes)
+    ):
+        try:
+            (
+                context_body,
+                context_status,
+                context_latency,
+                context_attempts,
+            ) = curl_get_json(runtime_state_path)
+            active_models = list(context_body.get("models") or ())
+            active = next((
+                row for row in active_models
+                if str(row.get("name") or row.get("model")) == model
+            ), None)
+            active_context = (
+                int(active.get("context_length"))
+                if active is not None
+                and active.get("context_length") is not None else None
+            )
+            context_healthy = (
+                context_status < 500
+                and active_context is not None
+                and (
+                    minimum_active_context_tokens is None
+                    or active_context >= minimum_active_context_tokens
+                )
+            )
+            runtime_context = {
+                "status": context_status,
+                "latency_seconds": context_latency,
+                "model_found": active is not None,
+                "active_context_tokens": active_context,
+                "minimum_active_context_tokens": minimum_active_context_tokens,
+                "healthy": context_healthy,
+                "transport": "curl",
+                "transport_attempts": context_attempts,
+            }
+        except Exception as error:
+            runtime_context = {
+                "healthy": False,
+                "transport": "curl",
+                "error_type": type(error).__name__,
+                "error_detail": str(error),
+            }
     if connection is not None:
         connection.close()
-    healthy = len(probes) == count and all(row["healthy"] for row in probes)
+    healthy = (
+        len(probes) == count
+        and all(row["healthy"] for row in probes)
+        and (
+            runtime_state_path is None
+            or runtime_context is not None
+            and runtime_context.get("healthy", False)
+        )
+    )
     return {
         "schema_version": 1,
         "endpoint": _chat_url(base_url),
