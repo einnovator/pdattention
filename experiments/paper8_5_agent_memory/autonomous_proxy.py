@@ -195,6 +195,8 @@ def _response_usage(response_body: bytes) -> dict[str, int | None]:
 def join_instrumentation_sidecars(
     messages: list[dict[str, Any]],
     instrumentation_root: Path | None,
+    *,
+    allow_archived_receipt_prefix: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Attach stripped observation metadata to a selector-only message copy.
 
@@ -255,6 +257,12 @@ def join_instrumentation_sidecars(
             "joined": 0,
         }
     receipts.sort(key=lambda row: int(row.get("step", -1)))
+    archived_receipt_count = len(receipts)
+    if allow_archived_receipt_prefix and len(receipts) > len(assistant_rows):
+        # A post-campaign archive contains receipts written after an earlier
+        # frozen decision. Reconstruct only the exact leading receipt prefix;
+        # the existing step and command-digest checks still fail closed.
+        receipts = receipts[: len(assistant_rows)]
     steps = [row.get("step") for row in receipts]
     terminal_submission_without_receipt = False
     if len(assistant_rows) == len(receipts) + 1:
@@ -324,7 +332,7 @@ def join_instrumentation_sidecars(
                 "joined": 0,
             }
         copied[observation_index]["extra"] = {**dict(existing or {}), **metadata}
-    return copied, {
+    audit = {
         "status": (
             "exact_terminal_submission"
             if terminal_submission_without_receipt
@@ -334,6 +342,10 @@ def join_instrumentation_sidecars(
         "receipts": len(receipts),
         "joined": len(pending),
     }
+    ignored_receipts = archived_receipt_count - len(receipts)
+    if ignored_receipts:
+        audit["archived_receipts_ignored"] = ignored_receipts
+    return copied, audit
 
 
 def summarize_openai_tool_receipts(
@@ -752,6 +764,7 @@ def transform_autonomous_payload(
     *,
     count_tokens: TokenCounter = whitespace_tokens,
     instrumentation_root: Path | None = None,
+    allow_archived_receipt_prefix: bool = False,
     prior_episodes: Sequence[Mapping[str, Any]] = (),
     oracle_addback_causal_group_ids: Sequence[str] = (),
 ) -> AutonomousTransformation:
@@ -767,7 +780,9 @@ def transform_autonomous_payload(
         raise ValueError("every chat message must be a JSON object")
     if config.input_protocol == "mini_swe_bash":
         current_selector_messages, sidecar_join = join_instrumentation_sidecars(
-            incoming_messages, instrumentation_root
+            incoming_messages,
+            instrumentation_root,
+            allow_archived_receipt_prefix=allow_archived_receipt_prefix,
         )
     else:
         current_selector_messages = incoming_messages

@@ -261,6 +261,7 @@ def _find_frozen_request(
             config,
             count_tokens=count_tokens,
             instrumentation_root=instrumentation_root,
+            allow_archived_receipt_prefix=True,
             prior_episodes=prior_episodes,
         )
         if transformed.trace["request_input_sha256"] == target_request_digest:
@@ -384,6 +385,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         full_config,
         count_tokens=count_tokens,
         instrumentation_root=args.instrumentation_root,
+        allow_archived_receipt_prefix=True,
         prior_episodes=prior_episodes,
     )
     _apply_diagnostic_generation_overrides(
@@ -414,6 +416,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             counterfactual_config,
             count_tokens=count_tokens,
             instrumentation_root=args.instrumentation_root,
+            allow_archived_receipt_prefix=True,
             prior_episodes=prior_episodes,
         )
         _apply_diagnostic_generation_overrides(
@@ -503,6 +506,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             candidate_config,
             count_tokens=count_tokens,
             instrumentation_root=args.instrumentation_root,
+            allow_archived_receipt_prefix=True,
             prior_episodes=prior_episodes,
             oracle_addback_causal_group_ids=batch["causal_group_ids"],
         )

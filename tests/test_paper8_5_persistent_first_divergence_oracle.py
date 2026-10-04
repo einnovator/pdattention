@@ -175,6 +175,20 @@ def test_frozen_request_reconstruction_joins_archived_receipts(tmp_path):
         config,
         instrumentation_root=tmp_path,
     )
+    # The immutable campaign archive later accumulates receipts from
+    # subsequent decisions.  Replay of this earlier request must use only its
+    # exact leading command/receipt prefix.
+    later_command = "pytest -q"
+    (receipt_dir / "execution_0001.json").write_text(json.dumps({
+        "schema_version": 1,
+        "step": 1,
+        "command_sha256": hashlib.sha256(later_command.encode()).hexdigest(),
+        "observation_metadata": {
+            "return_code": 0,
+            "output_complete": True,
+            "resource_version_fingerprints": {"target.py": "v2"},
+        },
+    }))
 
     end, _, reconstructed = _find_frozen_request(
         trajectory={"messages": messages},
@@ -189,6 +203,13 @@ def test_frozen_request_reconstruction_joins_archived_receipts(tmp_path):
 
     assert end == 4
     assert reconstructed.trace["selection_abstained_for_sidecar"] is False
+    assert reconstructed.trace["instrumentation_sidecar_join"] == {
+        "status": "exact",
+        "commands": 1,
+        "receipts": 1,
+        "joined": 1,
+        "archived_receipts_ignored": 1,
+    }
 
 
 def test_completed_epoch_batches_cover_each_exclusion_once():
