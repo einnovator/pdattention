@@ -24,7 +24,7 @@ from typing import Any, Iterable, Mapping, Sequence
 STRICT_PAIRING_KEYS = (
     "repository_revision", "benchmark_card_sha256", "benchmark_ids_sha256",
     "dataset", "dataset_revision", "split", "served_model", "model_revision",
-    "tokenizer", "tokenizer_revision", "temperature", "top_p", "seed",
+    "tokenizer", "tokenizer_revision", "temperature", "top_p", "top_k", "seed",
     "max_calls", "max_completion_tokens", "harness_version_requested",
     "harness_version_observed", "grader_version_requested",
     "grader_version_observed", "docker_platform", "environment_image",

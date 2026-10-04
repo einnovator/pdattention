@@ -32,6 +32,7 @@ def _identity() -> ExperimentIdentity:
         materialization_mode="ordinary-text-causal",
         temperature=0,
         top_p=1,
+        top_k=1,
         seed=0,
         max_completion_tokens=1024,
         context_limit=131072,

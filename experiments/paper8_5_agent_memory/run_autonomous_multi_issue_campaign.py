@@ -359,6 +359,8 @@ def _episode_command(
             args, "docker_pull_timeout_seconds", 900
         )),
     ]
+    if generation.get("top_k") is not None:
+        command.extend(("--top-k", str(generation["top_k"])))
     superseded_after = strategy.get(
         "frontier_allow_superseded_unfinished_after"
     )

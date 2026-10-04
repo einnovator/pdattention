@@ -2188,6 +2188,33 @@ def test_proxy_normalizes_completion_limit_to_portable_wire_key(tmp_path):
     assert "max_completion_tokens" not in upstream.requests[0]
 
 
+def test_proxy_forwards_and_records_explicit_greedy_top_k(tmp_path):
+    upstream = _Upstream()
+    trace = tmp_path / "trace.jsonl"
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="full",
+            expected_model="locked-model",
+            fill_missing_generation_parameters=True,
+            top_k=1,
+            max_calls=1,
+        ),
+        trace_path=trace,
+    )
+    payload = _payload()
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", payload)[0] == 200
+    finally:
+        proxy.close()
+        upstream.close()
+
+    assert upstream.requests[0]["top_k"] == 1
+    row = json.loads(trace.read_text(encoding="utf-8"))
+    assert row["generation"]["top_k"] == 1
+
+
 def test_proxy_optionally_captures_unmodified_first_request(tmp_path):
     upstream = _Upstream()
     capture = tmp_path / "first-request.json"
@@ -2595,6 +2622,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
         scaffold="swebench_backticks.yaml",
         temperature=0.0,
         top_p=1.0,
+        top_k=1,
         seed=0,
         max_completion_tokens=128,
         upstream_timeout_seconds=1200,
@@ -2613,6 +2641,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     joined = " ".join(str(row) for row in command)
     assert r"(org__repo\-2)" in joined
     assert "model.model_kwargs.temperature=0.0" in joined
+    assert "model.model_kwargs.top_k=1" in joined
     assert "model.model_kwargs.seed=0" in joined
     assert "model.model_kwargs.timeout=1200" in joined
     assert "agent.step_limit=12" in joined

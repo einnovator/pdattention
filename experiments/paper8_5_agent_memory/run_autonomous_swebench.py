@@ -235,6 +235,10 @@ def build_agent_command(
         "model.model_kwargs.timeout="
         f"{int(getattr(args, 'upstream_timeout_seconds', 3600))}",
     ]
+    if getattr(args, "top_k", None) is not None:
+        command.extend((
+            "-c", f"model.model_kwargs.top_k={int(args.top_k)}",
+        ))
     if args.max_completion_tokens is not None:
         command.extend((
             "-c", f"model.model_kwargs.max_tokens={args.max_completion_tokens}"
@@ -1033,6 +1037,7 @@ def run(args: argparse.Namespace) -> Path:
         expected_model=args.served_model,
         temperature=args.temperature,
         top_p=args.top_p,
+        top_k=getattr(args, "top_k", None),
         seed=args.seed,
         max_calls=args.max_calls,
         max_completion_tokens=args.max_completion_tokens,
@@ -1131,6 +1136,7 @@ def run(args: argparse.Namespace) -> Path:
         "tokenizer_revision": args.tokenizer_revision,
         "temperature": args.temperature,
         "top_p": args.top_p,
+        "top_k": getattr(args, "top_k", None),
         "seed": args.seed,
         "max_calls": args.max_calls,
         "max_completion_tokens": args.max_completion_tokens,
@@ -1623,6 +1629,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--materialization-max-matched-lines", type=int, default=32)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        help=(
+            "Optional explicit candidate-set ceiling. Use 1 for an "
+            "operationally greedy control on local endpoints whose model "
+            "defaults remain stochastic despite temperature zero."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-calls", type=int, default=40)
     parser.add_argument("--max-completion-tokens", type=int)

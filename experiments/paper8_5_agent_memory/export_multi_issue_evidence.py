@@ -59,7 +59,7 @@ def _episode_summary(episode: Mapping[str, Any]) -> dict[str, Any]:
         key: manifest.get(key) for key in (
             "model_revision", "tokenizer_revision", "harness_version_observed",
             "agent_behavior_sha256", "scaffold_identity_sha256",
-            "workspace_source_identity_sha256", "temperature", "top_p", "seed",
+            "workspace_source_identity_sha256", "temperature", "top_p", "top_k", "seed",
             "max_completion_tokens",
         )
     }

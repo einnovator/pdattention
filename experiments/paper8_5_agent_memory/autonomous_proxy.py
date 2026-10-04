@@ -490,6 +490,7 @@ class AutonomousSelectionConfig:
     expected_model: str | None = None
     temperature: float = 0.0
     top_p: float = 1.0
+    top_k: int | None = None
     seed: int = 0
     max_calls: int = 40
     max_completion_tokens: int | None = None
@@ -565,6 +566,8 @@ class AutonomousSelectionConfig:
             raise ValueError("at least one tail turn is required to preserve current state")
         if self.max_calls < 1:
             raise ValueError("max_calls must be positive")
+        if self.top_k is not None and self.top_k < 1:
+            raise ValueError("top_k must be positive when specified")
         if self.episode_index < 1:
             raise ValueError("episode_index must be positive")
         if (
@@ -1657,6 +1660,8 @@ class AutonomousSelectionProxy:
             "top_p": self.config.top_p,
             "seed": self.config.seed,
         }
+        if self.config.top_k is not None:
+            expected["top_k"] = self.config.top_k
         for key, value in expected.items():
             if key not in payload or payload[key] != value:
                 raise ValueError(
@@ -1829,6 +1834,8 @@ class AutonomousSelectionProxy:
             if self.config.fill_missing_generation_parameters:
                 payload.setdefault("temperature", self.config.temperature)
                 payload.setdefault("top_p", self.config.top_p)
+                if self.config.top_k is not None:
+                    payload.setdefault("top_k", self.config.top_k)
                 payload.setdefault("seed", self.config.seed)
                 if (
                     self.config.max_completion_tokens is not None
@@ -1981,6 +1988,7 @@ class AutonomousSelectionProxy:
                         "model": transformation.payload.get("model"),
                         "temperature": transformation.payload.get("temperature"),
                         "top_p": transformation.payload.get("top_p"),
+                        "top_k": transformation.payload.get("top_k"),
                         "seed": transformation.payload.get("seed"),
                         "max_completion_tokens": transformation.payload.get(
                             "max_completion_tokens",
@@ -2067,6 +2075,7 @@ class AutonomousSelectionProxy:
                     "model": transformation.payload.get("model"),
                     "temperature": transformation.payload.get("temperature"),
                     "top_p": transformation.payload.get("top_p"),
+                    "top_k": transformation.payload.get("top_k"),
                     "seed": transformation.payload.get("seed"),
                     "max_completion_tokens": transformation.payload.get(
                         "max_completion_tokens", transformation.payload.get("max_tokens")

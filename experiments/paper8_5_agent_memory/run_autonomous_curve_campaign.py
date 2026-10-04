@@ -446,6 +446,8 @@ def _command(
         "--seed", str(generation["seed"]),
         "--max-calls", str(generation["max_calls"]),
     ]
+    if generation.get("top_k") is not None:
+        command.extend(("--top-k", str(generation["top_k"])))
     ollama_tags_url = getattr(args, "ollama_tags_url", None)
     if ollama_tags_url:
         command.extend(("--ollama-tags-url", ollama_tags_url))

@@ -48,6 +48,7 @@ class ExperimentIdentity:
     materialization_mode: str
     temperature: float
     top_p: float
+    top_k: int
     seed: int
     max_completion_tokens: int
     context_limit: int
