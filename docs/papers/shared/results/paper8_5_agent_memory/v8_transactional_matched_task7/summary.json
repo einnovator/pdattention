@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_transactional_matched_task7",
+  "instance_id": "django__django-14089",
+  "episode_index": 7,
+  "prior_episode_count": 6,
+  "model": "qwen3-coder:30b-ctx131k",
+  "model_digest": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "top_k": 1,
+  "seed": 0,
+  "static_workflow_anchor": "coding_transactional_replace_v5",
+  "transactional_replace_tool": true,
+  "matched_max_completion_tokens": 1024,
+  "matched_pair": {
+    "pair_id": "p85-transactional-v5-topk1-postfix-task07-r01",
+    "full": {
+      "official_resolved": true,
+      "calls": 6,
+      "executed_actions": 6,
+      "cumulative_input_tokens": 213298,
+      "submission_sha256": "94ecba928910835a95d87013ca5ebc1df46f5e4fce0ee2ec5f58f11e3c987411"
+    },
+    "selective": {
+      "official_resolved": true,
+      "calls": 8,
+      "executed_actions": 7,
+      "cumulative_full_counterfactual_tokens": 297431,
+      "cumulative_selected_tokens": 30647,
+      "own_trajectory_saving_percent": 89.6961,
+      "paired_full_saving_percent": 85.6318,
+      "submission_sha256": "bbbf09d741b4f9f23e898037d331015078db156c0f7ef8e4b93c88b41562a280",
+      "reacquisition_events": 0,
+      "transactional_edit_receipt": {
+        "operation_kind": "write",
+        "complete": true,
+        "unknown_barrier": false,
+        "resource_ids": [
+          "django/utils/datastructures.py"
+        ]
+      }
+    },
+    "delta": {
+      "official_resolutions": 0,
+      "calls": 2,
+      "executed_actions": 1,
+      "same_submission_digest": false
+    }
+  },
+  "max_completion_2048_diagnostic": {
+    "matched_pair_claimed": false,
+    "official_resolved": false,
+    "calls": 20,
+    "executed_actions": 19,
+    "cumulative_full_counterfactual_tokens": 788174,
+    "cumulative_selected_tokens": 121214,
+    "own_trajectory_saving_percent": 84.6209,
+    "interpretation": "Increasing the completion ceiling amplified trajectory wandering and is rejected; it is not a selection-policy improvement."
+  },
+  "promotion": {
+    "capability_gate": "pass_on_one_identity",
+    "saving_gate": "pass_on_one_identity",
+    "no_call_increase_gate": "fail",
+    "production_default": false
+  }
+}
