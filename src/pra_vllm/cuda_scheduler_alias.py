@@ -508,7 +508,6 @@ class VLLMCudaSchedulerPageRegistry:
                     source.tombstoned
                     and not source.pending
                     and not source.borrowers
-                    and self._only_source_pin_remains(source)
                 ):
                     self._drop_source_locked(target.source_logical_key, source)
             self._alias_release_events += 1
@@ -557,7 +556,6 @@ class VLLMCudaSchedulerPageRegistry:
             if (
                 not source.borrowers
                 and not source.pending
-                and self._only_source_pin_remains(source)
             ):
                 self._drop_source_locked(key, source)
             return True
@@ -572,7 +570,6 @@ class VLLMCudaSchedulerPageRegistry:
                 if source.tombstoned
                 and not source.borrowers
                 and not source.pending
-                and self._only_source_pin_remains(source)
             ]
             for key in ready:
                 self._drop_source_locked(key, self._sources[key])
