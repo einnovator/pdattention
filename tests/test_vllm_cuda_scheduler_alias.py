@@ -242,11 +242,25 @@ def test_termination_is_a_tombstone_and_defers_unpin_until_borrower_exit() -> No
     assert registry.snapshot()["sources"]["source"]["tombstoned"]
 
     registry.finish_request("consumer")
-    # The logical callback fires before vLLM's ordinary/deferred physical free.
-    assert "source" in registry.snapshot()["sources"]
-    assert [page.ref_cnt for page in pages] == [2, 1, 2]
+    # Session ownership can release its own pin immediately. vLLM's
+    # ordinary/deferred request refs still protect the borrowed pages.
+    assert "source" not in registry.snapshot()["sources"]
+    assert [page.ref_cnt for page in pages] == [1, 0, 1]
     pool.free_blocks(reversed(installed.blocks[0]))
-    assert registry.reap_tombstones() == ("source",)
+    assert registry.reap_tombstones() == ()
+    assert [page.ref_cnt for page in pages] == [0, 0, 0]
+
+
+def test_termination_releases_only_source_pin_while_apc_refs_remain() -> None:
+    registry, pool, pages = _published()
+    pool.free_blocks(reversed(pages))
+    pool.touch(pages)
+
+    assert registry.terminate_source("source", generation=7)
+    assert registry.snapshot()["sources"] == {}
+    assert [page.ref_cnt for page in pages] == [1, 1, 1]
+
+    pool.free_blocks(reversed(pages))
     assert [page.ref_cnt for page in pages] == [0, 0, 0]
 
 
