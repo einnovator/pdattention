@@ -104,6 +104,10 @@ def test_static_workflow_anchor_is_ingest_time_counted_and_non_mutating():
 
 
 def test_static_workflow_anchor_rejects_unknown_and_double_application():
+    assert "coding_bounded_evidence_v2" in STATIC_WORKFLOW_ANCHORS
+    assert "whole large file" in STATIC_WORKFLOW_ANCHORS[
+        "coding_bounded_evidence_v2"
+    ]
     with pytest.raises(ValueError, match="static_workflow_anchor"):
         AutonomousSelectionConfig(static_workflow_anchor="unknown")
     anchor = STATIC_WORKFLOW_ANCHORS[

@@ -119,6 +119,16 @@ STATIC_WORKFLOW_ANCHORS = {
         "the plan. Do not continue broad exploration after a verified minimal "
         "fix.\n</pra_workflow_anchor>"
     ),
+    "coding_bounded_evidence_v2": (
+        "<pra_workflow_anchor version=\"coding-bounded-evidence-v2\">\n"
+        "For each coding request: locate the relevant resource with rg, grep, "
+        "or find; inspect a bounded matching span with context or an explicit "
+        "line range instead of dumping a whole large file; make the smallest "
+        "justified edit; avoid a global substitution unless every match was "
+        "verified as intended; run a targeted test or diff; submit once the "
+        "evidence is sufficient. After a tool error, diagnose that error before "
+        "changing the plan.\n</pra_workflow_anchor>"
+    ),
 }
 
 
@@ -153,8 +163,7 @@ def _apply_static_workflow_anchor(
         raise ValueError("static workflow anchor requires exactly one system message")
     index = system_indices[0]
     original = str(copied[index].get("content", ""))
-    marker = '<pra_workflow_anchor version="coding-search-inspect-edit-verify-v1">'
-    if marker in original:
+    if "<pra_workflow_anchor " in original:
         raise ValueError("static workflow anchor is already present")
     anchored = original.rstrip() + "\n\n" + anchor
     copied[index]["content"] = anchored
