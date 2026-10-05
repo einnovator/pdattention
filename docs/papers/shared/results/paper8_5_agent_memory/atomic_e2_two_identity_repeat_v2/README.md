@@ -36,3 +36,20 @@ The uncertainty unit is the task identity, and there are only two. This is a
 promotion cohort, not a population-accuracy estimate or production default.
 The next quality gate is held-out task clusters; the next systems gate is the
 same frozen ledger realized from resident original-position K/V.
+
+## Frozen Paper 4.5 handoff
+
+The exporter reconstructed each canonical pre-selection request from the
+immutable five-episode prefix and current mini-swe-agent trajectory, verified
+every recorded request and selected-message hash, and segmented only at 256
+tokens for physical engine resources. It did not rerun Atomic E2.
+
+| Repeat | Requests | Frozen-plan SHA-256 | Request-replay SHA-256 |
+| --- | ---: | --- | --- |
+| r01 | 8 | `308d91521fa82c0aedc5d59e40d45086641f30f92fab3e15c395267f15e262aa` | `3b52c81a8fa7e52bfc9d1097fbc62e806d3e2541cf853a9c2de0a2512ac1ed6e` |
+| r02 | 9 | `4f931dfd289bd6950e7671e403af6040fc1476170a123cd34dc5ffefeaabf73f` | `c0e1efa494a3a140e46d7525fdd3d674a2c5706400f96de70c25c0004409eb6f` |
+
+Paper 4.5 must consume these plans unchanged. The logical ledger is expected
+to be identical across engines; only page rounding and physical realization
+may differ. The adjacent request replays bind the full logical messages,
+generation contract, and recorded assistant responses for behavioral checks.
