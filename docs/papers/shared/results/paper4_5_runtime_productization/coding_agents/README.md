@@ -25,8 +25,11 @@ consumer temporary allocation remain nonzero and are reported separately.
 The post-refactor tail-90 arm is blocked before autonomous policy evaluation:
 the fused sparse consumer exceeds the frozen identical-subset logit tolerance.
 Same winner tokens, including a 68-decision diagnostic prefix, are not treated
-as sufficient qualification. Consequently this directory contains no admitted
-tail-90 saving or quality claim.
+as sufficient qualification. At the first sparse decision, maximum probability
+error is only `2.38e-7` and total variation is `1.75e-7`, despite a centered
+logit delta of `0.013671875`. The strict gate remains unchanged until a
+distributional contract is predeclared. Consequently this directory contains
+no admitted tail-90 saving or quality claim.
 
 ## Official harness qualification
 

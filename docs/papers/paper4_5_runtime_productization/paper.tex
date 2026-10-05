@@ -589,8 +589,12 @@ of total K/V movement and 10.256~GB of consumer temporaries.  Tail-90 is now
 withheld at the identical-subset numerical gate: fused and portable paths keep
 the same next token but exceed the frozen 0.005 raw-logit tolerance, and a
 diagnostic remains token-identical for 68 decisions while its delta grows to
-0.126282.  This is an engine-consumer blocker, not a policy-quality result;
-no post-refactor tail-90 saving point is claimed.
+0.126282.  At the first sparse decision the 0.013672 raw delta remains 0.013672
+after offset centering, but maximum probability error is only
+$2.38\times10^{-7}$ and total variation is $1.75\times10^{-7}$.  The strict
+gate remains unchanged pending a predeclared distributional contract.  This is
+an engine-consumer blocker, not a policy-quality result; no post-refactor
+tail-90 saving point is claimed.
 
 The next strict gate uses Qwen3-4B BF16 revision
 \texttt{1cfa9a7208912126459214e8b04321603b3df60c}, one fused direct-MLX
@@ -5299,9 +5303,13 @@ first sparse request, fused and portable consumers preserve the same winner
 token as their identical-subset packed references, but their maximum raw-logit
 deltas are 0.013672 and 0.017517, both above the frozen 0.005 gate.  A diagnostic
 full-completion oracle remains token-identical for 68 generation decisions,
-yet its raw-logit delta grows to 0.126282.  This localizes the current blocker
-to numerical equivalence of the sparse MLX consumer rather than autonomous
-selection quality; no saving or quality point is credited.  The consolidated
+yet its raw-logit delta grows to 0.126282.  A new distribution diagnostic shows
+that the first 0.013672 raw-logit error is not a pure additive offset---the
+centered error is also 0.013672---but its maximum probability error is only
+$2.38\times10^{-7}$ and total variation is $1.75\times10^{-7}$.  This
+localizes the current blocker to the numerical contract of the sparse MLX
+consumer rather than autonomous selection quality; no saving or quality point
+is credited, and the 0.005 gate is not relaxed post hoc.  The consolidated
 receipt is archived under
 \path{coding_agents/engine_agent_gates/mlx_qwen25coder14b_task01_post_transactional_20261005/}.
 

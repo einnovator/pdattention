@@ -96,6 +96,22 @@
       "diagnostic_tolerance": 0.1,
       "admitted": false,
       "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v14-diagnostic/task01_tail90_full_completion_oracle_r01"
+    },
+    {
+      "implementation": "fused_disjoint_distribution_diagnostic",
+      "paper4_5_revision": "db357ee0",
+      "output_token_index": 0,
+      "same_subset_max_raw_logit_delta": 0.013671875,
+      "same_subset_centered_logit_delta": 0.013671875,
+      "same_subset_max_probability_delta": 2.38418579e-07,
+      "same_subset_total_variation": 1.74856353e-07,
+      "predeclared_raw_logit_tolerance": 0.005,
+      "candidate_token": 3617,
+      "reference_token": 3617,
+      "candidate_and_reference_winner_token_equal": true,
+      "admitted": false,
+      "interpretation": "The drift is not a pure additive logit offset, but it changes negligible probability mass at this decision. The strict raw-logit gate remains unchanged pending a predeclared distributional contract.",
+      "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v16-distribution/task01_tail90_distribution_gate_r01"
     }
   ],
   "excluded_diagnostics": [
@@ -108,6 +124,7 @@
     "The current post-transactional plain/PRA-100 pair qualifies autonomous behavioral parity at the command, patch, call-count, and official-outcome levels.",
     "Selected resident history is neither re-encoded nor copied for PRA-100.",
     "PRA-100 does not imply zero total K/V movement or zero consumer scratch allocation.",
-    "Tail-90 remains blocked at the engine same-subset numerical gate, so these diagnostics are not selection-quality evidence and yield no admitted tail-90 saving row."
+    "Tail-90 remains blocked at the engine same-subset numerical gate, so these diagnostics are not selection-quality evidence and yield no admitted tail-90 saving row.",
+    "At the first sparse decision, raw and centered logits exceed the frozen threshold while maximum probability error and total variation are below 2.4e-7; this motivates a separately predeclared distributional gate rather than an ad hoc relaxation."
   ]
 }
