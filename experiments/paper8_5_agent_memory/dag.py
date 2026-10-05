@@ -513,11 +513,12 @@ def build_frontier_information_flow_dag(
         # An aggressive one-prompt frontier may retain a valid submission
         # example yet still lose the workflow fact that a mutation must occur
         # before verification and submission.  W exemplars therefore pin a
-        # minimal successful mutation -> verification -> completion spine from
-        # the latest harness-certified epoch.  Evidence comes from generic
-        # observation metadata: an actual changed-resource receipt, followed
-        # by a successful observation of that post-mutation resource.  No task
-        # ID, command name, or repository-specific rule is consulted.
+        # minimal successful search -> inspection -> mutation -> verification
+        # -> completion spine from the latest harness-certified epoch.
+        # Evidence comes from generic observation metadata: operation classes,
+        # an actual changed-resource receipt, and a successful observation of
+        # that post-mutation resource.  No task ID, command name, or
+        # repository-specific rule is consulted.
         for _, protocol_id in valid_groups[:valid_workflow_exemplars]:
             protocol_epoch = epoch_for_record.get(protocol_id)
             if protocol_epoch is None:
@@ -538,6 +539,27 @@ def build_frontier_information_flow_dag(
                 str(value)
                 for value in mutation.metadata.get("changed_resource_ids", ())
             }
+            search_rows = [
+                records[record_id]
+                for record_id in epochs[protocol_epoch].record_ids
+                if records[record_id].message_index < mutation.message_index
+                and records[record_id].has_role(AgentRecordRole.TOOL_OBSERVATION)
+                and records[record_id].return_code == 0
+                and str(records[record_id].metadata.get(
+                    "operation_kind"
+                ) or "").lower() in {"search", "search_discovery"}
+            ]
+            inspection_rows = [
+                records[record_id]
+                for record_id in epochs[protocol_epoch].record_ids
+                if records[record_id].message_index < mutation.message_index
+                and records[record_id].has_role(AgentRecordRole.TOOL_OBSERVATION)
+                and records[record_id].return_code == 0
+                and str(records[record_id].metadata.get(
+                    "operation_kind"
+                ) or "").lower() == "read"
+                and changed.intersection(_record_resources(records[record_id]))
+            ]
             verification_rows = [
                 records[record_id]
                 for record_id in epochs[protocol_epoch].record_ids
@@ -547,7 +569,12 @@ def build_frontier_information_flow_dag(
                 and changed.intersection(_record_resources(records[record_id]))
                 and not records[record_id].metadata.get("changed_resource_ids")
             ]
-            workflow_sources = [mutation]
+            workflow_sources = []
+            if search_rows:
+                workflow_sources.append(search_rows[-1])
+            if inspection_rows:
+                workflow_sources.append(inspection_rows[-1])
+            workflow_sources.append(mutation)
             if verification_rows:
                 workflow_sources.append(verification_rows[-1])
             workflow_sources.append(records[protocol_id])

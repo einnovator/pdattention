@@ -1513,8 +1513,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Keep this many latest harness-certified mutation, verification, "
-            "and completion workflow spines as atomic control exemplars."
+            "Keep this many latest harness-certified search, inspection, "
+            "mutation, verification, and completion workflow spines as "
+            "atomic control exemplars."
         ),
     )
     parser.add_argument(

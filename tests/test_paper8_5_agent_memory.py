@@ -916,40 +916,50 @@ def test_frontier_dag_w1_pins_minimal_successful_workflow_spine():
             metadata={**template_observation.metadata, **metadata},
         )
 
+    search_action = action(
+        "action-search", "turn-search", 4, "find src -name old.py",
+        (),
+    )
+    search_observation = observation(
+        "observation-search", "turn-search", 5, "find src -name old.py",
+        (),
+        {"operation_kind": "search_discovery", "changed_resource_ids": []},
+    )
     mutation_action = action(
-        "action-mutation", "turn-mutation", 4, "edit src/old.py",
+        "action-mutation", "turn-mutation", 6, "edit src/old.py",
         (AgentRecordRole.MUTATION,),
     )
     mutation_observation = observation(
-        "observation-mutation", "turn-mutation", 5, "edit src/old.py",
+        "observation-mutation", "turn-mutation", 7, "edit src/old.py",
         (AgentRecordRole.MUTATION,),
         {"changed_resource_ids": ["src/old.py"]},
     )
     verification_action = action(
-        "action-verification", "turn-verification", 6, "cat src/old.py",
+        "action-verification", "turn-verification", 8, "cat src/old.py",
         (AgentRecordRole.VERIFICATION,),
     )
     verification_observation = observation(
-        "observation-verification", "turn-verification", 7, "cat src/old.py",
+        "observation-verification", "turn-verification", 9, "cat src/old.py",
         (AgentRecordRole.VERIFICATION,),
         {"changed_resource_ids": []},
     )
     final_action = action(
-        "action-final", "turn-final", 8, "submit patch",
+        "action-final", "turn-final", 10, "submit patch",
         (AgentRecordRole.FINALIZATION,),
     )
     final_observation = observation(
-        "observation-final", "turn-final", 9, "submit patch",
+        "observation-final", "turn-final", 11, "submit patch",
         (AgentRecordRole.FINALIZATION,),
         {"protocol_completion_valid": True, "changed_resource_ids": []},
     )
     shifted = [
-        replace(row, message_index=row.message_index + 6)
+        replace(row, message_index=row.message_index + 8)
         for row in records[4:]
     ]
     history = CanonicalAgentHistory(
         tuple((
             *records[:4],
+            search_action, search_observation,
             mutation_action, mutation_observation,
             verification_action, verification_observation,
             final_action, final_observation,
@@ -957,16 +967,19 @@ def test_frontier_dag_w1_pins_minimal_successful_workflow_spine():
         )),
         (
             base.turns[0],
+            AgentTurn("turn-search", "turn-search", (
+                "action-search", "observation-search"
+            ), 4, True),
             AgentTurn("turn-mutation", "turn-mutation", (
                 "action-mutation", "observation-mutation"
-            ), 4, True),
+            ), 6, True),
             AgentTurn("turn-verification", "turn-verification", (
                 "action-verification", "observation-verification"
-            ), 6, True),
+            ), 8, True),
             AgentTurn("turn-final", "turn-final", (
                 "action-final", "observation-final"
-            ), 8, True),
-            replace(base.turns[1], first_message_index=base.turns[1].first_message_index + 6),
+            ), 10, True),
+            replace(base.turns[1], first_message_index=base.turns[1].first_message_index + 8),
         ),
     )
 
@@ -978,14 +991,17 @@ def test_frontier_dag_w1_pins_minimal_successful_workflow_spine():
     )
     retired = {row.causal_group_id for row in dag.retirement_candidates}
 
-    assert "turn-0" in retired
-    assert {"turn-mutation", "turn-verification", "turn-final"}.isdisjoint(retired)
     assert {
-        "observation-mutation", "observation-verification", "observation-final"
+        "turn-0", "turn-search", "turn-mutation", "turn-verification",
+        "turn-final",
+    }.isdisjoint(retired)
+    assert {
+        "observation-0", "observation-search", "observation-mutation",
+        "observation-verification", "observation-final",
     }.issubset(dag.live_ancestor_record_ids)
     assert sum(
         edge.kind == DagEdgeKind.WORKFLOW_CONTROL for edge in dag.edges
-    ) == 3
+    ) == 5
 
 
 def test_recordizer_preserves_action_observation_causal_bundles():
