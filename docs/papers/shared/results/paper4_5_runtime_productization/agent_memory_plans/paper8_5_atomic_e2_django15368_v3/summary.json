@@ -1,0 +1,75 @@
+{
+  "schema_version": "paper4.5.atomic-e2-heldout-native-kv.v1",
+  "source": {
+    "paper8_5_commit": "f498e87e",
+    "task_identity": "django__django-15368",
+    "policy": "persistent_instruction_epoch_retirement",
+    "logical_model": "qwen3-coder:30b-ctx131k",
+    "logical_model_digest": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+    "prefix_sha256": "c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283"
+  },
+  "logical_cluster": {
+    "paired_executions": 2,
+    "full_resolutions": 2,
+    "treatment_resolutions": 2,
+    "full_calls": 18,
+    "treatment_calls": 16,
+    "candidate_counterfactual_tokens": 421054,
+    "selected_tokens": 173582,
+    "candidate_own_saving_fraction": 0.587744089831708,
+    "paired_saving_fraction": 0.635124198861116
+  },
+  "combined_logical_cohort": {
+    "task_identities": 3,
+    "paired_executions": 6,
+    "full_resolutions": 6,
+    "treatment_resolutions": 6,
+    "full_calls": 59,
+    "treatment_calls": 45,
+    "candidate_counterfactual_tokens": 1090645,
+    "selected_tokens": 540694,
+    "candidate_own_saving_fraction": 0.504243819024522,
+    "paired_saving_fraction": 0.604031642668096
+  },
+  "native_model": {
+    "family": "Qwen3-0.6B",
+    "mlx_variant": "mlx-community/Qwen3-0.6B-4bit",
+    "llamacpp_variant": "Qwen3-0.6B-Q8_0"
+  },
+  "continuation_token_ids": [151667, 198],
+  "runs": [
+    {
+      "repeat": "r01",
+      "engines": {
+        "llamacpp": {"source_tokens": 27796, "selected_tokens": 11934, "suffix_tokens": 139, "visible_saving_fraction": 0.5678181492751029, "selected_history_reencoded_tokens": 0, "initial_attachment_kv_copy_bytes": 0, "qualified": true},
+        "mlx": {"source_tokens": 27796, "selected_tokens": 11934, "suffix_tokens": 139, "visible_saving_fraction": 0.5678181492751029, "selected_history_reencoded_tokens": 0, "initial_attachment_kv_copy_bytes": 0, "consumer_peak_temporary_bytes": 156299, "same_subset_max_abs_logit_delta": 0.0, "qualified": true},
+        "sglang_mlx": {"source_tokens": 27796, "selected_tokens": 11934, "suffix_tokens": 139, "visible_saving_fraction": 0.5678181492751029, "selected_history_reencoded_tokens": 0, "initial_attachment_kv_copy_bytes": 0, "consumer_peak_temporary_bytes": 156299, "same_subset_max_abs_logit_delta": 0.0, "qualified": true},
+        "vllm_metal": {"source_tokens": 27792, "selected_tokens": 11952, "suffix_tokens": 143, "page_rounding_added_tokens": 22, "visible_saving_fraction": 0.5670306067657061, "selected_history_reencoded_tokens": 0, "initial_attachment_kv_copy_bytes": 0, "alias_active_memory_delta_bytes": 0, "offload_restore_materialization_bytes": 3187430548, "qualified": true}
+      }
+    },
+    {
+      "repeat": "r02",
+      "engines": {
+        "llamacpp": {"source_tokens": 27393, "selected_tokens": 11531, "suffix_tokens": 138, "visible_saving_fraction": 0.5761505212306128, "selected_history_reencoded_tokens": 0, "initial_attachment_kv_copy_bytes": 0, "qualified": true},
+        "mlx": {"source_tokens": 27393, "selected_tokens": 11531, "suffix_tokens": 138, "visible_saving_fraction": 0.5761505212306128, "selected_history_reencoded_tokens": 0, "initial_attachment_kv_copy_bytes": 0, "consumer_peak_temporary_bytes": 172049, "same_subset_max_abs_logit_delta": 0.0, "qualified": true},
+        "sglang_mlx": {"source_tokens": 27393, "selected_tokens": 11531, "suffix_tokens": 138, "visible_saving_fraction": 0.5761505212306128, "selected_history_reencoded_tokens": 0, "initial_attachment_kv_copy_bytes": 0, "consumer_peak_temporary_bytes": 172043, "same_subset_max_abs_logit_delta": 0.0, "qualified": true},
+        "vllm_metal": {"source_tokens": 27392, "selected_tokens": 11552, "suffix_tokens": 139, "page_rounding_added_tokens": 22, "visible_saving_fraction": 0.5753514220333442, "selected_history_reencoded_tokens": 0, "initial_attachment_kv_copy_bytes": 0, "alias_active_memory_delta_bytes": 0, "offload_restore_materialization_bytes": 3141555336, "qualified": true}
+      }
+    }
+  ],
+  "artifact_sha256": {
+    "r01_frozen_plan.jsonl": "1a952a11fd8ef41cbffdc1ff0051efeeddc1453ba5bd537527656f9c37c3763d",
+    "r01_request_replay.jsonl": "652302674fd351a12752b10f49973f896bea8ea10f00c00a4d6e840fa83de7f5",
+    "r02_frozen_plan.jsonl": "e787cffd1ce6ee1864082ecbcef8723d26a87e001654ce4024981f8176ecf858",
+    "r02_request_replay.jsonl": "caf8b8e9a8485ce55a99d2a4744ca8d8bcf0fcad6bc0cd3e264fe763284e4382",
+    "r01_llamacpp_qwen3_06b_strict.json": "abb6dc78905326fc33ad8f4bc8c80a7d250f4609c1337b91ca23368c62bf5e9d",
+    "r02_llamacpp_qwen3_06b_strict.json": "851c13523dfcb48faa5c1450abe34412ed0de6a5d30b0f37d484478d2f68acf5",
+    "r01_mlx_qwen3_06b_strict.json": "e5cc95f56aa0ae7544e360ddcaab7491090aa9a94d085c482a9ef6bf207c4cd8",
+    "r02_mlx_qwen3_06b_strict.json": "c6112172559210b64c7cf6c19f3130ddfb048928eca9fa0b19967fcfdf9f56c2",
+    "r01_sglang_mlx_qwen3_06b_strict.json": "12f983babcd5b14b84065a1fcc3dcf6b42df79cb76396e6593889b0a127dca10",
+    "r02_sglang_mlx_qwen3_06b_strict.json": "6134e8e26d4bbe060a508e6e71fc163db06dc57c83f3f5268e50fbd4fa00bd63",
+    "r01_vllm_metal_qwen3_06b_strict.json": "e83784853a19c44700b7740aba303959dd82f128c2cce88369b58ca00d0241a8",
+    "r02_vllm_metal_qwen3_06b_strict.json": "b43d8b506886407f3194a382407502b719450f7038224102a8cda0e40f97611a"
+  },
+  "claim_boundary": "Frozen request-level native-K/V mechanism and lifecycle qualification; not autonomous cross-engine task execution or a population accuracy estimate. HF/CUDA remains open."
+}

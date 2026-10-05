@@ -69,16 +69,19 @@ are not byte-identical.  Compact-text policy success therefore does not by
 itself qualify original-position sparse-K/V utility.
 
 The newest receipt-free Atomic-E2 handoff closes that specific mechanism gap
-on four request-level engine paths.  Across two repeat-qualified Paper~8.5 trajectories for one
-episode-six task identity, the logical policy preserves 2/2 resolutions and
-17 aggregate calls at 57.09\% candidate-own saving.  Its two frozen final
-requests realize 55.06\% and 55.41\% visible-history saving from disjoint
-original-position resident K/V on llama.cpp, direct MLX, and SGLang-MLX, with
-zero selected-history re-encoding, zero request-attachment K/V copy, exact
+on four request-level engine paths.  Across three Paper~8.5 task identities
+and two matched repeats each, the logical policy preserves 6/6 resolutions,
+reduces calls from 59 to 45, and omits 50.42\% of its candidate-own history.
+Two task identities now contribute four frozen final requests to native-engine
+qualification.  The original pair realizes 55.06\% and 55.41\% visible-history
+saving; the held-out pair realizes 56.78\% and 57.62\%.  llama.cpp, direct MLX,
+and SGLang-MLX consume disjoint original-position resident K/V with zero
+selected-history re-encoding, zero request-attachment K/V copy, exact
 continuations, and clean release.  vLLM-Metal reproduces the result with
-complete-page aliases and 22 rounding tokens per request.  This is a repeated
-request-level mechanism qualification bound to a successful logical-policy
-cohort, not autonomous cross-engine execution or an accuracy estimate.
+complete-page aliases and separately reported rounding.  This is a repeated
+request-level mechanism qualification bound to a small successful
+logical-policy cohort, not autonomous cross-engine execution or a population
+accuracy estimate.
 
 A later strict BF16 MLX gate isolates a second model/task pair.  On locked
 Task~7, plain and PRA-100 both resolve in seven byte-identical actions with the
@@ -735,6 +738,22 @@ request, while initial attachment re-encodes zero tokens, copies zero K/V, and
 adds zero active bytes.  Its offload/restore copy is reported separately.  The auditable bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_scikit14496_v2}.
 
+A held-out Atomic-E2 cluster adds a second task identity to the native-engine
+handoff.  Its two Paper~8.5 pairs both resolve, reduce aggregate calls from 18
+to 16, and omit 58.77\% of candidate-own logical history.  On the final
+requests, repeat one attaches 11,934 of 27,796 resident entries plus a
+139-token suffix (56.78\% visible saving), while repeat two attaches 11,531 of
+27,393 plus a 138-token suffix (57.62\%).  Patched llama.cpp, direct MLX, and
+SGLang-MLX reproduce both geometries and the continuation tokens without
+selected-history re-encoding or initial K/V copy.  MLX and SGLang additionally
+match same-subset logits exactly; their measured consumer peaks are only
+0.320--0.364\% of one selected layer's K/V extent.  vLLM-Metal also qualifies
+both repeats through non-owning complete-page aliases.  Page rounding adds 22
+selected tokens per repeat and yields 56.70\% and 57.54\% total visible saving;
+initial attachment re-encodes zero tokens, copies zero K/V, and adds zero active
+bytes.  The auditable bundle is
+\path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_django15368_v3}.
+
 The same corrected request-9 gate does not yet qualify the direct MLX 14B
 path.  On MLX 0.32.2 / MLX-LM 0.31.3 with Qwen3-14B 4-bit, both fused and
 eager disjoint consumers differ from the native dense identical-subset
@@ -849,9 +868,11 @@ engine-correctness failure.  HF alone still lacks an admissible post-contract
 autonomous row.
 
 The strict Atomic-E2 transfer is the strongest receipt-free agent fixture in
-this revision.  Its two final requests now clear the declared mechanism and
-lifecycle gates on llama.cpp, direct MLX, SGLang-MLX, and vLLM-Metal without
-selector retuning, but remain request-level.  The next workload gate is to
+this revision.  Four final requests across two task identities now clear the
+declared mechanism and lifecycle gates on llama.cpp, direct MLX, SGLang-MLX,
+and vLLM-Metal without selector retuning; vLLM-Metal is evaluated under its
+declared complete-page rounding contract.  These results remain request-level.
+The next workload gate is to
 consume the identical frozen ledger autonomously on those paths and qualify
 HF/CUDA without engine-specific policy retuning.
 
@@ -4630,6 +4651,46 @@ native mechanism replication bound to an independently qualified logical-policy
 result; it is not yet autonomous execution through each engine.  The evidence bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_scikit14496_v2}.
 
+The held-out django-15368 cluster repeats that transfer with a different
+five-episode immutable prefix and two new successful trajectories.  Table~\ref{tab:agent-atomic-e2-django-engines}
+reports the final-request geometry.  The nonpaged engines agree exactly on the
+source, selected, and suffix tokens.  llama.cpp repeats the same continuation;
+MLX and SGLang-MLX additionally match the same-subset reference logits exactly.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out Atomic-E2 final-request realization.  All rows use the same
+Qwen3-0.6B tokenizer geometry and frozen logical ledgers.}
+\begin{tabular}{llrrrrr}
+\toprule
+Engine & Repeat & Source K/V & Selected K/V & Suffix & Visible save & Re-encoded \\
+\midrule
+llama.cpp & r01 & 27,796 & 11,934 & 139 & 56.78\% & 0 \\
+llama.cpp & r02 & 27,393 & 11,531 & 138 & 57.62\% & 0 \\
+MLX & r01 & 27,796 & 11,934 & 139 & 56.78\% & 0 \\
+MLX & r02 & 27,393 & 11,531 & 138 & 57.62\% & 0 \\
+SGLang-MLX & r01 & 27,796 & 11,934 & 139 & 56.78\% & 0 \\
+SGLang-MLX & r02 & 27,393 & 11,531 & 138 & 57.62\% & 0 \\
+vLLM-Metal & r01 & 27,792 & 11,952 & 143 & 56.70\% & 0 \\
+vLLM-Metal & r02 & 27,392 & 11,552 & 139 & 57.54\% & 0 \\
+\bottomrule
+\end{tabular}
+\label{tab:agent-atomic-e2-django-engines}
+\end{table}
+
+The two MLX rows peak 156,299 and 172,049 bytes above baseline during fused
+disjoint attention, only 0.320\% and 0.364\% of one selected layer's K/V
+extent.  SGLang-MLX reproduces those bounds within six bytes.  All six rows
+use direct original-position selection; both vLLM-Metal rows additionally alias
+source pages without initial K/V copy or active-memory growth.  All eight rows
+copy zero selected K/V at attachment, evaluate zero selected-history tokens,
+and pass their engine-specific ownership, cancellation, offload/restore, and
+termination gates.  Paper~8.5's cumulative 58.77\% candidate-own saving for
+this task cluster remains a logical workload coordinate; the 56.70--57.62\%
+figures here are final-request physical-context omission after the mandatory
+suffix and engine-specific page rounding are charged.
+
 \paragraph{Selection-only transfer exposed a cross-engine bootstrap error.}
 A subsequent strict export from Paper~8.5 contains no compact receipts or
 synthetic replacement text.  Auditing its first autonomous request found that
@@ -6196,15 +6257,17 @@ strict M2/P1 cohort preserves 3/3 resolutions on Tasks~3--5 at 40.53\%
 candidate-own logical saving and 22 versus 30 calls.  It is now admitted as the
 Agent-Balanced native-qualification candidate through 22 exact hash-bound
 plans.  A newer boundary-free Atomic-E2 implementation is distinct from the
-rejected early E2 ladder: on two repeat-qualified task identities it preserves
-4/4 paired \textsc{Full} successes, reduces calls from 41 to 29, and obtains
-45.17\% aggregate candidate-own logical saving.  Its Scikit-learn $N=6$
-cluster alone preserves 2/2 successes and 17 calls at 57.09\% own saving; two
-strict frozen final requests now pass llama.cpp with 55.06--55.41\% visible
-saving, zero history re-encoding, and zero initial-attachment K/V copy.  Direct
-MLX and SGLang-MLX reproduce the exact ledger geometry and logits; vLLM-Metal
-differs only by declared complete-page rounding and reproduces the continuation
-tokens.  This remains a small task-clustered policy result and a request-level
+rejected early E2 ladder: on three repeat-qualified task identities it
+preserves 6/6 paired \textsc{Full} successes, reduces calls from 59 to 45, and
+obtains 50.42\% aggregate candidate-own logical saving.  Its Scikit-learn
+$N=6$ cluster preserves 2/2 successes and 17 calls at 57.09\% own saving; its
+held-out Django cluster preserves 2/2, reduces calls from 18 to 16, and reaches
+58.77\% own saving.  Four strict frozen final requests across those two task
+identities now pass llama.cpp, direct MLX, and SGLang-MLX at 54.98--57.62\%
+visible saving after engine-specific rounding, with zero history re-encoding
+and zero initial-attachment K/V copy.  vLLM-Metal now qualifies all four under
+declared complete-page rounding and reproduces the continuation tokens.
+This remains a small task-clustered policy result and a request-level
 engine realization, not a
 population-accuracy or cross-engine autonomous claim.  A later matched Pi
 $N=5$ prefix preserves all three Full successes at
