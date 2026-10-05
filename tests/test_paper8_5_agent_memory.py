@@ -175,6 +175,86 @@ def _information_flow_chain(
     return CanonicalAgentHistory(tuple(records), tuple(turns))
 
 
+def _closed_two_turn_information_flow_chain(resources, *, workspace_scopes):
+    """Build closed prompt epochs with removable work plus a terminal group."""
+
+    base = _information_flow_chain(
+        resources,
+        workspace_scopes=workspace_scopes,
+    )
+    source = base.record_by_id
+    records = [replace(source["system"], message_index=0)]
+    turns = []
+    message_index = 1
+    for epoch, resource in enumerate(resources):
+        instruction = source[f"instruction-{epoch}"]
+        action = source[f"action-{epoch}"]
+        observation = source[f"observation-{epoch}"]
+        records.append(replace(instruction, message_index=message_index))
+        message_index += 1
+        work_group = f"turn-{epoch}"
+        records.extend((
+            replace(action, message_index=message_index),
+            replace(observation, message_index=message_index + 1),
+        ))
+        turns.append(AgentTurn(
+            work_group,
+            work_group,
+            (action.record_id, observation.record_id),
+            message_index,
+            True,
+        ))
+        message_index += 2
+
+        completion_group = f"completion-{epoch}"
+        completion_action_id = f"completion-action-{epoch}"
+        completion_observation_id = f"completion-observation-{epoch}"
+        metadata = dict(instruction.metadata)
+        records.extend((
+            AgentRecord(
+                completion_action_id,
+                completion_group,
+                completion_group,
+                message_index,
+                "assistant",
+                "```mswea_bash_command\necho submit\n```",
+                AgentRecordRole.ASSISTANT_ACTION,
+                (AgentRecordRole.ASSISTANT_ACTION,),
+                command="echo submit",
+                resource_ids=(resource,),
+                metadata={**metadata, "operation_kind": "submit"},
+            ),
+            AgentRecord(
+                completion_observation_id,
+                completion_group,
+                completion_group,
+                message_index + 1,
+                "user",
+                "<returncode>0</returncode><output>submitted</output>",
+                AgentRecordRole.TOOL_OBSERVATION,
+                (AgentRecordRole.TOOL_OBSERVATION,),
+                command="echo submit",
+                return_code=0,
+                resource_ids=(resource,),
+                metadata={
+                    **metadata,
+                    "operation_kind": "submit",
+                    "output_complete": True,
+                    "protocol_completion_valid": True,
+                },
+            ),
+        ))
+        turns.append(AgentTurn(
+            completion_group,
+            completion_group,
+            (completion_action_id, completion_observation_id),
+            message_index,
+            True,
+        ))
+        message_index += 2
+    return CanonicalAgentHistory(tuple(records), tuple(turns))
+
+
 def test_frontier_dag_retires_only_old_disconnected_epochs():
     history = _information_flow_chain(
         [f"src/task_{index}.py" for index in range(6)],
@@ -347,19 +427,10 @@ def test_frontier_dag_selector_can_reproduce_legacy_group_exclusions():
 
 
 def test_frontier_dag_selector_retires_closed_disconnected_components_atomically():
-    base = _information_flow_chain(
+    history = _closed_two_turn_information_flow_chain(
         [f"src/task_{index}.py" for index in range(6)],
         workspace_scopes=[f"workspace-{index}" for index in range(6)],
     )
-    records = tuple(
-        replace(
-            row,
-            metadata={**row.metadata, "protocol_completion_valid": True},
-        )
-        if row.record_id.startswith("observation-") else row
-        for row in base.records
-    )
-    history = CanonicalAgentHistory(records, base.turns)
     full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
 
     plan = FrontierDagRetirementSelector(
@@ -373,23 +444,66 @@ def test_frontier_dag_selector_retires_closed_disconnected_components_atomically
     )
 
     assert {row.causal_group_id for row in plan.exclusions} == {
-        "closed-component:instruction-0",
-        "closed-component:instruction-1",
-        "closed-component:instruction-2",
-        "closed-component:instruction-3",
+        "closed-interior:instruction-0",
+        "closed-interior:instruction-1",
+        "closed-interior:instruction-2",
+        "closed-interior:instruction-3",
     }
     assert all(
-        row.rule_id == "FRONTIER_CLOSED_COMPONENT_NO_PATH_M2_V2"
+        row.rule_id == "FRONTIER_CLOSED_INTERIOR_NO_PATH_M2_V3"
         for row in plan.exclusions
     )
     assert {
-        "instruction-0", "action-0", "observation-0",
-        "instruction-1", "action-1", "observation-1",
+        "action-0", "observation-0",
+        "action-1", "observation-1",
     }.isdisjoint(plan.selected_record_ids)
     assert {
+        "instruction-0", "completion-action-0", "completion-observation-0",
+        "instruction-1", "completion-action-1", "completion-observation-1",
         "instruction-4", "action-4", "observation-4",
         "instruction-5", "action-5", "observation-5",
     }.issubset(plan.selected_record_ids)
+
+
+def test_frontier_p1_exemplar_does_not_pin_closed_epoch_interior():
+    base = _closed_two_turn_information_flow_chain(
+        [f"src/task_{index}.py" for index in range(4)],
+        workspace_scopes=[f"workspace-{index}" for index in range(4)],
+    )
+    # Force P1 to come from the oldest closed epoch.  Later prompts are
+    # deliberately unfinished so the protocol edge reaches the live frontier
+    # from epoch zero, reproducing the real Task-3 regression.
+    history = CanonicalAgentHistory(tuple(
+        replace(
+            row,
+            metadata={**row.metadata, "protocol_completion_valid": False},
+        )
+        if row.record_id.startswith("completion-observation-")
+        and row.record_id != "completion-observation-0"
+        else row
+        for row in base.records
+    ), base.turns)
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+
+    plan = FrontierDagRetirementSelector(
+        recent_user_prompts=2,
+        allow_heuristic=False,
+        valid_protocol_exemplars=1,
+    ).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert "instruction-0" in plan.selected_record_ids
+    assert "completion-action-0" in plan.selected_record_ids
+    assert "completion-observation-0" in plan.selected_record_ids
+    assert "action-0" not in plan.selected_record_ids
+    assert "observation-0" not in plan.selected_record_ids
+    assert {row.causal_group_id for row in plan.exclusions} == {
+        "closed-interior:instruction-0"
+    }
 
 
 def test_frontier_dag_selector_keeps_unfinished_components_by_default():
@@ -414,10 +528,18 @@ def test_frontier_dag_selector_keeps_unfinished_components_by_default():
 
 
 def test_frontier_dag_selector_retires_superseded_unfinished_atomically():
-    history = _information_flow_chain(
+    base = _closed_two_turn_information_flow_chain(
         [f"src/task_{index}.py" for index in range(4)],
         workspace_scopes=[f"workspace-{index}" for index in range(4)],
     )
+    history = CanonicalAgentHistory(tuple(
+        replace(
+            row,
+            metadata={**row.metadata, "protocol_completion_valid": False},
+        )
+        if row.record_id.startswith("completion-observation-") else row
+        for row in base.records
+    ), base.turns)
     full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
 
     plan = FrontierDagRetirementSelector(
@@ -432,18 +554,20 @@ def test_frontier_dag_selector_retires_superseded_unfinished_atomically():
     )
 
     assert {row.causal_group_id for row in plan.exclusions} == {
-        "closed-component:instruction-0",
-        "closed-component:instruction-1",
+        "unfinished-interior:instruction-0",
+        "unfinished-interior:instruction-1",
     }
     assert all(
-        row.rule_id == "FRONTIER_SUPERSEDED_UNFINISHED_COMPONENT_NO_PATH_M1_V2"
+        row.rule_id == "FRONTIER_SUPERSEDED_UNFINISHED_INTERIOR_NO_PATH_M1_V3"
         for row in plan.exclusions
     )
     assert {
-        "instruction-0", "action-0", "observation-0",
-        "instruction-1", "action-1", "observation-1",
+        "action-0", "observation-0",
+        "action-1", "observation-1",
     }.isdisjoint(plan.selected_record_ids)
     assert {
+        "instruction-0", "completion-action-0", "completion-observation-0",
+        "instruction-1", "completion-action-1", "completion-observation-1",
         "instruction-2", "action-2", "observation-2",
         "instruction-3", "action-3", "observation-3",
     }.issubset(plan.selected_record_ids)

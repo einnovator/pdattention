@@ -1202,12 +1202,22 @@ class FrontierDagRetirementSelector:
         exclusion_rows: list[AgentMemoryExclusion] = []
 
         if self.atomic_closed_components:
-            # A prompt interval is retired only when it is observably closed
-            # and every one of its complete causal groups is disconnected from
-            # the live frontier. No evaluator task/episode identity is used.
-            # Partial retirement would leave the pinned prompt apparently
-            # unanswered, so intervals that fail this gate remain whole.
+            # Preserve every genuine user instruction and enough terminal
+            # evidence to show that a closed instruction was answered.  Only
+            # complete, disconnected *interior* causal groups are retired.
+            #
+            # The earlier V2 realization removed an entire closed interval.
+            # Besides violating the prompt-pinning invariant, that realization
+            # conflicts with P1: retaining one valid protocol exemplar makes
+            # its group live, which then prevents the entire interval from
+            # retiring.  V3 keeps the prompt and the latest valid completion
+            # group, preserves any group with a real path to the live frontier,
+            # and retires the remaining groups atomically.  No evaluator
+            # task/episode identity is used.
             turn_groups = {turn.causal_group_id for turn in history.turns}
+            turn_by_group = {
+                turn.causal_group_id: turn for turn in history.turns
+            }
             candidates_by_group = {
                 row.causal_group_id: row for row in eligible
             }
@@ -1219,28 +1229,61 @@ class FrontierDagRetirementSelector:
                     group_id for group_id in interval.causal_group_ids
                     if group_id in turn_groups
                 }
-                closed = any(
-                    bool(history.record_by_id[record_id].metadata.get(
+                completion_records = tuple(
+                    history.record_by_id[record_id]
+                    for record_id in interval.record_ids
+                    if bool(history.record_by_id[record_id].metadata.get(
                         "protocol_completion_valid"
                     ))
-                    for record_id in interval.record_ids
                 )
+                closed = bool(completion_records)
                 distance = latest_epoch - interval.epoch_index
                 superseded_unfinished = bool(
                     not closed
                     and self.allow_superseded_unfinished_after is not None
                     and distance >= self.allow_superseded_unfinished_after
                 )
-                if (
-                    not (closed or superseded_unfinished)
-                    or not interval_groups
-                    or not interval_groups.issubset(eligible_groups)
-                ):
+                if not (closed or superseded_unfinished) or not interval_groups:
                     continue
-                excluded_record_ids.update(interval.record_ids)
+
+                # A completed prompt remains visibly answered.  For the
+                # explicit unfinished diagnostic, retain the latest progress
+                # group instead; this is intentionally more conservative than
+                # deleting the prompt or fabricating a textual completion.
+                if closed:
+                    latest_completion = max(
+                        completion_records,
+                        key=lambda row: row.message_index,
+                    )
+                    protected_groups = {latest_completion.causal_group_id}
+                else:
+                    protected_groups = {
+                        max(
+                            interval_groups,
+                            key=lambda group_id: max(
+                                history.record_by_id[record_id].message_index
+                                for record_id in turn_by_group[group_id].record_ids
+                            ),
+                        )
+                    }
+                retired_groups = (
+                    interval_groups.intersection(eligible_groups)
+                    - protected_groups
+                )
+                if not retired_groups:
+                    continue
+                retired_record_ids = tuple(
+                    record_id
+                    for group_id in sorted(retired_groups)
+                    for record_id in turn_by_group[group_id].record_ids
+                    if record_id in interval.record_ids
+                )
+                if not retired_record_ids:
+                    continue
+                excluded_record_ids.update(retired_record_ids)
                 rows = tuple(
                     candidates_by_group[group_id]
-                    for group_id in sorted(interval_groups)
+                    for group_id in sorted(retired_groups)
                 )
                 confidence = (
                     FrontierRetirementConfidence.CERTIFIED
@@ -1255,16 +1298,20 @@ class FrontierDagRetirementSelector:
                 ))
                 exclusion_rows.append(AgentMemoryExclusion(
                     causal_group_id=(
-                        "closed-component:" + interval.instruction_record_id
+                        (
+                            "unfinished-interior:"
+                            if superseded_unfinished else "closed-interior:"
+                        )
+                        + interval.instruction_record_id
                     ),
-                    record_ids=interval.record_ids,
+                    record_ids=retired_record_ids,
                     rule_id=(
                         (
-                            "FRONTIER_SUPERSEDED_UNFINISHED_COMPONENT_NO_PATH"
+                            "FRONTIER_SUPERSEDED_UNFINISHED_INTERIOR_NO_PATH"
                             if superseded_unfinished else
-                            "FRONTIER_CLOSED_COMPONENT_NO_PATH"
+                            "FRONTIER_CLOSED_INTERIOR_NO_PATH"
                         )
-                        + f"_M{self.recent_user_prompts}_V2"
+                        + f"_M{self.recent_user_prompts}_V3"
                     ),
                     classification=confidence.value,
                     reason=(
@@ -1274,8 +1321,9 @@ class FrontierDagRetirementSelector:
                             if superseded_unfinished else
                             "observable instruction root has terminal evidence"
                         )
-                        + " and no record in its atomic component reaches the "
-                        "recent user-prompt frontier"
+                        + "; the user prompt and latest completion/progress "
+                        "group remain visible, while every retired causal "
+                        "group has no path to the recent user-prompt frontier"
                     ),
                     resource_ids=resources,
                     witness_record_ids=dag.frontier_record_ids,
@@ -1283,16 +1331,16 @@ class FrontierDagRetirementSelector:
                         f"INACTIVE component={interval.instruction_record_id} "
                         "rule="
                         + (
-                            "FRONTIER_SUPERSEDED_UNFINISHED_COMPONENT_NO_PATH"
+                            "FRONTIER_SUPERSEDED_UNFINISHED_INTERIOR_NO_PATH"
                             if superseded_unfinished else
-                            "FRONTIER_CLOSED_COMPONENT_NO_PATH"
+                            "FRONTIER_CLOSED_INTERIOR_NO_PATH"
                         )
-                        + f"_M{self.recent_user_prompts}_V2 "
+                        + f"_M{self.recent_user_prompts}_V3 "
                         f"confidence={confidence.value}"
                     ),
                     excluded_tokens=sum(
                         count_tokens(history.record_by_id[record_id].content)
-                        for record_id in interval.record_ids
+                        for record_id in retired_record_ids
                     ),
                 ))
         else:
@@ -1333,7 +1381,10 @@ class FrontierDagRetirementSelector:
             policy=(
                 f"frontier_dag_m{self.recent_user_prompts}_"
                 + ("heuristic" if self.allow_heuristic else "certified")
-                + ("_atomic" if self.atomic_closed_components else "_groups")
+                + (
+                    "_closure_atomic"
+                    if self.atomic_closed_components else "_groups"
+                )
                 + f"_p{self.valid_protocol_exemplars}"
                 + (
                     f"_w{self.valid_workflow_exemplars}"
