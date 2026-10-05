@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "evidence_class": "autonomous_agent_engine_gate",
+  "date": "2026-10-05",
+  "status": "pra100_admitted_tail90_blocked",
+  "engine": {
+    "family": "direct_mlx",
+    "mlx_version": "0.32.1",
+    "mlx_lm_version": "0.32.0",
+    "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+    "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+    "host": "Apple M4 Pro 48GB",
+    "paper4_5_revision_for_valid_pra100": "58e983d0",
+    "paper4_5_revision_for_full_completion_gate": "9ec365f6",
+    "paper8_5_revision": "b98617a5"
+  },
+  "agent": {
+    "name": "mini-swe-agent",
+    "version": "2.4.6",
+    "temperature": 0.0,
+    "seed": 0,
+    "top_p": 1.0,
+    "top_k": 20,
+    "max_completion_tokens": 1024,
+    "transactional_replace_only": true,
+    "python_syntax_clean_submission_required": true
+  },
+  "task": {
+    "instance_id": "django__django-15277",
+    "cohort_label": "Easy-14 Task 1",
+    "plain_official_resolved": true,
+    "pra100_official_resolved": true,
+    "plain_official_score": 1.0,
+    "pra100_official_score": 1.0,
+    "submitted_patch_equal": true
+  },
+  "plain": {
+    "calls": 9,
+    "cumulative_full_tokens": 48727,
+    "cumulative_selected_tokens": 48727,
+    "cumulative_materialized_tokens": 48727,
+    "completion_tokens": 684,
+    "agent_wall_time_seconds": 254.52433575000032,
+    "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v7/task01_plain_guarded_indentation_cold_r01"
+  },
+  "pra100": {
+    "calls": 9,
+    "cumulative_full_tokens": 48685,
+    "cumulative_selected_tokens": 48685,
+    "cumulative_materialized_tokens": 48685,
+    "completion_tokens": 659,
+    "native_pra_delivery_calls": 9,
+    "native_kv_calls": 9,
+    "mean_realized_retention_fraction": 1.0,
+    "cumulative_selected_kv_tokens": 49135,
+    "cumulative_wire_tokens": 27,
+    "selected_history_reencoded_tokens": 0,
+    "selected_history_kv_copy_bytes": 0,
+    "host_to_device_bytes": 0,
+    "source_bootstrap_tokens": 2257,
+    "total_kv_copy_bytes": 19014156288,
+    "consumer_temporary_bytes": 10256302080,
+    "consumer_temporary_peak_bytes": 1680130048,
+    "agent_wall_time_seconds": 267.65161304100184,
+    "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v9/task01_pra100_guarded_indentation_cold_r01"
+  },
+  "trajectory_comparison": {
+    "ordered_shell_commands_equal": true,
+    "ordered_shell_command_count": 9,
+    "ordered_shell_command_sha256": "d6397390feb59c161dc9e29ec889b7ab2d5d7df1dc559af9c48ff0033146d382",
+    "response_text_divergence_calls_one_based": [7, 8],
+    "interpretation": "The operative trajectory, patch, call count, and official outcome are equal. Two natural-language thought strings differ."
+  },
+  "tail90_diagnostics": [
+    {
+      "implementation": "fused_disjoint",
+      "same_subset_max_raw_logit_delta": 0.013671875,
+      "predeclared_tolerance": 0.005,
+      "candidate_and_reference_winner_token_equal": true,
+      "admitted": false,
+      "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v10/task01_tail90_guarded_indentation_cold_r01"
+    },
+    {
+      "implementation": "portable_segmented",
+      "same_subset_max_raw_logit_delta": 0.0175170898,
+      "predeclared_tolerance": 0.005,
+      "candidate_and_reference_winner_token_equal": true,
+      "admitted": false,
+      "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v11-portable/task01_tail90_portable_diagnostic_r01"
+    },
+    {
+      "implementation": "fused_disjoint_full_completion_diagnostic",
+      "compared_generation_decisions": 68,
+      "candidate_and_reference_tokens_equal_through_compared_decisions": true,
+      "maximum_raw_logit_delta_observed": 0.126281738,
+      "diagnostic_tolerance": 0.1,
+      "admitted": false,
+      "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v14-diagnostic/task01_tail90_full_completion_oracle_r01"
+    }
+  ],
+  "excluded_diagnostics": [
+    {
+      "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v15-token-diagnostic/task01_tail90_token_exact_oracle_r01",
+      "reason": "Host-pressure timeout before the first sparse request; not a correctness or policy observation."
+    }
+  ],
+  "conclusions": [
+    "The current post-transactional plain/PRA-100 pair qualifies autonomous behavioral parity at the command, patch, call-count, and official-outcome levels.",
+    "Selected resident history is neither re-encoded nor copied for PRA-100.",
+    "PRA-100 does not imply zero total K/V movement or zero consumer scratch allocation.",
+    "Tail-90 remains blocked at the engine same-subset numerical gate, so these diagnostics are not selection-quality evidence and yield no admitted tail-90 saving row."
+  ]
+}

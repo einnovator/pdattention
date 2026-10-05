@@ -13,6 +13,21 @@ the official harnesses and include every frozen task filter explicitly.
 No performance claim should be made until the corresponding official harness
 produces normalized per-task records on a qualified agent/engine combination.
 
+## Current post-transactional direct-MLX gate
+
+The current Qwen2.5-Coder-14B / `django__django-15277` revalidation is under
+`engine_agent_gates/mlx_qwen25coder14b_task01_post_transactional_20261005/`.
+Plain and PRA-100 both resolve the task in nine calls with the same ordered
+shell commands and submitted patch. PRA-100 re-encodes zero selected-history
+tokens and copies zero selected-history K/V, while total K/V movement and
+consumer temporary allocation remain nonzero and are reported separately.
+
+The post-refactor tail-90 arm is blocked before autonomous policy evaluation:
+the fused sparse consumer exceeds the frozen identical-subset logit tolerance.
+Same winner tokens, including a 68-decision diagnostic prefix, are not treated
+as sufficient qualification. Consequently this directory contains no admitted
+tail-90 saving or quality claim.
+
 ## Official harness qualification
 
 Harbor 0.22.0 executed the `terminal-bench/filter-js-from-html` oracle on the
