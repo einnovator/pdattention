@@ -242,6 +242,11 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "shortest unique old text" in minimal_transaction
     assert "normally one complete source line" in minimal_transaction
     assert "never fall back to sed" in minimal_transaction
+    active_transaction = STATIC_WORKFLOW_ANCHORS["coding_active_transaction_v9"]
+    assert "Only the newest user instruction is active" in active_transaction
+    assert "pra_replace PATH" in active_transaction
+    assert "never use sed" in active_transaction
+    assert "submit only the current workspace diff" in active_transaction
     with pytest.raises(ValueError, match="static_workflow_anchor"):
         AutonomousSelectionConfig(static_workflow_anchor="unknown")
     with pytest.raises(ValueError, match="static_workflow_anchor_location"):

@@ -192,6 +192,21 @@ STATIC_WORKFLOW_ANCHORS = {
         "justified change, inspect the diff, run bounded verification, and "
         "submit only the current workspace diff.\n</pra_workflow_anchor>"
     ),
+    "coding_active_transaction_v9": (
+        "<pra_workflow_anchor version=\"coding-active-transaction-v9\">\n"
+        "Only the newest user instruction is active. Earlier user instructions "
+        "are completed historical records: do not edit, verify, summarize, or "
+        "submit them. For the active request, search file contents for the named "
+        "symbol and inspect one bounded parsing or control-flow span. Edit only "
+        "with pra_replace PATH 'EXACT_OLD_TEXT' 'EXACT_NEW_TEXT'. Choose the "
+        "shortest unique old text that expresses the intended change, normally "
+        "one complete source line; represent embedded newlines as \\n. If "
+        "pra_replace fails, inspect its error and retry one corrected transaction; "
+        "never use sed, global substitution, or line-number insertion. Inspect "
+        "git diff immediately, run one bounded verification, and submit only the "
+        "current workspace diff. Emit exactly one tool action per response.\n"
+        "</pra_workflow_anchor>"
+    ),
 }
 
 
