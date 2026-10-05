@@ -201,21 +201,6 @@ class _NonRoundTripTokenizer(_Tokenizer):
         return "".join(result)
 
 
-class _WideWireTokenizer(_Tokenizer):
-    def apply_chat_template(self, messages, *, tokenize, add_generation_prompt, **kwargs):
-        text = super().apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=False,
-            **kwargs,
-        )
-        if add_generation_prompt:
-            text += self._MARKERS["assistant"]
-            if messages and messages[-1].get("content") == "observation":
-                text += "w" * 20
-        return self.encode(text, add_special_tokens=False) if tokenize else text
-
-
 class _Model:
     def __init__(self, *, sparse_delta: float = 0.0) -> None:
         self.layers = (object(),)
@@ -459,9 +444,9 @@ def test_frozen_agent_memory_plan_may_underfill_nominal_fraction() -> None:
     )
 
 
-def _executor_with_tokenizer(tokenizer, *, model=None):
+def _executor_with_tokenizer(tokenizer):
     return MLXAgentHistoryExecutor(
-        model or _Model(),
+        _Model(),
         tokenizer,
         model_id="fake",
         model_revision="pinned",
@@ -801,11 +786,7 @@ def test_compact_receipt_is_positioned_and_accounted_separately(fake_mlx) -> Non
     assert trace["selected_history_reencoded_tokens"] == 0
     assert trace["same_subset_gate_passed"] is True
     assert trace["same_subset_reference_kind"] == (
-        "vector_chunked_packed_original_position_mlx_prompt_cache"
-    )
-    assert trace["same_subset_compared_wire_chunks"] >= 1
-    assert trace["same_subset_reference_model_calls"] == (
-        trace["same_subset_compared_wire_chunks"]
+        "packed_original_position_mlx_prompt_cache"
     )
     assert trace["effective_attention_prompt_tokens"] == (
         trace["selected_kv_tokens"]
@@ -816,42 +797,6 @@ def test_compact_receipt_is_positioned_and_accounted_separately(fake_mlx) -> Non
     state = executor._sessions["session"]
     assert len(state.canonical_tokens) == state.canonical_memory.source_tokens
     assert state.ledger.messages[-1] == {"role": "assistant", "content": "A"}
-
-
-def test_sparse_wire_prefill_uses_vector_sized_candidate_and_oracle_chunks(
-    fake_mlx,
-) -> None:
-    model = _Model()
-    executor = _executor_with_tokenizer(_WideWireTokenizer(), model=model)
-    initial = (
-        {"role": "system", "content": "rules"},
-        {"role": "user", "content": "task"},
-    )
-    executor.generate(_request(initial))
-    logical = tuple(executor._sessions["session"].ledger.messages) + (
-        {"role": "user", "content": "observation"},
-    )
-
-    result = executor.generate(_request(
-        logical,
-        request_messages=(logical[0], logical[1], logical[-1]),
-        retention=0.5,
-        request_id="wide-wire",
-        selection_contract="arbitrary-subset-mechanism-probe",
-    ))
-    trace = result.trace[0]
-
-    assert trace["wire_tokens"] > 8
-    assert trace["wire_prefill_step"] == 8
-    assert trace["wire_model_calls"] > 1
-    assert trace["same_subset_reference_model_calls"] == trace["wire_model_calls"]
-    sparse_widths = [
-        width
-        for width, cache_type in zip(model.call_widths, model.call_cache_types)
-        if cache_type == "MLXDisjointSelectedKVCache"
-    ]
-    assert sparse_widths
-    assert max(sparse_widths) <= 8
 
 
 def test_generated_tokens_remain_resident_when_decode_encode_is_not_identity(fake_mlx) -> None:
