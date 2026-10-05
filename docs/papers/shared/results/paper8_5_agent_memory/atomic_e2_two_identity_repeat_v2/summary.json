@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_atomic_e2_two_identity_repeat_v2",
+  "evidence_class": "task_clustered_repeat_qualified_autonomous_agent_logical_selection",
+  "repository_revision": "48158c1c62893387a962b984b97cafeedbbbed98",
+  "model": "qwen3-coder:30b-ctx131k",
+  "model_digest": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+  "quantization": "Q4_K_M",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "top_k": 20,
+  "seed": 0,
+  "policy": {
+    "name": "Atomic E2",
+    "implementation": "persistent_instruction_epoch_retirement",
+    "boundary_mode": "boundary_free",
+    "completed_instruction_epochs": 2,
+    "retire_closed_instructions": true,
+    "materialization": "whole_record_drop",
+    "static_workflow_anchor": "none",
+    "transactional_replace_tool": false,
+    "synthetic_receipts": false,
+    "evaluator_task_ids_visible_to_selector": false
+  },
+  "task_clusters": [
+    {
+      "instance_id": "pytest-dev__pytest-7982",
+      "episode_index": 4,
+      "prior_episode_count": 3,
+      "repeats": 2,
+      "full_official_resolved": "2/2",
+      "atomic_e2_official_resolved": "2/2",
+      "full_calls": 24,
+      "atomic_e2_calls": 12,
+      "full_materialized_tokens": 432688,
+      "atomic_e2_full_counterfactual_tokens": 209060,
+      "atomic_e2_selected_tokens": 169520,
+      "own_saving_fraction": 0.18913230651487611,
+      "paired_saving_fraction": 0.6082165440224827,
+      "source": "../atomic_e2_task04_repeat_v1/summary.json"
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-14496",
+      "episode_index": 6,
+      "prior_episode_count": 5,
+      "prefix_sha256": "c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283",
+      "repeats": 2,
+      "full_official_resolved": "2/2",
+      "atomic_e2_official_resolved": "2/2",
+      "full_calls": 17,
+      "atomic_e2_calls": 17,
+      "full_materialized_tokens": 457081,
+      "atomic_e2_full_counterfactual_tokens": 460531,
+      "atomic_e2_selected_tokens": 197592,
+      "own_saving_fraction": 0.5709474497916536,
+      "paired_saving_fraction": 0.5677090056248236,
+      "strict_pair_validator": "2/2 pass",
+      "repeat_details": [
+        {
+          "repeat": 1,
+          "pair_id": "p85-scikit14496-atomicepoch-topk20-r01",
+          "full_calls": 9,
+          "atomic_e2_calls": 8,
+          "full_tokens": 244411,
+          "atomic_e2_full_counterfactual_tokens": 216963,
+          "atomic_e2_selected_tokens": 93227,
+          "own_saving_fraction": 0.5703092232316109,
+          "paired_saving_fraction": 0.6185646308881352,
+          "patch_sha256": "ff9babfd5431bfd0ccec76b243b3e35366a5382e372a3c0b1d0d5d7d5c6fda84"
+        },
+        {
+          "repeat": 2,
+          "pair_id": "p85-scikit14496-atomicepoch-topk20-r02",
+          "full_calls": 8,
+          "atomic_e2_calls": 9,
+          "full_tokens": 212670,
+          "atomic_e2_full_counterfactual_tokens": 243568,
+          "atomic_e2_selected_tokens": 104365,
+          "own_saving_fraction": 0.5715159626880378,
+          "paired_saving_fraction": 0.5092631776931396,
+          "patch_sha256": "ff9babfd5431bfd0ccec76b243b3e35366a5382e372a3c0b1d0d5d7d5c6fda84"
+        }
+      ]
+    }
+  ],
+  "aggregate": {
+    "task_clusters": 2,
+    "paired_executions": 4,
+    "full_official_resolved": "4/4",
+    "atomic_e2_official_resolved": "4/4",
+    "paired_success_preservation": "4/4",
+    "task_cluster_success_preservation": "2/2",
+    "full_calls": 41,
+    "atomic_e2_calls": 29,
+    "call_delta": -12,
+    "full_materialized_tokens": 889769,
+    "atomic_e2_full_counterfactual_tokens": 669591,
+    "atomic_e2_selected_tokens": 367112,
+    "own_saving_fraction": 0.45173695584319384,
+    "paired_saving_fraction": 0.5874075181311105
+  },
+  "interpretation": {
+    "target_30_to_50_percent_own_saving": "observed_pass",
+    "zero_lost_paired_successes": "observed_pass",
+    "no_aggregate_call_increase": "observed_pass",
+    "production_default": false,
+    "population_accuracy_claim": false,
+    "engine_kv_claim": false,
+    "next_gate": "held-out task clusters and frozen native-KV realization"
+  }
+}
