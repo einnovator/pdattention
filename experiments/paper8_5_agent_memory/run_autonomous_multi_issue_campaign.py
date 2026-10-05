@@ -839,6 +839,7 @@ _BEHAVIORAL_PAIRING_DEFAULTS = {
     "static_workflow_anchor": "none",
     "static_workflow_anchor_location": "system_prefix",
     "transactional_replace_tool": False,
+    "transactional_replace_only": False,
     "canonicalize_unordered_search_output": False,
     "upstream_dialect": "openai",
 }
@@ -858,6 +859,10 @@ def _behavioral_pairing_identity(manifest: Mapping[str, Any]) -> dict[str, Any]:
         "transactional_replace_tool": bool(manifest.get(
             "transactional_replace_tool",
             _BEHAVIORAL_PAIRING_DEFAULTS["transactional_replace_tool"],
+        )),
+        "transactional_replace_only": bool(manifest.get(
+            "transactional_replace_only",
+            _BEHAVIORAL_PAIRING_DEFAULTS["transactional_replace_only"],
         )),
         "canonicalize_unordered_search_output": bool(manifest.get(
             "canonicalize_unordered_search_output",

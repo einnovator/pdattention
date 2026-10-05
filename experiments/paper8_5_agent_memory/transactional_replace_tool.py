@@ -3,6 +3,53 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
+import shlex
+
+
+def transactional_edit_policy_rejection(command: str) -> str | None:
+    """Classify shell edits that bypass the fail-closed replacement tool.
+
+    This is deliberately narrow: read-only ``sed -n`` remains available, as
+    do tests, package installation, patch inspection, and ordinary shell
+    commands. The control targets the two failure modes observed in autonomous
+    runs: unavailable interactive editors and unguarded in-place substitution.
+    """
+
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    segments: list[list[str]] = [[]]
+    for token in tokens:
+        if token in {"&&", "||", ";", "|"}:
+            segments.append([])
+        else:
+            segments[-1].append(token)
+    for segment in segments:
+        while segment and "=" in segment[0] and not segment[0].startswith(("-", "/")):
+            segment = segment[1:]
+        while segment and segment[0] in {"command", "env", "sudo"}:
+            segment = segment[1:]
+        if not segment:
+            continue
+        executable = Path(segment[0]).name
+        if executable in {"nano", "vi", "vim", "nvim", "emacs"}:
+            return "interactive_editor"
+        if executable == "sed" and any(
+            token == "-i" or token.startswith("-i") or token.startswith("--in-place")
+            for token in segment[1:]
+        ):
+            return "unguarded_in_place_substitution"
+        if executable == "perl" and any(
+            token.startswith("-") and "i" in token[1:]
+            for token in segment[1:]
+        ):
+            return "unguarded_in_place_substitution"
+    return None
 
 
 TRANSACTIONAL_REPLACE_TOOL = r'''#!/usr/bin/env python3
@@ -77,4 +124,8 @@ TRANSACTIONAL_REPLACE_TOOL_SHA256 = hashlib.sha256(
 ).hexdigest()
 
 
-__all__ = ["TRANSACTIONAL_REPLACE_TOOL", "TRANSACTIONAL_REPLACE_TOOL_SHA256"]
+__all__ = [
+    "TRANSACTIONAL_REPLACE_TOOL",
+    "TRANSACTIONAL_REPLACE_TOOL_SHA256",
+    "transactional_edit_policy_rejection",
+]

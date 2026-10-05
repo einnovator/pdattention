@@ -938,6 +938,7 @@ def _pairing_manifest(instance_id: str, behavior: str) -> dict:
             "static_workflow_anchor_location": "system_prefix",
         },
         "transactional_replace_tool": False,
+        "transactional_replace_only": False,
         "canonicalize_unordered_search_output": False,
         "upstream_dialect": "openai",
     }

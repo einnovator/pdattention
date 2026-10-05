@@ -273,6 +273,9 @@ def build_agent_command(
             "-c",
             "environment.transactional_replace_tool="
             f"{str(bool(getattr(args, 'transactional_replace_tool', False))).lower()}",
+            "-c",
+            "environment.transactional_replace_only="
+            f"{str(bool(getattr(args, 'transactional_replace_only', False))).lower()}",
         ))
     command.extend((
         "-c",
@@ -983,6 +986,15 @@ def run(args: argparse.Namespace) -> Path:
             raise ValueError(
                 "transactional replacement requires the instrumented environment"
             )
+    if getattr(args, "transactional_replace_only", False):
+        if not getattr(args, "transactional_replace_tool", False):
+            raise ValueError(
+                "--transactional-replace-only requires --transactional-replace-tool"
+            )
+        if not args.instrument_observations:
+            raise ValueError(
+                "transactional edit enforcement requires the instrumented environment"
+            )
     card, instance_id, task_index = load_locked_task(
         args.benchmark_card,
         task_index=args.task_index,
@@ -1185,6 +1197,9 @@ def run(args: argparse.Namespace) -> Path:
         ),
         "transactional_replace_tool": bool(
             getattr(args, "transactional_replace_tool", False)
+        ),
+        "transactional_replace_only": bool(
+            getattr(args, "transactional_replace_only", False)
         ),
         "instrumentation_output_root": str(args.instrumentation_output_root),
         "agent_command_template": agent_command,
@@ -1770,6 +1785,15 @@ def build_parser() -> argparse.ArgumentParser:
             "Install the generic fail-closed pra_replace compatibility command "
             "inside the task environment. Its digest is recorded in the run "
             "manifest and it is never enabled implicitly."
+        ),
+    )
+    parser.add_argument(
+        "--transactional-replace-only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Reject interactive editors and unguarded in-place sed/perl edits "
+            "as recoverable observations. Requires --transactional-replace-tool."
         ),
     )
     parser.add_argument("--skip-grading", action="store_true")

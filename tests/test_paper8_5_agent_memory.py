@@ -61,6 +61,7 @@ from experiments.paper8_5_agent_memory.run_structural_screen import (
 )
 from experiments.paper8_5_agent_memory.transactional_replace_tool import (
     TRANSACTIONAL_REPLACE_TOOL,
+    transactional_edit_policy_rejection,
 )
 from experiments.paper8_5_agent_memory.miniswe_semantics import (
     declared_turn_metadata,
@@ -1840,6 +1841,33 @@ def test_transactional_replace_tool_is_atomic_and_fails_closed(tmp_path):
     assert rejected.returncode == 2
     assert "PRA_REPLACE_REJECTED occurrences=0" in rejected.stderr
     assert target.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    ("command", "reason"),
+    [
+        ("nano src/example.py", "interactive_editor"),
+        ("vi src/example.py", "interactive_editor"),
+        ("sed -i 's/old/new/' src/example.py", "unguarded_in_place_substitution"),
+        ("sed --in-place=.bak 's/old/new/' src/example.py", "unguarded_in_place_substitution"),
+        ("perl -pi -e 's/old/new/' src/example.py", "unguarded_in_place_substitution"),
+    ],
+)
+def test_transactional_edit_policy_rejects_unsafe_mutations(command, reason):
+    assert transactional_edit_policy_rejection(command) == reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sed -n '1,40p' src/example.py",
+        "pra_replace src/example.py 'old' 'new'",
+        "python -m pytest tests/test_example.py -q",
+        "git diff -- src/example.py",
+    ],
+)
+def test_transactional_edit_policy_preserves_safe_workflow(command):
+    assert transactional_edit_policy_rejection(command) is None
 
 
 def test_h1_retires_consumed_search_only_after_kf_delay():

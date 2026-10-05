@@ -32,7 +32,8 @@ STRICT_PAIRING_KEYS = (
     "instrument_observations", "agent_behavior_sha256",
     "scaffold_identity_sha256",
     "static_workflow_anchor", "static_workflow_anchor_location",
-    "transactional_replace_tool", "canonicalize_unordered_search_output",
+    "transactional_replace_tool", "transactional_replace_only",
+    "canonicalize_unordered_search_output",
     "upstream_dialect",
 )
 
@@ -45,7 +46,10 @@ def _pairing_value(manifest: Mapping[str, Any], key: str) -> Any:
         return selection.get(key, "none")
     if key == "static_workflow_anchor_location":
         return selection.get(key, "system_prefix")
-    if key in {"transactional_replace_tool", "canonicalize_unordered_search_output"}:
+    if key in {
+        "transactional_replace_tool", "transactional_replace_only",
+        "canonicalize_unordered_search_output",
+    }:
         return bool(manifest.get(key, False))
     if key == "upstream_dialect":
         return manifest.get(key, "openai")

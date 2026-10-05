@@ -29,6 +29,7 @@ from .submission_protocol import (
 from .transactional_replace_tool import (
     TRANSACTIONAL_REPLACE_TOOL,
     TRANSACTIONAL_REPLACE_TOOL_SHA256,
+    transactional_edit_policy_rejection,
 )
 
 
@@ -39,6 +40,7 @@ class InstrumentedDockerEnvironmentConfig(DockerEnvironmentConfig):
     require_unified_diff_submission: bool = False
     canonicalize_unordered_search_output: bool = False
     transactional_replace_tool: bool = False
+    transactional_replace_only: bool = False
 
 
 class InstrumentedDockerEnvironment(DockerEnvironment):
@@ -46,6 +48,10 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
 
     def __init__(self, **kwargs):
         super().__init__(config_class=InstrumentedDockerEnvironmentConfig, **kwargs)
+        if self.config.transactional_replace_only and not self.config.transactional_replace_tool:
+            raise ValueError(
+                "transactional_replace_only requires transactional_replace_tool"
+            )
         self._transactional_replace_tool_sha256: str | None = None
         if self.config.transactional_replace_tool:
             self._install_transactional_replace_tool()
@@ -150,7 +156,23 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
         pre_state = self._capture_state(effective_cwd, resources)
         effective_cwd = str(pre_state.get("cwd") or effective_cwd)
         checkpoint = self._capture_checkpoint(step, command, effective_cwd, pre_state)
-        output = super().execute(action, cwd=cwd, timeout=timeout)
+        edit_policy_rejection = (
+            transactional_edit_policy_rejection(command)
+            if self.config.transactional_replace_only else None
+        )
+        if edit_policy_rejection is None:
+            output = super().execute(action, cwd=cwd, timeout=timeout)
+        else:
+            output = {
+                "returncode": 2,
+                "output": (
+                    "PRA_EDIT_POLICY_REJECTED "
+                    f"kind={edit_policy_rejection} workspace_unchanged=true\n"
+                    "Inspect one bounded target span, then use: "
+                    "pra_replace PATH 'EXACT_OLD_TEXT' 'EXACT_NEW_TEXT'."
+                ),
+                "exception_info": "",
+            }
         normalization = None
         if (
             self.config.canonicalize_unordered_search_output
@@ -187,6 +209,13 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
         })
         if normalization is not None:
             metadata["paper8_5_observation_normalization"] = normalization
+        if edit_policy_rejection is not None:
+            metadata["paper8_5_transactional_edit_policy"] = {
+                "schema_version": 1,
+                "status": "rejected_recoverable",
+                "reason": edit_policy_rejection,
+                "workspace_unchanged": True,
+            }
         output["extra"] = {**dict(output.get("extra") or {}), **metadata}
         self._write_receipt(step, command, pre_state, post_state, metadata)
         return output
