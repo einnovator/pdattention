@@ -77,6 +77,20 @@ def decode(value):
     return "".join(result)
 
 
+def candidate_hints(data, old):
+    stripped = old.strip()
+    if not stripped or b"\n" in stripped:
+        return "none"
+    hints = []
+    for line_number, line in enumerate(data.splitlines(), 1):
+        if old in line or line.strip() == stripped:
+            leading = len(line) - len(line.lstrip(b" \t"))
+            hints.append(f"line={line_number}:leading_bytes={leading}")
+            if len(hints) == 4:
+                break
+    return ",".join(hints) if hints else "none"
+
+
 def main():
     if len(sys.argv) != 4:
         print("usage: pra_replace PATH EXACT_OLD_TEXT EXACT_NEW_TEXT", file=sys.stderr)
@@ -91,7 +105,10 @@ def main():
     occurrences = data.count(old)
     if not old or occurrences != 1:
         print(
-            f"PRA_REPLACE_REJECTED occurrences={occurrences}; file unchanged",
+            f"PRA_REPLACE_REJECTED occurrences={occurrences} "
+            f"candidates={candidate_hints(data, old)}; file unchanged. "
+            "For duplicate lines include leading indentation or bounded "
+            "adjacent context in EXACT_OLD_TEXT.",
             file=sys.stderr,
         )
         return 2

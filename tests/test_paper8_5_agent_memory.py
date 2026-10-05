@@ -1842,6 +1842,18 @@ def test_transactional_replace_tool_is_atomic_and_fails_closed(tmp_path):
     assert "PRA_REPLACE_REJECTED occurrences=0" in rejected.stderr
     assert target.read_bytes() == before
 
+    target.write_bytes(b"    duplicate\n        duplicate\n")
+    ambiguous = subprocess.run(
+        [sys.executable, str(script), str(target), "duplicate", "replacement"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ambiguous.returncode == 2
+    assert "occurrences=2" in ambiguous.stderr
+    assert "line=1:leading_bytes=4" in ambiguous.stderr
+    assert "line=2:leading_bytes=8" in ambiguous.stderr
+
 
 @pytest.mark.parametrize(
     ("command", "reason"),

@@ -168,6 +168,7 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
                 "output": (
                     "PRA_EDIT_POLICY_REJECTED "
                     f"kind={edit_policy_rejection} workspace_unchanged=true\n"
+                    "This command class will always be rejected; do not retry it. "
                     "Inspect one bounded target span, then use: "
                     "pra_replace PATH 'EXACT_OLD_TEXT' 'EXACT_NEW_TEXT'."
                 ),
