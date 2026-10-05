@@ -104,6 +104,51 @@ def test_disjoint_segmented_attention_matches_one_dense_reference() -> None:
     assert float(mx.max(mx.abs(reference - actual)).item()) <= 2e-3
 
 
+def test_fused_disjoint_single_pass_matches_native_vector_geometry() -> None:
+    """Exercise the Qwen-shaped MLX single-pass vector-SDPA route."""
+
+    mx = pytest.importorskip("mlx.core")
+    from pra_mlx.native import disjoint_segmented_selected_attention
+
+    head_dim = 128
+    query_tokens = 4
+    source_tokens = 3072
+    query = mx.random.normal((1, 8, query_tokens, head_dim)).astype(mx.float16)
+    source_k = mx.random.normal((1, 2, source_tokens, head_dim)).astype(mx.float16)
+    source_v = mx.random.normal((1, 2, source_tokens, head_dim)).astype(mx.float16)
+    intervals = ((0, 900), (1000, 1800), (2000, 2976))
+    memory_k = tuple(source_k[:, :, start:end, :] for start, end in intervals)
+    memory_v = tuple(source_v[:, :, start:end, :] for start, end in intervals)
+    local_k = mx.random.normal((1, 2, 64, head_dim)).astype(mx.float16)
+    local_v = mx.random.normal((1, 2, 64, head_dim)).astype(mx.float16)
+    mask = mx.ones((query_tokens, 2740), dtype=mx.bool_)
+
+    packed_k = mx.concatenate((*memory_k, local_k), axis=2)
+    packed_v = mx.concatenate((*memory_v, local_v), axis=2)
+    reference = mx.fast.scaled_dot_product_attention(
+        query,
+        packed_k,
+        packed_v,
+        scale=head_dim**-0.5,
+        mask=mask,
+    )
+    actual = disjoint_segmented_selected_attention(
+        query,
+        memory_k,
+        memory_v,
+        local_k,
+        local_v,
+        scale=head_dim**-0.5,
+        mask=mask,
+        source_keys=source_k,
+        source_values=source_v,
+        source_intervals=intervals,
+    )
+    mx.eval(reference, actual)
+
+    assert float(mx.max(mx.abs(reference - actual)).item()) <= 2e-3
+
+
 @pytest.mark.parametrize("query_tokens", [1, 4, 20])
 def test_fused_disjoint_two_pass_survives_mostly_future_mask(
     query_tokens: int,
