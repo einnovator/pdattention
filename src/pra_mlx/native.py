@@ -747,7 +747,7 @@ def disjoint_segmented_selected_attention(
     return mx.flatten(numerator, 1, 2).astype(queries.dtype)
 
 
-_DISJOINT_METAL_KERNELS: dict[float, object] = {}
+_DISJOINT_METAL_KERNELS: dict[tuple[float, str], object] = {}
 _DISJOINT_METAL_2PASS_KERNELS: dict[
     tuple[float, int, str], tuple[object, object]
 ] = {}
@@ -858,112 +858,126 @@ def _metal_disjoint_selected_attention(
             blocks=blocks,
         )
 
-    kernel_key = float(scale)
+    if head_dim % 32:
+        raise ValueError(
+            "Native-vector interval attention requires a 32-aligned head dimension."
+        )
+    if queries.dtype == mx.bfloat16:
+        storage_type = "bfloat16_t"
+    elif queries.dtype == mx.float16:
+        storage_type = "half"
+    elif queries.dtype == mx.float32:
+        storage_type = "float"
+    else:
+        raise ValueError(
+            "Native-vector interval attention supports float32, float16, and bfloat16."
+        )
+    kernel_key = (float(scale), storage_type)
     kernel = _DISJOINT_METAL_KERNELS.get(kernel_key)
     if kernel is None:
         source = f"""
-    uint d = thread_index_in_threadgroup;
-    uint row = threadgroup_position_in_grid.x;
+    uint lane = thread_index_in_simdgroup;
+    uint simdgroup = simdgroup_index_in_threadgroup;
+    uint qhead = threadgroup_position_in_grid.x;
+    uint qi = threadgroup_position_in_grid.y;
     uint query_tokens = q_shape[2];
-    uint qhead = row / query_tokens;
-    uint qi = row - qhead * query_tokens;
     uint head_dim = q_shape[3];
     uint groups = q_shape[1] / source_k_shape[1];
     uint kvhead = qhead / groups;
-    uint simdgroups = (head_dim + 31) / 32;
-    threadgroup float partials[8];
-    threadgroup float shared_score;
-    float running_max = -INFINITY;
-    float denominator = 0.0f;
-    float accumulator = 0.0f;
-    uint compact_k = 0;
+    uint per_thread = head_dim / 32;
     float scale_value = {float(scale):.17g}f;
-
+    uint selected_tokens = 0u;
     for (uint interval = 0; interval < intervals_shape[0]; ++interval) {{
-        uint begin = intervals[interval * 2];
-        uint end = intervals[interval * 2 + 1];
-        for (uint kt = begin; kt < end; ++kt, ++compact_k) {{
-            bool visible = mask[qi * mask_strides[0] + compact_k * mask_strides[1]];
-            if (!visible) {{ continue; }}
-            float product = 0.0f;
-            if (d < head_dim) {{
-                uint q_index = qhead * q_strides[1] + qi * q_strides[2]
-                    + d * q_strides[3];
-                uint k_index = kvhead * source_k_strides[1]
-                    + kt * source_k_strides[2] + d * source_k_strides[3];
-                product = float(q[q_index]) * float(source_k[k_index]);
-            }}
-            float lane_sum = simd_sum(product);
-            if (thread_index_in_simdgroup == 0) {{
-                partials[simdgroup_index_in_threadgroup] = lane_sum;
-            }}
-            threadgroup_barrier(mem_flags::mem_threadgroup);
-            if (d == 0) {{
-                float dot = 0.0f;
-                for (uint sg = 0; sg < simdgroups; ++sg) {{ dot += partials[sg]; }}
-                shared_score = dot * scale_value;
-            }}
-            threadgroup_barrier(mem_flags::mem_threadgroup);
-            float score = shared_score;
-            float next_max = metal::max(running_max, score);
-            float prior_scale = isinf(running_max)
-                ? 0.0f : metal::precise::exp(running_max - next_max);
-            float weight = metal::precise::exp(score - next_max);
-            if (d < head_dim) {{
-                uint v_index = kvhead * source_v_strides[1]
-                    + kt * source_v_strides[2] + d * source_v_strides[3];
-                accumulator = accumulator * prior_scale
-                    + weight * float(source_v[v_index]);
-            }}
-            denominator = denominator * prior_scale + weight;
-            running_max = next_max;
-            threadgroup_barrier(mem_flags::mem_threadgroup);
-        }}
+        selected_tokens += intervals[interval * 2 + 1]
+            - intervals[interval * 2];
     }}
-
-    for (uint kt = 0; kt < local_k_shape[2]; ++kt, ++compact_k) {{
-        bool visible = mask[qi * mask_strides[0] + compact_k * mask_strides[1]];
+    uint total_tokens = selected_tokens + local_k_shape[2];
+    float qv[8];
+    float ov[8];
+    for (uint j = 0; j < per_thread; ++j) {{
+        uint dim = lane * per_thread + j;
+        uint q_index = qhead * q_strides[1] + qi * q_strides[2]
+            + dim * q_strides[3];
+        qv[j] = scale_value * float(q[q_index]);
+        ov[j] = 0.0f;
+    }}
+    float max_score = -INFINITY;
+    float sum_exp_score = 0.0f;
+    for (uint compact = simdgroup; compact < total_tokens; compact += 32) {{
+        bool visible = mask[qi * mask_strides[0]
+            + compact * mask_strides[1]];
         if (!visible) {{ continue; }}
-        float product = 0.0f;
-        if (d < head_dim) {{
-            uint q_index = qhead * q_strides[1] + qi * q_strides[2]
-                + d * q_strides[3];
-            uint k_index = kvhead * local_k_strides[1]
-                + kt * local_k_strides[2] + d * local_k_strides[3];
-            product = float(q[q_index]) * float(local_k[k_index]);
+        bool is_local = compact >= selected_tokens;
+        uint token = compact - selected_tokens;
+        if (!is_local) {{
+            uint remaining = compact;
+            for (uint interval = 0; interval < intervals_shape[0]; ++interval) {{
+                uint begin = intervals[interval * 2];
+                uint width = intervals[interval * 2 + 1] - begin;
+                if (remaining < width) {{
+                    token = begin + remaining;
+                    break;
+                }}
+                remaining -= width;
+            }}
         }}
-        float lane_sum = simd_sum(product);
-        if (thread_index_in_simdgroup == 0) {{
-            partials[simdgroup_index_in_threadgroup] = lane_sum;
+        float score = 0.0f;
+        for (uint j = 0; j < per_thread; ++j) {{
+            uint dim = lane * per_thread + j;
+            uint key_index = is_local
+                ? kvhead * local_k_strides[1] + token * local_k_strides[2]
+                    + dim * local_k_strides[3]
+                : kvhead * source_k_strides[1] + token * source_k_strides[2]
+                    + dim * source_k_strides[3];
+            float key_value = is_local
+                ? float(local_k[key_index]) : float(source_k[key_index]);
+            score += qv[j] * key_value;
         }}
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        if (d == 0) {{
-            float dot = 0.0f;
-            for (uint sg = 0; sg < simdgroups; ++sg) {{ dot += partials[sg]; }}
-            shared_score = dot * scale_value;
+        score = simd_sum(score);
+        float next_max = metal::max(max_score, score);
+        float prior_scale = metal::fast::exp(max_score - next_max);
+        float weight = metal::fast::exp(score - next_max);
+        max_score = next_max;
+        sum_exp_score = sum_exp_score * prior_scale + weight;
+        for (uint j = 0; j < per_thread; ++j) {{
+            uint dim = lane * per_thread + j;
+            uint value_index = is_local
+                ? kvhead * local_v_strides[1] + token * local_v_strides[2]
+                    + dim * local_v_strides[3]
+                : kvhead * source_v_strides[1] + token * source_v_strides[2]
+                    + dim * source_v_strides[3];
+            float value = is_local
+                ? float(local_v[value_index]) : float(source_v[value_index]);
+            ov[j] = ov[j] * prior_scale + weight * value;
         }}
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        float score = shared_score;
-        float next_max = metal::max(running_max, score);
-        float prior_scale = isinf(running_max)
-            ? 0.0f : metal::precise::exp(running_max - next_max);
-        float weight = metal::precise::exp(score - next_max);
-        if (d < head_dim) {{
-            uint v_index = kvhead * local_v_strides[1]
-                + kt * local_v_strides[2] + d * local_v_strides[3];
-            accumulator = accumulator * prior_scale + weight * float(local_v[v_index]);
-        }}
-        denominator = denominator * prior_scale + weight;
-        running_max = next_max;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
     }}
-    if (d < head_dim) {{
-        uint out_index = (qhead * query_tokens + qi) * head_dim + d;
-        out[out_index] = accumulator / denominator;
+    threadgroup float outputs[1024];
+    threadgroup float max_scores[32];
+    threadgroup float sum_exp_scores[32];
+    if (lane == 0) {{
+        max_scores[simdgroup] = max_score;
+        sum_exp_scores[simdgroup] = sum_exp_score;
+    }}
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    max_score = max_scores[lane];
+    float global_max = simd_max(max_score);
+    float factor = metal::fast::exp(max_score - global_max);
+    sum_exp_score = simd_sum(sum_exp_scores[lane] * factor);
+    uint output_base = (qhead * query_tokens + qi) * head_dim
+        + simdgroup * per_thread;
+    for (uint j = 0; j < per_thread; ++j) {{
+        outputs[lane * 32 + simdgroup] = ov[j];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float value = simd_sum(outputs[simdgroup * 32 + lane] * factor);
+        value = sum_exp_score == 0.0f ? value : value / sum_exp_score;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (lane == 0) {{
+            out[output_base + j] = static_cast<{storage_type}>(value);
+        }}
     }}
 """
         kernel = mx.fast.metal_kernel(
-            name="pra_interval_addressed_attention",
+            name="pra_interval_addressed_attention_native_vector",
             input_names=(
                 "q", "source_k", "source_v", "local_k", "local_v",
                 "intervals", "mask",
@@ -975,17 +989,16 @@ def _metal_disjoint_selected_attention(
         )
         _DISJOINT_METAL_KERNELS[kernel_key] = kernel
 
-    threadgroup_width = 32 * ((head_dim + 31) // 32)
     return kernel(
         inputs=(
             queries, source_keys, source_values, local_keys, local_values,
             interval_array, mask,
         ),
-        grid=(query_heads * query_tokens * threadgroup_width, 1, 1),
-        threadgroup=(threadgroup_width, 1, 1),
+        grid=(query_heads * 1024, query_tokens, 1),
+        threadgroup=(1024, 1, 1),
         output_shapes=(queries.shape,),
-        output_dtypes=(mx.float32,),
-    )[0].astype(queries.dtype)
+        output_dtypes=(queries.dtype,),
+    )[0]
 
 
 def _metal_disjoint_selected_attention_2pass(
