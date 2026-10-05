@@ -1003,6 +1003,39 @@ def test_frontier_dag_w1_pins_minimal_successful_workflow_spine():
         edge.kind == DagEdgeKind.WORKFLOW_CONTROL for edge in dag.edges
     ) == 5
 
+    # If the live frontier also contains a valid completion, W1 must not spend
+    # its only exemplar on that already-retained group. It still preserves the
+    # compact workflow spine from the latest retired completed epoch.
+    frontier_records = list(history.records)
+    frontier_records[-1] = replace(
+        frontier_records[-1],
+        metadata={
+            **frontier_records[-1].metadata,
+            "protocol_completion_valid": True,
+        },
+    )
+    frontier_history = CanonicalAgentHistory(
+        tuple(frontier_records),
+        history.turns,
+    )
+    frontier_dag = build_frontier_information_flow_dag(
+        frontier_history,
+        recent_user_prompts=1,
+        valid_protocol_exemplars=1,
+        valid_workflow_exemplars=1,
+    )
+    frontier_retired = {
+        row.causal_group_id for row in frontier_dag.retirement_candidates
+    }
+
+    assert {
+        "turn-search", "turn-mutation", "turn-verification", "turn-final",
+    }.isdisjoint(frontier_retired)
+    assert {
+        "observation-search", "observation-mutation",
+        "observation-verification", "observation-final",
+    }.issubset(frontier_dag.live_ancestor_record_ids)
+
 
 def test_recordizer_preserves_action_observation_causal_bundles():
     history = recordize_minisweagent_messages(_messages(3))

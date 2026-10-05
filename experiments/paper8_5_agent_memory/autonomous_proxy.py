@@ -183,6 +183,15 @@ STATIC_WORKFLOW_ANCHORS = {
         "inspect git diff, run one targeted verification, and submit. Emit "
         "exactly one tool action per response.\n</pra_workflow_anchor>"
     ),
+    "coding_active_request_v8": (
+        "<pra_workflow_anchor version=\"coding-active-request-v8\">\n"
+        "Only the newest user instruction is active. Earlier user instructions "
+        "are completed historical records: do not edit, verify, summarize, or "
+        "submit them. For the active request, use targeted search, inspect the "
+        "relevant parsing or control path before editing, make the smallest "
+        "justified change, inspect the diff, run bounded verification, and "
+        "submit only the current workspace diff.\n</pra_workflow_anchor>"
+    ),
 }
 
 

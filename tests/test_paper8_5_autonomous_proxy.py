@@ -133,6 +133,49 @@ def test_static_workflow_anchor_can_bind_to_current_user_instruction():
     assert result.trace["static_workflow_anchor_location"] == "current_instruction"
 
 
+def test_active_request_anchor_marks_only_newest_instruction_active():
+    prior = {
+        "instance_id": "old-task",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "old completed request"},
+            {"role": "assistant", "content": "completed"},
+            {"role": "user", "content": "done"},
+        ],
+        "info": {"exit_status": "Submitted", "submission": "diff --git a/a b/a"},
+    }
+    source = {
+        "model": "model",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "new active request"},
+        ],
+    }
+
+    result = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="full",
+            task_id="new-task",
+            session_id="persistent-test",
+            episode_index=2,
+            static_workflow_anchor="coding_active_request_v8",
+            static_workflow_anchor_location="current_instruction",
+        ),
+        count_tokens=lambda value: len(value.split()),
+        prior_episodes=(prior,),
+    )
+
+    anchored = [
+        row for row in result.payload["messages"]
+        if "Only the newest user instruction is active" in str(row.get("content", ""))
+    ]
+    assert len(anchored) == 1
+    assert "new active request" in anchored[0]["content"]
+    assert "old completed request" not in anchored[0]["content"]
+    assert result.trace["static_workflow_anchor_tokens"] > 0
+
+
 def test_current_instruction_anchor_targets_active_persistent_episode():
     prior = {
         "instance_id": "old-task",

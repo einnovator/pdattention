@@ -24,6 +24,8 @@ from pra_hf.agent_history import OpenAIRecordizer
 from .autonomous_proxy import (
     AutonomousSelectionConfig,
     STATIC_WORKFLOW_ANCHORS,
+    ollama_native_to_openai_chat,
+    openai_to_ollama_native_chat,
     transform_autonomous_payload,
 )
 from .materialization import MaterializationMode
@@ -231,6 +233,9 @@ def _payload(manifest: Mapping[str, Any], messages: Sequence[Mapping[str, Any]])
     maximum = manifest.get("max_completion_tokens")
     if maximum is not None:
         payload["max_tokens"] = maximum
+    top_k = manifest.get("top_k")
+    if top_k is not None:
+        payload["top_k"] = int(top_k)
     return payload
 
 
@@ -283,15 +288,30 @@ def _find_frozen_request(
     return end, candidate, transformed
 
 
-def _post(endpoint: str, payload: Mapping[str, Any], timeout: float) -> dict[str, Any]:
+def _post(
+    endpoint: str,
+    payload: Mapping[str, Any],
+    timeout: float,
+    upstream_dialect: str = "openai",
+) -> dict[str, Any]:
+    if upstream_dialect not in {"openai", "ollama_native"}:
+        raise ValueError("upstream_dialect must be openai or ollama_native")
+    wire_payload = (
+        openai_to_ollama_native_chat(payload)
+        if upstream_dialect == "ollama_native"
+        else dict(payload)
+    )
     request = urllib.request.Request(
         endpoint,
-        data=json.dumps(payload).encode("utf-8"),
+        data=json.dumps(wire_payload).encode("utf-8"),
         headers={"Content-Type": "application/json", "Authorization": "Bearer none"},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        value = json.loads(response.read().decode("utf-8"))
+        body = response.read()
+    if upstream_dialect == "ollama_native":
+        body = ollama_native_to_openai_chat(body)
+    value = json.loads(body.decode("utf-8"))
     if not isinstance(value, dict):
         raise ValueError("endpoint returned a non-object response")
     return value
@@ -304,8 +324,14 @@ def _generation_row(
     transformation,
     endpoint: str,
     timeout: float,
+    upstream_dialect: str = "openai",
 ) -> dict[str, Any]:
-    response = _post(endpoint, transformation.payload, timeout)
+    response = _post(
+        endpoint,
+        transformation.payload,
+        timeout,
+        upstream_dialect=upstream_dialect,
+    )
     content = str(response["choices"][0]["message"].get("content") or "")
     commands = _COMMAND.findall(content)
     return {
@@ -328,6 +354,7 @@ def _generation_row(
         "reported_usage": response.get("usage"),
         "diagnostic_served_model": transformation.payload.get("model"),
         "diagnostic_max_tokens": transformation.payload.get("max_tokens"),
+        "upstream_dialect": upstream_dialect,
     }
 
 
@@ -468,8 +495,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         key=lambda row: (row.excluded_tokens, row.causal_group_id),
     )
     endpoint = args.base_url.rstrip("/")
-    if not endpoint.endswith("/v1/chat/completions"):
-        endpoint += "/v1/chat/completions"
+    endpoint_suffix = (
+        "/api/chat"
+        if args.upstream_dialect == "ollama_native"
+        else "/v1/chat/completions"
+    )
+    if not endpoint.endswith(endpoint_suffix):
+        endpoint += endpoint_suffix
     rows = []
 
     def checkpoint_controls(status: str) -> None:
@@ -489,11 +521,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         rows.append(_generation_row(
             arm="FULL_same_prefix", repeat=repeat, transformation=full,
             endpoint=endpoint, timeout=args.timeout_seconds,
+            upstream_dialect=args.upstream_dialect,
         ))
         checkpoint_controls("partial_controls_running")
         rows.append(_generation_row(
             arm="candidate_same_prefix", repeat=repeat, transformation=candidate,
             endpoint=endpoint, timeout=args.timeout_seconds,
+            upstream_dialect=args.upstream_dialect,
         ))
         checkpoint_controls("partial_controls_running")
         if counterfactual is not None:
@@ -503,6 +537,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 transformation=counterfactual,
                 endpoint=endpoint,
                 timeout=args.timeout_seconds,
+                upstream_dialect=args.upstream_dialect,
             ))
             checkpoint_controls("partial_controls_running")
     # Preserve expensive matched-input controls even if a later diagnostic
@@ -554,6 +589,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             transformation=transformed,
             endpoint=endpoint,
             timeout=args.timeout_seconds,
+            upstream_dialect=args.upstream_dialect,
         )
         row["addback_epoch_index"] = batch["epoch_index"]
         row["addback_causal_group_ids"] = list(batch["causal_group_ids"])
@@ -600,6 +636,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "control_repeats": args.control_repeats,
         "diagnostic_served_model_override": args.diagnostic_served_model,
         "diagnostic_max_tokens_override": args.diagnostic_max_tokens,
+        "upstream_dialect": args.upstream_dialect,
         "rows": rows,
         "interpretation_guardrail": (
             "Add-backs diagnose first-request sensitivity only. They do not establish "
@@ -625,6 +662,16 @@ def main() -> None:
         ),
     )
     parser.add_argument("--base-url", required=True)
+    parser.add_argument(
+        "--upstream-dialect",
+        choices=("openai", "ollama_native"),
+        default="openai",
+        help=(
+            "Wire contract used for diagnostic generations. ollama_native "
+            "is required when effective Ollama-only controls such as top_k "
+            "must be preserved."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--request-index", type=int, default=1)
     parser.add_argument("--control-repeats", type=int, default=3)

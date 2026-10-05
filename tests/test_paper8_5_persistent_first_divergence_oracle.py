@@ -24,7 +24,7 @@ def test_generation_row_preserves_content_and_finish_reason(monkeypatch):
     monkeypatch.setattr(
         oracle,
         "_post",
-        lambda endpoint, payload, timeout: {
+        lambda endpoint, payload, timeout, upstream_dialect="openai": {
             "choices": [{
                 "message": {"content": "analysis without a command"},
                 "finish_reason": "length",
@@ -52,6 +52,75 @@ def test_generation_row_preserves_content_and_finish_reason(monkeypatch):
     assert row["action_valid"] is False
     assert row["diagnostic_served_model"] is None
     assert row["diagnostic_max_tokens"] is None
+    assert row["upstream_dialect"] == "openai"
+
+
+def test_frozen_payload_preserves_effective_top_k():
+    payload = _payload({
+        "served_model": "locked-model",
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "top_k": 20,
+        "seed": 0,
+        "max_completion_tokens": 32,
+    }, [{"role": "user", "content": "task"}])
+
+    assert payload["top_k"] == 20
+
+
+def test_oracle_native_transport_applies_top_k(monkeypatch):
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "model": "locked-model",
+                "message": {"role": "assistant", "content": "ok"},
+                "done": True,
+                "done_reason": "stop",
+                "prompt_eval_count": 10,
+                "eval_count": 1,
+            }).encode()
+
+    def urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["payload"] = json.loads(request.data)
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(oracle.urllib.request, "urlopen", urlopen)
+    value = oracle._post(
+        "http://engine/api/chat",
+        {
+            "model": "locked-model",
+            "messages": [{"role": "user", "content": "task"}],
+            "stream": False,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "top_k": 20,
+            "seed": 0,
+            "max_tokens": 32,
+        },
+        7.0,
+        upstream_dialect="ollama_native",
+    )
+
+    assert captured["url"] == "http://engine/api/chat"
+    assert captured["timeout"] == 7.0
+    assert captured["payload"]["options"]["top_k"] == 20
+    assert captured["payload"]["options"]["num_predict"] == 32
+    assert value["choices"][0]["message"]["content"] == "ok"
+    assert value["usage"] == {
+        "prompt_tokens": 10,
+        "completion_tokens": 1,
+        "total_tokens": 11,
+    }
 
 
 def test_diagnostic_generation_overrides_do_not_change_selection_trace():

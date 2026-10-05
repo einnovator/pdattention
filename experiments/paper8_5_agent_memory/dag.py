@@ -492,10 +492,6 @@ def build_frontier_information_flow_dag(
                 continue
             seen_groups.add(record.causal_group_id)
             valid_groups.append((record.causal_group_id, record.record_id))
-            if len(valid_groups) >= max(
-                valid_protocol_exemplars, valid_workflow_exemplars
-            ):
-                break
         frontier_instructions = tuple(
             epoch.instruction_record_id for epoch in epochs
             if epoch.epoch_index in frontier_epochs
@@ -510,16 +506,23 @@ def build_frontier_information_flow_dag(
                         DagEdgeKind.PROTOCOL_CONTROL,
                     ))
 
-        # An aggressive one-prompt frontier may retain a valid submission
-        # example yet still lose the workflow fact that a mutation must occur
-        # before verification and submission.  W exemplars therefore pin a
-        # minimal successful search -> inspection -> mutation -> verification
-        # -> completion spine from the latest harness-certified epoch.
+        # A recent frontier may already contain a valid submission example yet
+        # still lose the workflow fact that a retired task used scoped search,
+        # inspection, mutation, verification, and submission successfully.
+        # W exemplars therefore come from the latest harness-certified epochs
+        # *outside* the live frontier.  Selecting the globally latest workflow
+        # could make W1 a no-op whenever that epoch was already retained; this
+        # was observed in the Task-5 first-divergence diagnostic.
         # Evidence comes from generic observation metadata: operation classes,
         # an actual changed-resource receipt, and a successful observation of
         # that post-mutation resource.  No task ID, command name, or
         # repository-specific rule is consulted.
-        for _, protocol_id in valid_groups[:valid_workflow_exemplars]:
+        retired_workflow_groups = [
+            (group_id, protocol_id)
+            for group_id, protocol_id in valid_groups
+            if epoch_for_record.get(protocol_id) not in frontier_epochs
+        ]
+        for _, protocol_id in retired_workflow_groups[:valid_workflow_exemplars]:
             protocol_epoch = epoch_for_record.get(protocol_id)
             if protocol_epoch is None:
                 continue
@@ -1414,7 +1417,7 @@ class FrontierDagRetirementSelector:
                 )
                 + f"_p{self.valid_protocol_exemplars}"
                 + (
-                    f"_w{self.valid_workflow_exemplars}"
+                    f"_retired_w{self.valid_workflow_exemplars}"
                     if self.valid_workflow_exemplars else ""
                 )
             ),
