@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "evidence_class": "autonomous_agent_engine_gate",
+  "date": "2026-10-05",
+  "status": "tail90_admitted_one_task_identity",
+  "supersedes_for_this_model_profile": "mlx_qwen25coder14b_task01_post_transactional_20261005 tail-90 numerical-negative conclusion",
+  "engine": {
+    "family": "direct_mlx",
+    "mlx_version": "0.32.1",
+    "mlx_lm_version": "0.32.0",
+    "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+    "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+    "host": "Apple M5 16GB",
+    "paper4_5_native_vector_revision": "92cf8f81",
+    "paper4_5_test_revision": "fb95b376",
+    "paper8_5_revision": "b98617a5cd6afae807d28e6768d08bfd49263681"
+  },
+  "repair": {
+    "fault": "The interval-addressed single-pass Metal consumer used four SIMD groups for a 128-wide head while MLX vector SDPA used 32 partial online-softmax states and a 32-way merge. Algebraic equivalence did not preserve the native reduction geometry.",
+    "change": "Use MLX's 1024-thread, 32-SIMD-group vector reduction geometry while mapping compact selected indices directly through resident source intervals.",
+    "selected_history_reencoded": false,
+    "selected_history_kv_copied": false,
+    "packed_selected_kv_created_by_candidate": false,
+    "real_mlx_regression": {
+      "shape": "batch=1, q_heads=8, kv_heads=2, q_tokens=4, source_tokens=3072, selected_plus_local_tokens=2740, head_dim=128",
+      "result": "pass",
+      "test": "test_fused_disjoint_single_pass_matches_native_vector_geometry"
+    }
+  },
+  "agent": {
+    "name": "mini-swe-agent",
+    "version": "2.4.6",
+    "temperature": 0.0,
+    "seed": 0,
+    "top_p": 1.0,
+    "top_k": 20,
+    "max_completion_tokens": 1024,
+    "transactional_replace_only": true,
+    "python_syntax_clean_submission_required": true
+  },
+  "task": {
+    "instance_id": "django__django-15277",
+    "cohort_label": "Easy-14 Task 1",
+    "plain_official_resolved": true,
+    "pra100_official_resolved": true,
+    "tail90_official_resolved": true,
+    "tail90_official_score": 1.0,
+    "submitted_patch_equal": true
+  },
+  "controls": {
+    "plain": {
+      "calls": 9,
+      "cumulative_full_tokens": 48727,
+      "cumulative_materialized_tokens": 48727,
+      "agent_wall_time_seconds": 254.52433575000032,
+      "command_list_json_compact_sha256": "a79f6763861c5e32a959c59d4512f3bae36de0b0052f7c3ed65e46b5783854a7",
+      "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v7/task01_plain_guarded_indentation_cold_r01"
+    },
+    "pra100": {
+      "calls": 9,
+      "cumulative_full_tokens": 48685,
+      "cumulative_materialized_tokens": 48685,
+      "cumulative_selected_kv_tokens": 49135,
+      "selected_history_reencoded_tokens": 0,
+      "selected_history_kv_copy_bytes": 0,
+      "agent_wall_time_seconds": 267.65161304100184,
+      "command_list_json_compact_sha256": "a79f6763861c5e32a959c59d4512f3bae36de0b0052f7c3ed65e46b5783854a7",
+      "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v9/task01_pra100_guarded_indentation_cold_r01"
+    }
+  },
+  "tail90": {
+    "calls": 8,
+    "cumulative_full_tokens": 37226,
+    "cumulative_selected_tokens": 37226,
+    "cumulative_materialized_tokens": 34392,
+    "mean_realized_retention_fraction": 0.9371697765082729,
+    "minimum_realized_retention_fraction": 0.8976824034334764,
+    "cumulative_selected_kv_tokens": 27331,
+    "cumulative_wire_tokens": 24,
+    "selected_history_reencoded_tokens": 0,
+    "selected_history_kv_copy_bytes": 0,
+    "host_to_device_bytes": 0,
+    "cumulative_total_kv_copy_bytes": 18000052224,
+    "cumulative_consumer_temporary_bytes": 14402043904,
+    "maximum_consumer_temporary_peak_bytes": 2624159744,
+    "agent_wall_time_seconds": 3138.8699928749993,
+    "command_list_json_compact_sha256": "68a62ef374303c82841527b0c7967d16e9bb771253403c006e1ae01d1155a636",
+    "official_result_sha256": "67eec560918c93607a8b3d8d2a6722ec42ced0e1d82c5554873036e582071335",
+    "autonomous_metrics_sha256": "3032f0843824790f88561c4ff9ceee1b84fb271315b2f4562b2e35460b49a786",
+    "persistent_episode_export_sha256": "c01324b1b4ba14c7e3cae51ebb094fca5e1662a2879543a10a49f7d6f0b3aa5e",
+    "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v19-native-vector/task01_tail90_native_vector_strict_r01"
+  },
+  "same_subset_gate": {
+    "mode": "raw_logit",
+    "predeclared_max_abs_logit_delta": 0.005,
+    "sparse_requests": 5,
+    "compared_generation_decisions": 320,
+    "maximum_raw_logit_delta": 0.0,
+    "maximum_centered_logit_delta": 0.0,
+    "maximum_probability_delta": 0.0,
+    "maximum_total_variation": 0.0,
+    "all_greedy_tokens_equal": true,
+    "all_sparse_requests_passed": true,
+    "per_sparse_request_compared_decisions": [89, 107, 49, 32, 43]
+  },
+  "savings": {
+    "own_materialized_token_saving_fraction": 0.07612958684790205,
+    "paired_materialized_token_saving_vs_plain_fraction": 0.2941900794220863,
+    "paired_materialized_token_saving_vs_pra100_fraction": 0.2935811851699702,
+    "paired_selected_kv_token_saving_vs_pra100_fraction": 0.4437569960313422,
+    "full_trajectory_token_reduction_vs_plain_fraction": 0.23602930613417616,
+    "call_delta_vs_plain": -1,
+    "note": "Own saving holds the realized eight-call tail-90 trajectory fixed. Paired savings include its one-call-shorter successful trajectory and therefore must not be interpreted as selection-only savings."
+  },
+  "latency_caveat": {
+    "qualification_reference_is_not_production_path": true,
+    "last_sparse_request_completion_tokens": 42,
+    "last_sparse_request_model_calls": 285,
+    "last_sparse_request_elapsed_seconds": 2369.188473541006,
+    "interpretation": "The final request is an unexplained qualification-time latency outlier. It does not reflect completion inflation, and it must be diagnosed before an engine-runtime benefit is claimed. Wall time includes a packed same-subset reference on every generated decision."
+  },
+  "conclusions": [
+    "The native-vector reduction repair changes the former tail-90 numerical negative into an exact same-subset pass across all 320 compared generation decisions.",
+    "The selected resident history is neither re-encoded nor copied.",
+    "The frozen Task 1 tail-90 trajectory officially resolves in eight calls, versus nine for both plain and PRA-100, while submitting the same patch.",
+    "This is one model/task/host identity and is an admission result, not yet an accuracy estimate.",
+    "The packed-reference verifier dominates wall time and the last request has a severe latency outlier; production latency and memory benefit remain unclaimed."
+  ]
+}
