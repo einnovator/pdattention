@@ -204,8 +204,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--chat-template-profile",
-        choices=("native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
-        default="qwen3-stable-no-thinking",
+        choices=("auto", "native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
+        default="auto",
     )
     args = parser.parse_args()
     served_model = args.served_model or args.model
@@ -224,6 +224,7 @@ def main() -> None:
     from pra_hf.agent_executor import (
         HFAgentHistoryExecutor,
         configure_append_stable_template,
+        resolve_append_stable_template_profile,
         validate_append_stable_template,
     )
     from experiments.paper4_5_agent.runtime_identity import (
@@ -231,14 +232,17 @@ def main() -> None:
     )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
-    template_digest = configure_append_stable_template(
+    chat_template_profile = resolve_append_stable_template_profile(
         tokenizer, args.chat_template_profile
+    )
+    template_digest = configure_append_stable_template(
+        tokenizer, chat_template_profile
     )
     validate_append_stable_template(
         tokenizer,
         chat_template_kwargs=(
             {"enable_thinking": False}
-            if args.chat_template_profile == "qwen3-stable-no-thinking"
+            if chat_template_profile == "qwen3-stable-no-thinking"
             else None
         ),
     )
@@ -284,7 +288,7 @@ def main() -> None:
         wire_tail_tokens=args.wire_tail_tokens,
         prefill_step_size=args.prefill_step_size,
         max_model_len=args.max_model_len,
-        chat_template_profile=args.chat_template_profile,
+        chat_template_profile=chat_template_profile,
         chat_template_digest=template_digest,
     )
     executor.dense_attention_implementation = args.attn_implementation

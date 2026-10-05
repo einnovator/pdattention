@@ -59,6 +59,32 @@ def qwen3_append_stable_no_thinking_template(native_template: str) -> str:
     return native_template.replace(needle, replacement)
 
 
+def resolve_append_stable_template_profile(tokenizer: object, profile: str) -> str:
+    """Resolve a safe append-stable profile from template structure.
+
+    Qwen3 rewrites an assistant answer when it becomes history unless the
+    frozen no-thinking branch is installed. Qwen2/2.5 ChatML templates do not
+    have that branch and should remain native. Structural detection also works
+    for pinned local snapshots whose model-family metadata is incomplete.
+    """
+
+    if profile != "auto":
+        return profile
+    native = str(getattr(tokenizer, "chat_template", "") or "")
+    if not native:
+        raise ValueError("Tokenizer does not expose a chat template.")
+    needle = "{{- '<|im_start|>' + message.role + '\\n' + content }}"
+    occurrences = native.count(needle)
+    if occurrences == 2:
+        return "qwen3-stable-no-thinking"
+    if occurrences == 0:
+        return "native"
+    raise ValueError(
+        "Ambiguous Qwen chat-template shape: expected zero or two historical "
+        f"assistant branches, found {occurrences}."
+    )
+
+
 def configure_append_stable_template(tokenizer: object, profile: str) -> str:
     """Install one frozen template profile and return its SHA-256 digest."""
 

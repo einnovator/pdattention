@@ -338,8 +338,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--chat-template-profile",
-        choices=("native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
-        default="qwen3-stable-no-thinking",
+        choices=("auto", "native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
+        default="auto",
     )
     args = parser.parse_args()
     served_model = args.served_model or args.model
@@ -348,6 +348,7 @@ def main() -> None:
 
     from pra_hf.agent_executor import (
         configure_append_stable_template,
+        resolve_append_stable_template_profile,
         validate_append_stable_template,
     )
     from pra_mlx import MLXAgentHistoryExecutor
@@ -359,17 +360,20 @@ def main() -> None:
     # required revision remains part of the executor's compatibility identity;
     # use a pinned local snapshot path when exact Hub revision loading matters.
     model, tokenizer = load(args.model)
+    chat_template_profile = resolve_append_stable_template_profile(
+        tokenizer, args.chat_template_profile
+    )
     observed_revision = require_source_checkpoint_revision(
         args.model,
         args.revision,
         runtime_config=getattr(model, "config", None),
     )
     template_digest = configure_append_stable_template(
-        tokenizer, args.chat_template_profile
+        tokenizer, chat_template_profile
     )
     template_kwargs = (
         {"enable_thinking": False}
-        if args.chat_template_profile == "qwen3-stable-no-thinking"
+        if chat_template_profile == "qwen3-stable-no-thinking"
         else None
     )
     validate_append_stable_template(
@@ -381,7 +385,7 @@ def main() -> None:
         model_id=served_model,
         model_revision=args.revision,
         wire_tail_tokens=args.wire_tail_tokens,
-        chat_template_profile=args.chat_template_profile,
+        chat_template_profile=chat_template_profile,
         chat_template_digest=template_digest,
         max_abs_logit_delta=args.max_abs_logit_delta,
         prefill_step_size=args.prefill_step_size,

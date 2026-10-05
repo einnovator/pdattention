@@ -18,6 +18,7 @@ from pra_hf.agent_executor import (
     configure_append_stable_template,
     enforce_retention_floor,
     qwen3_append_stable_no_thinking_template,
+    resolve_append_stable_template_profile,
     selected_record_plan,
     split_generation_prompt,
     validate_append_stable_template,
@@ -491,6 +492,27 @@ def test_qwen_template_profile_has_frozen_digest() -> None:
     assert tokenizer.chat_template == stable
     assert digest == hashlib.sha256(stable.encode()).hexdigest()
     assert stable.count("<think>\\n\\n</think>\\n\\n") == 2
+
+
+def test_auto_template_profile_selects_qwen3_rewrite_structurally() -> None:
+    branch = "{{- '<|im_start|>' + message.role + '\\n' + content }}"
+    tokenizer = SimpleNamespace(chat_template=f"a{branch}b{branch}c")
+    assert (
+        resolve_append_stable_template_profile(tokenizer, "auto")
+        == "qwen3-stable-no-thinking"
+    )
+
+
+def test_auto_template_profile_preserves_qwen25_native_chatml() -> None:
+    tokenizer = SimpleNamespace(chat_template="{% for message in messages %}native{% endfor %}")
+    assert resolve_append_stable_template_profile(tokenizer, "auto") == "native"
+
+
+def test_auto_template_profile_rejects_ambiguous_qwen_shape() -> None:
+    branch = "{{- '<|im_start|>' + message.role + '\\n' + content }}"
+    tokenizer = SimpleNamespace(chat_template=f"a{branch}b")
+    with pytest.raises(ValueError, match="Ambiguous Qwen chat-template shape"):
+        resolve_append_stable_template_profile(tokenizer, "auto")
 
 
 def test_template_stability_preflight_accepts_append_only_rendering() -> None:

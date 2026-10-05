@@ -64,6 +64,7 @@ from .agent_executor import (
     causal_message_spans,
     configure_append_stable_template,
     qwen3_append_stable_no_thinking_template,
+    resolve_append_stable_template_profile,
     selected_record_plan,
     validate_append_stable_template,
 )
@@ -538,6 +539,7 @@ __all__ = [
     "causal_message_spans",
     "configure_append_stable_template",
     "qwen3_append_stable_no_thinking_template",
+    "resolve_append_stable_template_profile",
     "selected_record_plan",
     "validate_append_stable_template",
     "HFSparseAttentionMetrics",

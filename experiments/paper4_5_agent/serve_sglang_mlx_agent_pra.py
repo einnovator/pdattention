@@ -279,8 +279,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--chat-template-profile",
-        choices=("native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
-        default="qwen3-stable-no-thinking",
+        choices=("auto", "native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
+        default="auto",
     )
     parser.add_argument("--default-repetition-penalty", type=float, default=1.0)
     parser.add_argument("--default-repeat-last-n", type=int, default=64)
@@ -295,6 +295,7 @@ def main() -> None:
         SGLangMLXAgentHistoryExecutor,
         configure_append_stable_template,
     )
+    from pra_hf.agent_executor import resolve_append_stable_template_profile
     from sglang.srt.hardware_backend.mlx.model_runner import MlxModelRunner
     from transformers import AutoTokenizer
 
@@ -310,8 +311,11 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(
         args.model, revision=args.revision
     )
-    chat_template_digest = configure_append_stable_template(
+    chat_template_profile = resolve_append_stable_template_profile(
         tokenizer, args.chat_template_profile
+    )
+    chat_template_digest = configure_append_stable_template(
+        tokenizer, chat_template_profile
     )
     additional_stop_token_ids = []
     for token in args.additional_stop_token:
@@ -330,7 +334,7 @@ def main() -> None:
         model_revision=args.revision,
         block_store=block_store,
         wire_tail_tokens=args.wire_tail_tokens,
-        chat_template_profile=args.chat_template_profile,
+        chat_template_profile=chat_template_profile,
         chat_template_digest=chat_template_digest,
         additional_stop_token_ids=additional_stop_token_ids,
         default_repetition_penalty=args.default_repetition_penalty,
