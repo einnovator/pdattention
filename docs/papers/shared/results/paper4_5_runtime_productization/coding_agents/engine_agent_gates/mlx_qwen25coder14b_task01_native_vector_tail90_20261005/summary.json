@@ -2,7 +2,7 @@
   "schema_version": 1,
   "evidence_class": "autonomous_agent_engine_gate",
   "date": "2026-10-05",
-  "status": "tail90_admitted_one_task_identity",
+  "status": "tail90_admitted_two_exact_repeats_one_task_identity",
   "supersedes_for_this_model_profile": "mlx_qwen25coder14b_task01_post_transactional_20261005 tail-90 numerical-negative conclusion",
   "engine": {
     "family": "direct_mlx",
@@ -117,13 +117,69 @@
     "last_sparse_request_completion_tokens": 42,
     "last_sparse_request_model_calls": 285,
     "last_sparse_request_elapsed_seconds": 2369.188473541006,
-    "interpretation": "The final request is an unexplained qualification-time latency outlier. It does not reflect completion inflation, and it must be diagnosed before an engine-runtime benefit is claimed. Wall time includes a packed same-subset reference on every generated decision."
+    "interpretation": "The first run's final request is a qualification-time allocator-cache failure mode, not completion inflation. A controlled repeat that clears unreachable MLX allocator cache after every request removes the outlier while preserving the exact trajectory and logits. Wall time still includes a packed same-subset reference on every generated decision and is not a production speed claim."
+  },
+  "allocator_cleanup_repeat": {
+    "paper4_5_revision": "e051ed9e",
+    "official_resolved": true,
+    "official_score": 1.0,
+    "calls": 8,
+    "command_list_json_compact_sha256": "68a62ef374303c82841527b0c7967d16e9bb771253403c006e1ae01d1155a636",
+    "submitted_patch_equal": true,
+    "cumulative_full_tokens": 37226,
+    "cumulative_materialized_tokens": 34392,
+    "cumulative_selected_kv_tokens": 27331,
+    "mean_realized_retention_fraction": 0.9371697765082729,
+    "minimum_realized_retention_fraction": 0.8976824034334764,
+    "selected_history_reencoded_tokens": 0,
+    "selected_history_kv_copy_bytes": 0,
+    "sparse_requests": 5,
+    "compared_generation_decisions": 320,
+    "maximum_raw_logit_delta": 0.0,
+    "maximum_probability_delta": 0.0,
+    "maximum_total_variation": 0.0,
+    "all_sparse_requests_passed": true,
+    "request_elapsed_seconds": [
+      26.60984708400065,
+      11.022315124995657,
+      19.611049666003964,
+      166.35638541599474,
+      153.3630016659954,
+      141.57174662499892,
+      155.84029104100046,
+      151.73250025000016
+    ],
+    "allocator_cache_bytes_released_per_request": [
+      1790476112,
+      2263570256,
+      2831004868,
+      2793355919,
+      2654496552,
+      2611635804,
+      2595802736,
+      2614722560
+    ],
+    "cumulative_allocator_cache_bytes_released": 20155064807,
+    "allocator_cache_after_cleanup_bytes": 0,
+    "active_bytes_after_first_request": 8773347336,
+    "active_bytes_after_last_request": 9528322056,
+    "final_request_elapsed_reduction_fraction": 0.9360711352879757,
+    "final_request_speedup_factor": 15.642386338387626,
+    "agent_wall_time_seconds": 871.3118057920001,
+    "agent_wall_time_reduction_fraction": 0.7224122669082145,
+    "agent_wall_time_speedup_factor": 3.602464665358054,
+    "official_result_sha256": "3a8226018dd604295f07eb565d01b4e602f5cf892e06272b682a18fa96fccc00",
+    "autonomous_metrics_sha256": "216c97795c7e12a022f5491bbf6732f086bfd4f1bb2a1b2bfe343f83c4440b2b",
+    "persistent_episode_export_sha256": "2d130a31b9437987a9e1e0f79ce42b0f6fe38fcebac12d50d7b211b7de059669",
+    "remote_artifact": "/Users/jorge.simao/git/rd/paper85-native-mlx-qwen25-14b-v20-cleanup/task01_tail90_native_vector_cleanup_r01",
+    "interpretation": "The repeat preserves the exact eight-command trajectory, patch, official solve, selection metrics, and zero-delta same-subset gate. Releasing unused allocator cache avoids unified-memory pressure on the 16 GB host. Cumulative released bytes describe repeated allocator-cache state and are not unique data traffic or K/V savings."
   },
   "conclusions": [
     "The native-vector reduction repair changes the former tail-90 numerical negative into an exact same-subset pass across all 320 compared generation decisions.",
     "The selected resident history is neither re-encoded nor copied.",
     "The frozen Task 1 tail-90 trajectory officially resolves in eight calls, versus nine for both plain and PRA-100, while submitting the same patch.",
-    "This is one model/task/host identity and is an admission result, not yet an accuracy estimate.",
-    "The packed-reference verifier dominates wall time and the last request has a severe latency outlier; production latency and memory benefit remain unclaimed."
+    "Two repeats on one model/task/host identity are admitted; this is repeatability evidence, not yet a task-population accuracy estimate.",
+    "Post-request allocator cleanup removes the 16 GB host's final-request collapse without changing trajectory or logits.",
+    "The packed-reference verifier still dominates wall time, so production latency and memory benefit remain unclaimed."
   ]
 }

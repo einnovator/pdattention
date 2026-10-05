@@ -613,8 +613,14 @@ re-encoding, selected-K/V copy, or H2D transfer.  Own-trajectory materialized
 saving is 7.61\%; paired materialized saving is 29.42\%, and selected K/V falls
 44.38\% relative to PRA-100, but those paired figures include one fewer agent
 call.  This is one task identity, not an accuracy estimate.  Moreover, the
-qualification reference causes a 2,369.19-s final-request latency outlier, so
-no production runtime benefit is claimed.  The receipt is under
+first run's qualification reference causes a 2,369.19-s final-request latency
+outlier.  A controlled repeat clears 1.79--2.83~GB of unused MLX allocator
+cache after every request while retaining the live session K/V.  It reproduces
+the exact eight-command trajectory, patch, official solve, and zero-delta
+320-decision gate; the final request falls to 151.73~s (15.64$\times$) and
+agent wall time from 3,138.87 to 871.31~s (3.60$\times$).  Cleanup time is
+included.  The dense verifier still dominates execution, so no production
+runtime benefit is claimed.  The receipt is under
 \path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_qwen25coder14b_task01_native_vector_tail90_20261005/}.
 
 The next strict gate uses Qwen3-4B BF16 revision
@@ -5361,13 +5367,19 @@ against plain, while selected K/V tokens fall from 49,135 under PRA-100 to
 27,331, a 44.38\% paired reduction.  The latter two figures include one fewer
 agent call and are therefore not selection-only effects.
 
-This is a one-task admission result, not an accuracy estimate or runtime win.
+This is a two-repeat, one-task admission result, not an accuracy estimate or
+runtime win.
 The qualification path packs and evaluates an identical-subset reference at
 every generated decision.  Its final 42-token request takes 2,369.19~s despite
-only 285 model calls, producing a severe unexplained qualification-time latency
-outlier; total wall time is consequently excluded from the utility frontier
-until that outlier is reproduced and localized.  The new immutable receipt is
-under
+only 285 model calls.  The cause is allocator-cache pressure on the 16~GB host:
+a controlled repeat clears 1.79--2.83~GB of unused MLX allocator cache after
+each request while retaining canonical live K/V.  It reproduces the same
+eight-command trajectory, patch, official solve, and exact 320-decision gate;
+the final request falls to 151.73~s (15.64$\times$) and total agent wall time
+from 3,138.87 to 871.31~s (3.60$\times$).  Cleanup time is included in those
+requests.  Because both runs still evaluate a packed reference at every output
+decision, neither is a production latency measurement.  The immutable receipt
+is under
 \path{coding_agents/engine_agent_gates/mlx_qwen25coder14b_task01_native_vector_tail90_20261005/}.
 
 HF now has the corresponding direct, no-gateway agent bridge in code.  It keeps
@@ -6430,8 +6442,9 @@ The newer direct-MLX native-vector row removes that qualification: frozen
 tail-90 Task~01 resolves in eight calls, all 320 sparse decisions are
 same-subset logit exact, and selected-history re-encoding/copy remain zero.
 Its 44.38\% paired selected-K/V reduction is promising but remains a single
-task identity and carries a severe packed-reference latency outlier, so it is
-not yet a production profile or speedup claim.
+task identity.  An exact repeat removes the allocator-cache latency collapse,
+but both runs retain a dense per-decision verifier; it is therefore not yet a
+production profile or speedup claim.
 The
 post-fix SGLang-MLX \textsc{Full}/PRA-100 pair also preserves 1/1 resolution,
 seven calls, and a byte-identical patch with zero selected-history

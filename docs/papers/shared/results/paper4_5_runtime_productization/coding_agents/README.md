@@ -43,8 +43,12 @@ all five sparse requests are exactly equal to their packed same-subset
 references across 320 generation decisions. Selected-history re-encoding and
 selected-K/V copy are zero. Relative to PRA-100, paired selected K/V falls by
 44.38%, but this includes the selective arm's one fewer call and is only a
-one-task admission result. The packed-reference verifier also has a severe
-last-request latency outlier, so no production runtime benefit is claimed.
+one-task admission result. A second exact repeat clears unused MLX allocator
+cache after every request and reproduces the same trajectory, patch, solve,
+and zero-delta gate. It reduces the first run's final-request collapse from
+2,369.19 to 151.73 seconds and agent wall time from 3,138.87 to 871.31 seconds.
+Both runs still execute the packed reference at every output decision, so no
+production runtime benefit is claimed.
 
 ## Official harness qualification
 
