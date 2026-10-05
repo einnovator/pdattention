@@ -673,6 +673,11 @@ def disjoint_segmented_selected_attention(
         and source_keys is not None
         and source_values is not None
         and source_intervals
+        # MLX's vector SDPA partitions a head across 32 SIMD lanes.  Small
+        # synthetic heads used by the portable reference tests cannot use
+        # that geometry, so retain the exact eager segmented fallback for
+        # them.  Production coding models use 32-aligned head dimensions.
+        and int(queries.shape[-1]) % 32 == 0
     ):
         return _metal_disjoint_selected_attention(
             queries,
