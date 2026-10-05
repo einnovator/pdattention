@@ -5,6 +5,50 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+PYTHON_WORKSPACE_CHECK_SOURCE = r'''import ast
+from pathlib import Path
+import subprocess
+import sys
+import tokenize
+
+diff_check = subprocess.run(
+    ["git", "diff", "--check"], capture_output=True, text=True, check=False
+)
+if diff_check.returncode:
+    print("PRA_PYTHON_SUBMISSION_INVALID kind=git_diff_check")
+    print(diff_check.stdout or diff_check.stderr)
+    raise SystemExit(2)
+names = subprocess.run(
+    ["git", "diff", "--name-only", "--diff-filter=ACM", "HEAD", "--", "*.py"],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+if names.returncode:
+    print("PRA_PYTHON_SUBMISSION_INVALID kind=git_name_scan")
+    print(names.stderr)
+    raise SystemExit(2)
+checked = 0
+for name in names.stdout.splitlines():
+    path = Path(name)
+    if not path.is_file():
+        continue
+    try:
+        with tokenize.open(path) as handle:
+            source = handle.read()
+        ast.parse(source, filename=name)
+    except (OSError, SyntaxError, UnicodeError) as error:
+        line = getattr(error, "lineno", None)
+        print(
+            "PRA_PYTHON_SUBMISSION_INVALID "
+            f"kind={type(error).__name__} path={name} line={line} detail={error}"
+        )
+        raise SystemExit(2)
+    checked += 1
+print(f"PRA_PYTHON_SUBMISSION_OK checked_files={checked}")
+'''
+
+
 @dataclass(frozen=True)
 class SubmissionValidation:
     valid: bool

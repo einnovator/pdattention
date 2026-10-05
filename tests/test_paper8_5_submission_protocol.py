@@ -1,7 +1,47 @@
 from experiments.paper8_5_agent_memory.submission_protocol import (
+    PYTHON_WORKSPACE_CHECK_SOURCE,
     submission_recovery_observation,
     validate_unified_git_diff,
 )
+
+
+def test_python_workspace_check_rejects_invalid_changed_python(tmp_path):
+    import subprocess
+    import sys
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    source = tmp_path / "module.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "module.py"], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
+            "commit", "-q", "-m", "base",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    source.write_text("if True:\nvalue = 2\n", encoding="utf-8")
+    invalid = subprocess.run(
+        [sys.executable, "-c", PYTHON_WORKSPACE_CHECK_SOURCE],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert invalid.returncode == 2
+    assert "PRA_PYTHON_SUBMISSION_INVALID" in invalid.stdout
+
+    source.write_text("if True:\n    value = 2\n", encoding="utf-8")
+    valid = subprocess.run(
+        [sys.executable, "-c", PYTHON_WORKSPACE_CHECK_SOURCE],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert valid.returncode == 0
+    assert "PRA_PYTHON_SUBMISSION_OK checked_files=1" in valid.stdout
 
 
 VALID_PATCH = """diff --git a/foo.py b/foo.py

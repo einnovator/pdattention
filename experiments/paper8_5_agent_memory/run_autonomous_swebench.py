@@ -276,6 +276,9 @@ def build_agent_command(
             "-c",
             "environment.transactional_replace_only="
             f"{str(bool(getattr(args, 'transactional_replace_only', False))).lower()}",
+            "-c",
+            "environment.require_python_syntax_clean_submission="
+            f"{str(bool(getattr(args, 'require_python_syntax_clean_submission', False))).lower()}",
         ))
     command.extend((
         "-c",
@@ -1201,6 +1204,9 @@ def run(args: argparse.Namespace) -> Path:
         "transactional_replace_only": bool(
             getattr(args, "transactional_replace_only", False)
         ),
+        "require_python_syntax_clean_submission": bool(
+            getattr(args, "require_python_syntax_clean_submission", False)
+        ),
         "instrumentation_output_root": str(args.instrumentation_output_root),
         "agent_command_template": agent_command,
         "agent_behavior_sha256": agent_behavior_digest(agent_command),
@@ -1794,6 +1800,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Reject interactive editors and unguarded in-place sed/perl edits "
             "as recoverable observations. Requires --transactional-replace-tool."
+        ),
+    )
+    parser.add_argument(
+        "--require-python-syntax-clean-submission",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Reject terminal patches when git diff --check or AST parsing of "
+            "changed Python files fails, returning a recoverable observation."
         ),
     )
     parser.add_argument("--skip-grading", action="store_true")

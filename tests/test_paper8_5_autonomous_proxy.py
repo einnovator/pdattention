@@ -2869,6 +2869,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
         require_unified_diff_submission=True,
         transactional_replace_tool=True,
         transactional_replace_only=True,
+        require_python_syntax_clean_submission=True,
     )
     command = build_agent_command(
         args,
@@ -2888,6 +2889,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     assert "environment.require_unified_diff_submission=true" in joined
     assert "environment.transactional_replace_tool=true" in joined
     assert "environment.transactional_replace_only=true" in joined
+    assert "environment.require_python_syntax_clean_submission=true" in joined
     assert (
         "environment.image=docker.io/swebench/"
         "sweb.eval.x86_64.org_1776_repo-2:latest" in joined

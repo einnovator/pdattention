@@ -23,6 +23,7 @@ from .observation_instrumentation import (
 from .miniswe_semantics import extract_resource_ids
 from .miniswe_semantics import canonicalize_unordered_search_output
 from .submission_protocol import (
+    PYTHON_WORKSPACE_CHECK_SOURCE,
     submission_recovery_observation,
     validate_unified_git_diff,
 )
@@ -41,6 +42,7 @@ class InstrumentedDockerEnvironmentConfig(DockerEnvironmentConfig):
     canonicalize_unordered_search_output: bool = False
     transactional_replace_tool: bool = False
     transactional_replace_only: bool = False
+    require_python_syntax_clean_submission: bool = False
 
 
 class InstrumentedDockerEnvironment(DockerEnvironment):
@@ -119,8 +121,6 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
     def _check_finished(self, output: dict) -> None:
         """Reject malformed terminal payloads as recoverable observations."""
 
-        if not self.config.require_unified_diff_submission:
-            return super()._check_finished(output)
         lines = str(output.get("output", "")).lstrip().splitlines(keepends=True)
         is_submission = (
             bool(lines)
@@ -130,17 +130,31 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
         if not is_submission:
             return super()._check_finished(output)
         payload = "".join(lines[1:])
-        validation = validate_unified_git_diff(payload)
-        if validation.valid:
+        rejection_reason = None
+        if self.config.require_unified_diff_submission:
+            validation = validate_unified_git_diff(payload)
+            if not validation.valid:
+                rejection_reason = validation.reason
+        if rejection_reason is None and self.config.require_python_syntax_clean_submission:
+            encoded = base64.b64encode(
+                PYTHON_WORKSPACE_CHECK_SOURCE.encode("utf-8")
+            ).decode("ascii")
+            command = f"printf '%s' '{encoded}' | base64 -d | python3"
+            check = DockerEnvironment.execute(
+                self, {"command": command}, cwd=self.config.cwd
+            )
+            if int(check.get("returncode", -1)) != 0:
+                rejection_reason = str(check.get("output", "")).strip()
+        if rejection_reason is None:
             return super()._check_finished(output)
-        output["output"] = submission_recovery_observation(validation.reason)
+        output["output"] = submission_recovery_observation(rejection_reason)
         output["returncode"] = 2
         output["extra"] = {
             **dict(output.get("extra") or {}),
             "paper8_5_submission_protocol": {
                 "schema_version": 1,
                 "status": "rejected_recoverable",
-                "reason": validation.reason,
+                "reason": rejection_reason,
                 "original_payload_sha256": hashlib.sha256(
                     payload.encode()
                 ).hexdigest(),

@@ -65,6 +65,7 @@ def _run(
         },
         "transactional_replace_tool": False,
         "transactional_replace_only": False,
+        "require_python_syntax_clean_submission": False,
         "canonicalize_unordered_search_output": False,
         "upstream_dialect": "openai",
         "agent_command_template": [

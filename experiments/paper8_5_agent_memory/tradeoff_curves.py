@@ -33,6 +33,7 @@ STRICT_PAIRING_KEYS = (
     "scaffold_identity_sha256",
     "static_workflow_anchor", "static_workflow_anchor_location",
     "transactional_replace_tool", "transactional_replace_only",
+    "require_python_syntax_clean_submission",
     "canonicalize_unordered_search_output",
     "upstream_dialect",
 )
@@ -48,6 +49,7 @@ def _pairing_value(manifest: Mapping[str, Any], key: str) -> Any:
         return selection.get(key, "system_prefix")
     if key in {
         "transactional_replace_tool", "transactional_replace_only",
+        "require_python_syntax_clean_submission",
         "canonicalize_unordered_search_output",
     }:
         return bool(manifest.get(key, False))

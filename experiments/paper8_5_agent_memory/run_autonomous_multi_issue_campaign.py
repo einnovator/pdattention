@@ -840,6 +840,7 @@ _BEHAVIORAL_PAIRING_DEFAULTS = {
     "static_workflow_anchor_location": "system_prefix",
     "transactional_replace_tool": False,
     "transactional_replace_only": False,
+    "require_python_syntax_clean_submission": False,
     "canonicalize_unordered_search_output": False,
     "upstream_dialect": "openai",
 }
@@ -863,6 +864,10 @@ def _behavioral_pairing_identity(manifest: Mapping[str, Any]) -> dict[str, Any]:
         "transactional_replace_only": bool(manifest.get(
             "transactional_replace_only",
             _BEHAVIORAL_PAIRING_DEFAULTS["transactional_replace_only"],
+        )),
+        "require_python_syntax_clean_submission": bool(manifest.get(
+            "require_python_syntax_clean_submission",
+            _BEHAVIORAL_PAIRING_DEFAULTS["require_python_syntax_clean_submission"],
         )),
         "canonicalize_unordered_search_output": bool(manifest.get(
             "canonicalize_unordered_search_output",
