@@ -1854,6 +1854,39 @@ def test_transactional_replace_tool_is_atomic_and_fails_closed(tmp_path):
     assert "line=1:leading_bytes=4" in ambiguous.stderr
     assert "line=2:leading_bytes=8" in ambiguous.stderr
 
+    selected = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(target),
+            "duplicate",
+            "replacement",
+            "--line=1",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert selected.returncode == 0
+    assert target.read_bytes() == b"    replacement\n        duplicate\n"
+
+    before = target.read_bytes()
+    wrong_line = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(target),
+            "duplicate",
+            "replacement",
+            "--line=1",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert wrong_line.returncode == 2
+    assert target.read_bytes() == before
+
 
 @pytest.mark.parametrize(
     ("command", "reason"),

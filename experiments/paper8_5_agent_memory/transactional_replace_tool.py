@@ -92,9 +92,29 @@ def candidate_hints(data, old):
 
 
 def main():
-    if len(sys.argv) != 4:
-        print("usage: pra_replace PATH EXACT_OLD_TEXT EXACT_NEW_TEXT", file=sys.stderr)
+    if len(sys.argv) not in (4, 5):
+        print(
+            "usage: pra_replace PATH EXACT_OLD_TEXT EXACT_NEW_TEXT [--line=N]",
+            file=sys.stderr,
+        )
         return 2
+    line_number = None
+    if len(sys.argv) == 5:
+        selector = sys.argv[4]
+        if not selector.startswith("--line=") or not selector[7:].isdigit():
+            print(
+                "PRA_REPLACE_REJECTED optional selector must be --line=N; "
+                "file unchanged",
+                file=sys.stderr,
+            )
+            return 2
+        line_number = int(selector[7:])
+        if line_number < 1:
+            print(
+                "PRA_REPLACE_REJECTED --line=N is one-based; file unchanged",
+                file=sys.stderr,
+            )
+            return 2
     path = Path(sys.argv[1])
     if path.is_symlink() or not path.is_file():
         print("PRA_REPLACE_REJECTED path must be a regular non-symlink file", file=sys.stderr)
@@ -102,17 +122,33 @@ def main():
     old = decode(sys.argv[2]).encode("utf-8")
     new = decode(sys.argv[3]).encode("utf-8")
     data = path.read_bytes()
-    occurrences = data.count(old)
+    lines = data.splitlines(keepends=True)
+    if line_number is None:
+        selected = data
+    elif line_number > len(lines):
+        print(
+            f"PRA_REPLACE_REJECTED line={line_number} out_of_range; file unchanged",
+            file=sys.stderr,
+        )
+        return 2
+    else:
+        selected = lines[line_number - 1]
+    occurrences = selected.count(old)
     if not old or occurrences != 1:
         print(
             f"PRA_REPLACE_REJECTED occurrences={occurrences} "
             f"candidates={candidate_hints(data, old)}; file unchanged. "
-            "For duplicate lines include leading indentation or bounded "
-            "adjacent context in EXACT_OLD_TEXT.",
+            "For duplicate single-line matches inspect the intended candidate "
+            "and append --line=N, or include bounded adjacent context in "
+            "EXACT_OLD_TEXT.",
             file=sys.stderr,
         )
         return 2
-    updated = data.replace(old, new, 1)
+    if line_number is None:
+        updated = data.replace(old, new, 1)
+    else:
+        lines[line_number - 1] = selected.replace(old, new, 1)
+        updated = b"".join(lines)
     original_mode = stat.S_IMODE(path.stat().st_mode)
     descriptor, temporary = tempfile.mkstemp(prefix=path.name + ".pra-", dir=path.parent)
     try:
