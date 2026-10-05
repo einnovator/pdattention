@@ -917,6 +917,10 @@ class MLXAgentHistoryExecutor:
         logit_delta: float | None = None
         same_subset_candidate_token: int | None = None
         same_subset_reference_token: int | None = None
+        same_subset_reference_cache: Sequence[object] | None = None
+        same_subset_reference_logits: object | None = None
+        same_subset_compared_tokens = 0
+        same_subset_reference_calls = 0
         full_reference_cache: Sequence[object] | None = None
         full_reference_logits: object | None = None
         full_reference_max_delta: float | None = None
@@ -992,7 +996,7 @@ class MLXAgentHistoryExecutor:
                     segmented=False,
                     disjoint_selection=False,
                 )
-                reference_cache = make_native_prompt_cache(
+                same_subset_reference_cache = make_native_prompt_cache(
                     self.model,
                     reference.selection.memory,
                     segmented=False,
@@ -1006,42 +1010,56 @@ class MLXAgentHistoryExecutor:
                         0, row.tokens, materialized_prefill_step
                     ):
                         _set_cache_query_start(
-                            reference_cache, row.position_start + offset
+                            same_subset_reference_cache,
+                            row.position_start + offset,
                         )
                         self._evaluate(
                             row.token_ids[
                                 offset : offset + materialized_prefill_step
                             ],
-                            reference_cache,
+                            same_subset_reference_cache,
                         )
-                _set_cache_query_start(reference_cache, plan.source_position_base)
-                reference_logits = self._evaluate(wire, reference_cache)
+                _set_cache_query_start(
+                    same_subset_reference_cache, plan.source_position_base
+                )
+                same_subset_reference_logits = self._evaluate(
+                    wire, same_subset_reference_cache
+                )
+                same_subset_reference_calls += 1
                 reference_pack_bytes = (
                     reference.selection.memory.nbytes
                     if reference.selection.physical_kv_copy
                     else 0
                 )
-                logit_delta = _max_abs_delta(
-                    logits[0, -1], reference_logits[0, -1]
-                )
-                same_subset_candidate_token = _argmax_token(logits[0, -1])
-                same_subset_reference_token = _argmax_token(
-                    reference_logits[0, -1]
-                )
-                reference.finish()
-                reference = None
-                if logit_delta > self.max_abs_logit_delta:
-                    raise RuntimeError(
-                        "MLX sparse same-subset correctness gate failed: "
-                        f"max_abs_logit_delta={logit_delta:.9g}, "
-                        f"limit={self.max_abs_logit_delta:.9g}, "
-                        f"candidate_token={same_subset_candidate_token}, "
-                        f"reference_token={same_subset_reference_token}."
-                    )
 
             eos = self._eos_ids()
             while len(generated) < request.resolved_max_new_tokens:
                 token = int(mx.argmax(logits[0, -1]).item())
+                if same_subset_reference_logits is not None:
+                    reference_token = _argmax_token(
+                        same_subset_reference_logits[0, -1]
+                    )
+                    step_delta = _max_abs_delta(
+                        logits[0, -1], same_subset_reference_logits[0, -1]
+                    )
+                    logit_delta = max(logit_delta or 0.0, step_delta)
+                    same_subset_candidate_token = token
+                    same_subset_reference_token = reference_token
+                    output_index = same_subset_compared_tokens
+                    same_subset_compared_tokens += 1
+                    if (
+                        reference_token != token
+                        or step_delta > self.max_abs_logit_delta
+                    ):
+                        raise RuntimeError(
+                            "MLX sparse same-subset correctness gate failed: "
+                            f"output_token_index={output_index}, "
+                            f"max_abs_logit_delta={step_delta:.9g}, "
+                            f"max_observed_logit_delta={logit_delta:.9g}, "
+                            f"limit={self.max_abs_logit_delta:.9g}, "
+                            f"candidate_token={token}, "
+                            f"reference_token={reference_token}."
+                        )
                 if full_reference_logits is not None:
                     reference_token = int(
                         mx.argmax(full_reference_logits[0, -1]).item()
@@ -1071,6 +1089,11 @@ class MLXAgentHistoryExecutor:
                     terminal = token
                     logits = self._evaluate([token], candidate_cache)
                     calls += 1
+                    if same_subset_reference_cache is not None:
+                        same_subset_reference_logits = self._evaluate(
+                            [token], same_subset_reference_cache
+                        )
+                        same_subset_reference_calls += 1
                     if full_reference_cache is not None:
                         self._evaluate([token], full_reference_cache)
                         full_reference_calls += 1
@@ -1078,6 +1101,11 @@ class MLXAgentHistoryExecutor:
                 generated.append(token)
                 logits = self._evaluate([token], candidate_cache)
                 calls += 1
+                if same_subset_reference_cache is not None:
+                    same_subset_reference_logits = self._evaluate(
+                        [token], same_subset_reference_cache
+                    )
+                    same_subset_reference_calls += 1
                 if full_reference_cache is not None:
                     full_reference_logits = self._evaluate(
                         [token], full_reference_cache
@@ -1093,6 +1121,9 @@ class MLXAgentHistoryExecutor:
                 expected_local_tokens=committed,
                 ignored_leading_local_tokens=materialized_tokens,
             )
+            if reference is not None:
+                reference.finish()
+                reference = None
             outcome = "finished"
         finally:
             try:
@@ -1250,6 +1281,8 @@ class MLXAgentHistoryExecutor:
             ),
             "same_subset_reference_pack_bytes": reference_pack_bytes,
             "same_subset_reference_kind": same_subset_reference_kind,
+            "same_subset_reference_model_calls": same_subset_reference_calls,
+            "same_subset_compared_output_tokens": same_subset_compared_tokens,
             "same_subset_max_abs_logit_delta": logit_delta,
             "same_subset_gate_limit": self.max_abs_logit_delta,
             "same_subset_candidate_first_token_id": same_subset_candidate_token,
