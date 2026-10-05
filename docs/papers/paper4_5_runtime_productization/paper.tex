@@ -69,14 +69,16 @@ are not byte-identical.  Compact-text policy success therefore does not by
 itself qualify original-position sparse-K/V utility.
 
 The newest receipt-free Atomic-E2 handoff closes that specific mechanism gap
-on llama.cpp.  Across two repeat-qualified Paper~8.5 trajectories for one
+on four request-level engine paths.  Across two repeat-qualified Paper~8.5 trajectories for one
 episode-six task identity, the logical policy preserves 2/2 resolutions and
 17 aggregate calls at 57.09\% candidate-own saving.  Its two frozen final
 requests realize 55.06\% and 55.41\% visible-history saving from disjoint
-original-position resident K/V, with zero selected-history re-encoding, zero
-K/V copy, exact repeated continuations, and clean release.  This is a repeated
-request-level engine qualification bound to a successful logical-policy
-cohort, not yet autonomous cross-engine execution or an accuracy estimate.
+original-position resident K/V on llama.cpp, direct MLX, and SGLang-MLX, with
+zero selected-history re-encoding, zero request-attachment K/V copy, exact
+continuations, and clean release.  vLLM-Metal reproduces the result with
+complete-page aliases and 22 rounding tokens per request.  This is a repeated
+request-level mechanism qualification bound to a successful logical-policy
+cohort, not autonomous cross-engine execution or an accuracy estimate.
 
 A later strict BF16 MLX gate isolates a second model/task pair.  On locked
 Task~7, plain and PRA-100 both resolve in seven byte-identical actions with the
@@ -718,13 +720,19 @@ autonomous solves; unrelated host load excludes elapsed times from runtime
 economics.
 
 The later Atomic-E2 export removes the receipt confound and raises the tested
-llama.cpp omission without changing that claim boundary.  On repeat-one
+omission without changing that claim boundary.  On repeat-one
 request~8 it attaches 12,641 of 28,503 source K/V entries plus a 306-token
 suffix (55.06\% total visible saving).  On repeat-two request~9 it attaches
 12,459 of 28,321 entries plus a 305-token suffix (55.41\%).  Both requests
 re-encode zero selected-history tokens, copy zero selected K/V bytes, preserve
 source positions, repeat the same two generated token IDs, and leave both
-slots empty.  The auditable bundle is
+slots empty on llama.cpp.  Direct MLX and SGLang-MLX reproduce both exact
+geometries with zero re-encoding, zero selection-pack bytes, exact same-subset
+logits, and only 0.562--0.572\% of one selected layer's K/V size in measured
+consumer peak delta.  vLLM-Metal reproduces exact continuation tokens through
+non-owning page aliases: complete-page rounding adds 22 selected tokens per
+request, while initial attachment re-encodes zero tokens, copies zero K/V, and
+adds zero active bytes.  Its offload/restore copy is reported separately.  The auditable bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_scikit14496_v2}.
 
 The same corrected request-9 gate does not yet qualify the direct MLX 14B
@@ -840,11 +848,12 @@ matched-tail treatment is an admissible policy-quality negative, not an
 engine-correctness failure.  HF alone still lacks an admissible post-contract
 autonomous row.
 
-The strict Atomic-E2 llama.cpp transfer is the strongest receipt-free agent
-fixture in this revision, but it remains request-level.  The next workload
-gate is to consume the identical frozen ledger autonomously on llama.cpp and
-then replicate the same logical ledger on MLX, SGLang, HF, and vLLM without
-engine-specific policy retuning.
+The strict Atomic-E2 transfer is the strongest receipt-free agent fixture in
+this revision.  Its two final requests now clear the declared mechanism and
+lifecycle gates on llama.cpp, direct MLX, SGLang-MLX, and vLLM-Metal without
+selector retuning, but remain request-level.  The next workload gate is to
+consume the identical frozen ledger autonomously on those paths and qualify
+HF/CUDA without engine-specific policy retuning.
 
 \section{Conclusion}
 
@@ -4578,7 +4587,7 @@ original records: they contain no closure receipts, replacement summaries, or
 other transformed history.
 
 The corrected llama.cpp path qualifies the final request of both repeats
-(Table~\ref{tab:agent-atomic-e2-llamacpp}).  Source K/V is captured once; each
+(Table~\ref{tab:agent-atomic-e2-engines}).  Source K/V is captured once; each
 request attaches disjoint original-position ranges and evaluates only the new
 wire suffix.  Selected-history re-encoding and physical K/V copying are both
 zero, both deterministic two-token continuations are exact, and source and
@@ -4589,23 +4598,36 @@ table measures the final engine request and includes its mandatory suffix.
 \begin{table}[H]
 \centering
 \small
-\caption{Frozen Atomic-E2 final-request realization on patched llama.cpp with
-Qwen3-Coder-30B Q4.  These are correctness and accounting measurements; host
-contention quarantines their wall-time fields.}
-\begin{tabular}{lrrrrrr}
+\caption{Frozen Atomic-E2 final-request realization across engines.  llama.cpp
+uses Qwen3-Coder-30B Q4; the other rows use Qwen3-0.6B-4bit.  These are
+correctness and accounting measurements; wall-time fields are quarantined.}
+\begin{tabular}{llrrrrr}
 \toprule
-Repeat & Source K/V & Selected K/V & Suffix & Visible save & Re-encoded & K/V copy \\
+Engine & Repeat & Source K/V & Selected K/V & Suffix & Visible save & Re-encoded \\
 \midrule
-r01, request 8 & 28,503 & 12,641 & 306 & 55.06\% & 0 & 0 B \\
-r02, request 9 & 28,321 & 12,459 & 305 & 55.41\% & 0 & 0 B \\
+llama.cpp & r01 & 28,503 & 12,641 & 306 & 55.06\% & 0 \\
+llama.cpp & r02 & 28,321 & 12,459 & 305 & 55.41\% & 0 \\
+MLX & r01 & 28,503 & 12,641 & 306 & 55.06\% & 0 \\
+MLX & r02 & 28,321 & 12,459 & 305 & 55.41\% & 0 \\
+SGLang-MLX & r01 & 28,503 & 12,641 & 306 & 55.06\% & 0 \\
+SGLang-MLX & r02 & 28,321 & 12,459 & 305 & 55.41\% & 0 \\
+vLLM-Metal & r01 & 28,496 & 12,656 & 313 & 54.98\% & 0 \\
+vLLM-Metal & r02 & 28,320 & 12,480 & 306 & 55.33\% & 0 \\
 \bottomrule
 \end{tabular}
-\label{tab:agent-atomic-e2-llamacpp}
+\label{tab:agent-atomic-e2-engines}
 \end{table}
 
-This is a 2/2 native mechanism replication bound to an independently
-qualified logical-policy result; it is not yet autonomous execution through
-each engine.  The evidence bundle is
+Direct MLX and SGLang-MLX copy zero selected K/V and match their dense
+same-subset logits exactly.  Their fused consumers peak only
+290,827--291,883 bytes above baseline, 0.562--0.572\% of one selected layer's
+K/V bytes.  vLLM-Metal's initial page attachment is also a zero-copy alias with
+zero active-memory delta; its complete-page contract adds 22 selected tokens
+per repeat.  The engine's 3.25--3.27~GB offload/restore materialization is
+reported separately rather than hidden by the zero-copy attachment claim.
+All four paths pass their declared lifecycle gates.  This is a 2/2-per-engine
+native mechanism replication bound to an independently qualified logical-policy
+result; it is not yet autonomous execution through each engine.  The evidence bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_scikit14496_v2}.
 
 \paragraph{Selection-only transfer exposed a cross-engine bootstrap error.}
@@ -6179,8 +6201,11 @@ rejected early E2 ladder: on two repeat-qualified task identities it preserves
 45.17\% aggregate candidate-own logical saving.  Its Scikit-learn $N=6$
 cluster alone preserves 2/2 successes and 17 calls at 57.09\% own saving; two
 strict frozen final requests now pass llama.cpp with 55.06--55.41\% visible
-saving, zero history re-encoding, and zero K/V copy.  This remains a small
-task-clustered policy result and a request-level engine realization, not a
+saving, zero history re-encoding, and zero initial-attachment K/V copy.  Direct
+MLX and SGLang-MLX reproduce the exact ledger geometry and logits; vLLM-Metal
+differs only by declared complete-page rounding and reproduces the continuation
+tokens.  This remains a small task-clustered policy result and a request-level
+engine realization, not a
 population-accuracy or cross-engine autonomous claim.  A later matched Pi
 $N=5$ prefix preserves all three Full successes at
 37.51\% clean paired saving, but failure-aware accounting lowers saving to

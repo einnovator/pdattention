@@ -5,13 +5,46 @@
   "source_policy": "Paper 8.5 Atomic-E2",
   "task": "scikit-learn__scikit-learn-14496",
   "session_episode": 6,
-  "engine": "llama.cpp-metal",
-  "engine_revision": "e6e5d63dbc09b5ea6153822e39057f9b7de40eb0",
-  "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M",
+  "engines": [
+    {
+      "engine": "llama.cpp-metal",
+      "engine_revision": "e6e5d63dbc09b5ea6153822e39057f9b7de40eb0",
+      "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M",
+      "qualified": "2/2",
+      "initial_attachment_copy": false,
+      "same_subset_gate": "repeat-token exact"
+    },
+    {
+      "engine": "mlx-lm",
+      "engine_version": "0.31.3",
+      "model": "mlx-community/Qwen3-0.6B-4bit",
+      "qualified": "2/2",
+      "initial_attachment_copy": false,
+      "same_subset_gate": "logit exact"
+    },
+    {
+      "engine": "sglang-mlx",
+      "engine_version": "0.0.0.dev0",
+      "model": "mlx-community/Qwen3-0.6B-4bit",
+      "qualified": "2/2",
+      "initial_attachment_copy": false,
+      "same_subset_gate": "logit exact"
+    },
+    {
+      "engine": "vllm-metal",
+      "engine_version": "0.29.0",
+      "engine_revision": "7390805822b2d7a208b09d55bd07b7572f727e20",
+      "model": "mlx-community/Qwen3-0.6B-4bit",
+      "qualified": "2/2",
+      "initial_attachment_copy": false,
+      "restore_materialization_copy": true,
+      "same_subset_gate": "token exact"
+    }
+  ],
   "model_fingerprint": "sha256:1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a",
   "tokenizer_fingerprint": "sha256:aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
   "experiment_revision": "966c1e6f",
-  "qualified": "2/2",
+  "qualified": "2/2 on each of four engines",
   "results": [
     {
       "repeat": 1,
@@ -57,7 +90,7 @@
   "claims": {
     "engine_mechanism_qualified": true,
     "autonomous_agent_quality": false,
-    "cross_engine_replication": false,
+    "cross_engine_replication": true,
     "runtime_economics": false,
     "production_default": false
   }

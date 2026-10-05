@@ -41,8 +41,8 @@ reported separately.
 
 No cross-engine autonomous-agent or production-default claim follows from this
 handoff.  The first runtime gate is exact realization of the frozen selected
-subset on the already-qualified llama.cpp path, followed by MLX, HF/vLLM, and
-SGLang when their hosts are available.
+subset.  That request-level gate now passes on llama.cpp, direct MLX,
+SGLang-MLX, and vLLM-Metal.  HF/CUDA and autonomous execution remain open.
 
 ## llama.cpp strict-subset result
 
@@ -63,3 +63,37 @@ The M4 Pro was concurrently running a high-CPU virtual machine during these
 runs.  Prime and wall-time fields are preserved in the raw evidence but are
 quarantined from runtime-economics claims; the admissible measurements here are
 correctness, token accounting, re-encoding, copy, and lifecycle state.
+
+## Cross-engine strict-subset replication
+
+The same two hash-bound frozen ledgers were consumed without retuning by three
+additional engines.  Direct MLX and SGLang-MLX preserve the exact llama.cpp
+token geometry.  vLLM-Metal uses complete 16-token scheduler pages, so its
+source tokenizer geometry differs by at most seven tokens and selection adds
+22 tokens in each repeat.  These are explicit page-rounding effects, not
+selector changes.
+
+| Engine / model | Repeat | Source K/V | Selected K/V | Suffix | Visible saving | History re-encoded | Initial selected-K/V copy | Same-subset result | Lifecycle |
+|---|---|---:|---:|---:|---:|---:|---:|---|---|
+| MLX-LM 0.31.3 / Qwen3-0.6B-4bit | r01 | 28,503 | 12,641 | 306 | 55.06% | 0 | 0 B | exact logits, `[151667,198]` | pass |
+| MLX-LM 0.31.3 / Qwen3-0.6B-4bit | r02 | 28,321 | 12,459 | 305 | 55.41% | 0 | 0 B | exact logits, `[151667,198]` | pass |
+| SGLang-MLX / Qwen3-0.6B-4bit | r01 | 28,503 | 12,641 | 306 | 55.06% | 0 | 0 B | exact logits, `[151667,198]` | pass |
+| SGLang-MLX / Qwen3-0.6B-4bit | r02 | 28,321 | 12,459 | 305 | 55.41% | 0 | 0 B | exact logits, `[151667,198]` | pass |
+| vLLM-Metal 0.29.0 / Qwen3-0.6B-4bit | r01 | 28,496 | 12,656 | 313 | 54.98% | 0 | 0 B | exact tokens, `[151667,198]` | pass |
+| vLLM-Metal 0.29.0 / Qwen3-0.6B-4bit | r02 | 28,320 | 12,480 | 306 | 55.33% | 0 | 0 B | exact tokens, `[151667,198]` | pass |
+
+MLX and SGLang-MLX additionally match the dense same-subset logits exactly.
+Their measured fused-consumer peak deltas are 290,827--291,883 bytes, only
+0.562--0.572% of one selected layer's K/V bytes; no full-selected-K/V-sized
+temporary is observed.  vLLM-Metal attaches selected pages by non-owning alias
+with zero active-memory delta.  Its offload/restore lifecycle necessarily
+materializes the restored source (3.25--3.27 GB); that restore copy is reported
+separately and is not described as zero-copy request attachment.
+
+The MLX and SGLang rows ran on a 48-GB M4 Pro.  The admitted vLLM-Metal rows
+use the exact pinned 0.29.0 package at source revision
+`7390805822b2d7a208b09d55bd07b7572f727e20` on that same host.  Attempts to run
+the 0.3.0 package on a 16-GB M5 were rejected before admission when the
+requested scheduler reserve exceeded stable capacity; they are configuration
+diagnostics, not negative engine results.  All elapsed-time fields remain
+quarantined from runtime-economics claims.
