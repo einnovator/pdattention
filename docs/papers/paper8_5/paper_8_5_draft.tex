@@ -92,15 +92,16 @@ never invokes the installed transactional command.
 
 A final post-sampler control removes those added affordances and returns to
 ordinary Bash.  Boundary-free Atomic E2 keeps the active instruction epoch
-plus the two latest terminally closed epochs.  Across two task identities and
-two matched repeats each, \textsc{Full} and Atomic E2 both resolve 4/4;
-aggregate calls fall from 41 to 29.  Atomic E2 selects 367,112 tokens from its
-669,591-token own-history counterfactual, for 45.17\% own logical omission and
-58.74\% paired end-to-end saving.  At episode depth six alone, own omission is
-57.09\% and calls tie 17--17.  Paired saving includes trajectory contraction
-and is not a K/V-saving estimate.  This two-cluster cohort meets the observed
-30--50\% own-saving/no-loss/no-call-increase gate, but is too small for a
-population-accuracy or production-default claim.
+plus the two latest terminally closed epochs.  Across three task identities
+and two matched repeats each, \textsc{Full} and Atomic E2 both resolve 6/6;
+aggregate calls fall from 59 to 45.  Atomic E2 selects 540,694 tokens from its
+1,090,645-token own-history counterfactual, for 50.42\% own logical omission
+and 60.40\% paired end-to-end saving.  The held-out depth-six cluster alone
+preserves 2/2 solves, reduces calls from 18 to 16, and reaches 58.77\% own
+omission.  Paired saving includes trajectory contraction and is not a
+K/V-saving estimate.  This three-cluster cohort meets the observed
+approximately-50\% own-saving/no-loss/no-call-increase gate, but is too small
+for a population-accuracy or production-default claim.
 
 Finally, per-request omission can reverse end-to-end: one six-issue policy
 resolves 6/6 and omits 55.34\% against its own trajectory, yet expands from 60
@@ -1131,12 +1132,13 @@ Task / depth & Repeats & Solves (F/E2) & Calls (F/E2) & Own saving & Paired savi
 \midrule
 pytest-7982 / N=4 & 2 & 2/2--2/2 & 24/12 & 18.91\% & 60.82\% \\
 scikit-14496 / N=6 & 2 & 2/2--2/2 & 17/17 & 57.09\% & 56.77\% \\
-Aggregate & 4 & 4/4--4/4 & 41/29 & 45.17\% & 58.74\% \\
+django-15368 / N=6 & 2 & 2/2--2/2 & 18/16 & 58.77\% & 63.51\% \\
+Aggregate & 6 & 6/6--6/6 & 59/45 & 50.42\% & 60.40\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-All four schema-2 pairs pass the strict execution-identity validator.  The model
+All six schema-2 pairs pass the strict execution-identity validator.  The model
 digest, tokenizer, temperature, effective top-$k$ 20, completion ceiling,
 persistent-prefix digest, scaffold, and tool surface match within each pair.
 At N=4, both candidate repeats select 84,760 of 104,530 counterfactual tokens
@@ -1148,16 +1150,27 @@ different correct patches.  Exact trajectory equality is therefore neither
 observed nor required for outcome preservation, and fixed temperature does not
 remove all backend trajectory variation.
 
-Across the task-clustered cohort, Atomic E2 selects 367,112 tokens from its
-669,591-token own counterfactual: 45.17\% portable logical omission.  The
-58.74\% paired coordinate additionally credits the call reduction from 41 to
-29 and therefore cannot be advertised as engine-independent K/V omission.
-Evidence is released under \path{atomic_e2_two_identity_repeat_v2}; the
-Task~4 sub-bundle remains in \path{atomic_e2_task04_repeat_v1}.  One upstream
-stall before the first Task~4 model response and two pre-inference launch
-errors before the N=6 control are quarantined outside the denominators.
-Two task identities are enough to promote a frozen ledger to runtime study,
-but not to establish population accuracy or a production default.
+The held-out django-15368 cluster uses a different immutable five-episode
+prefix at depth six.  Both repeats resolve in both arms.  Full uses 18 calls
+and 475,729 cumulative tokens; Atomic E2 uses 16 calls, selects 173,582 of its
+421,054-token own counterfactual, and therefore omits 58.77\% of candidate-own
+history.  Repeat-level call deltas are $+2$ and $-4$, another direct warning
+that temperature zero does not imply an invariant autonomous trajectory.
+
+Across the task-clustered cohort, Atomic E2 selects 540,694 tokens from its
+1,090,645-token own counterfactual: 50.42\% portable logical omission.  The
+60.40\% paired coordinate additionally credits the call reduction from 59 to
+45 and therefore cannot be advertised as engine-independent K/V omission.
+Evidence is released under \path{atomic_e2_three_identity_repeat_v3}, which
+extends \path{atomic_e2_two_identity_repeat_v2}; the Task~4 sub-bundle remains
+in \path{atomic_e2_task04_repeat_v1}.  One upstream stall before the first
+Task~4 model response and two pre-inference launch errors before the original
+N=6 control are quarantined outside the denominators.  In the held-out screen,
+two other formerly successful identities fail their contemporaneous Full arm,
+so the policy arm is not run; those failures remain unconditional baseline
+reliability evidence rather than being retried away.  Three task identities
+are enough to promote a frozen ledger to runtime study, but not to establish
+population accuracy or a production default.
 
 \paragraph{Oracle scope.}
 Leave-one-bundle-out and bounded subset search answer whether headroom exists
@@ -1190,8 +1203,8 @@ those physical and numerical gates.
 Agent history is neither a bag of tokens nor merely current world state:
 provenance, control, and semantic evidence can outlive the state they create.
 Boundary-free policies expose removable history, but current cohorts remain
-small.  Post-sampler Atomic E2 preserves 4/4 paired solves across two task
-identities, reduces calls from 41 to 29, and omits 45.17\% of its own logical
+small.  Post-sampler Atomic E2 preserves 6/6 paired solves across three task
+identities, reduces calls from 59 to 45, and omits 50.42\% of its own logical
 history.  It passes the observed promotion gate but remains too small for a
 population-accuracy or production-default claim.  The defensible endpoint is
 official resolution, calls, and cumulative work---not nominal retention.
@@ -5822,9 +5835,9 @@ outcome: E2 resolves 2/2 and \textsc{Full} 0/2 at equal mean calls, with E2
 sending 21.92\% fewer tokens.  Because byte-identical no-removal requests also
 diverge at temperature zero, this is evidence of a noisy outcome surface, not
 an accuracy gain.  No instruction-epoch profile transferred to Paper~4.5 at
-that stage.  The later post-sampler Atomic-E2 cohort preserves 4/4 paired
-solves across two task identities, omits 45.17\% of candidate-own history, and
-reduces aggregate calls from 41 to 29.  It is eligible for a frozen runtime
+that stage.  The later post-sampler Atomic-E2 cohort preserves 6/6 paired
+solves across three task identities, omits 50.42\% of candidate-own history,
+and reduces aggregate calls from 59 to 45.  It is eligible for a frozen runtime
 mapping and held-out task expansion, but not a production-default claim.
 The frozen profile screen identifies E0+M1/V1/P1 at 39.81\% opportunity and
 R1/M1/V1/P1 at 37.43\%, but their first autonomous pilots both fail with the
