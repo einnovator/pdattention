@@ -587,14 +587,23 @@ class MLXAgentHistoryExecutor:
         ).memory
 
     @staticmethod
-    def _local_states(caches: Sequence[object]) -> tuple[tuple[object, object], ...]:
+    def _local_states(
+        caches: Sequence[object],
+    ) -> tuple[tuple[object, object, int], ...]:
         result = []
         for wrapped in caches:
             local = getattr(wrapped, "local_cache", wrapped)
             state = getattr(local, "state", None)
             if not isinstance(state, tuple) or len(state) < 2:
                 raise RuntimeError("MLX request-local attention cache has no K/V state.")
-            result.append((state[0], state[1]))
+            capacity = int(state[0].shape[2])
+            valid_tokens = int(getattr(local, "offset", capacity))
+            if valid_tokens < 0 or valid_tokens > capacity:
+                raise RuntimeError(
+                    "MLX request-local cache offset is outside its allocated "
+                    f"K/V storage: offset={valid_tokens}, capacity={capacity}."
+                )
+            result.append((state[0], state[1], valid_tokens))
         return tuple(result)
 
     def _graft(
@@ -615,18 +624,26 @@ class MLXAgentHistoryExecutor:
         layers = []
         suffix_bytes = 0
         old_bytes = memory.nbytes
-        for prior, (keys, values) in zip(memory.layers, states):
-            local_tokens = int(keys.shape[2])
-            if local_tokens != int(values.shape[2]):
+        for prior, (keys, values, valid_tokens) in zip(memory.layers, states):
+            key_capacity = int(keys.shape[2])
+            value_capacity = int(values.shape[2])
+            if key_capacity != value_capacity:
                 raise RuntimeError("MLX request-local K/V lengths disagree.")
             expected_total = (
                 int(ignored_leading_local_tokens) + int(expected_local_tokens)
             )
-            if local_tokens != expected_total:
+            if valid_tokens != expected_total:
                 raise RuntimeError(
                     "MLX local K/V length disagrees with the committed token suffix: "
-                    f"cache={local_tokens}, expected={expected_total}."
+                    f"valid={valid_tokens}, capacity={key_capacity}, "
+                    f"expected={expected_total}."
                 )
+            # mlx-lm 0.32 may expose step-rounded backing arrays through
+            # ``state`` while ``offset`` remains the authoritative logical
+            # length. Never graft padded, unevaluated capacity into canonical
+            # agent history.
+            keys = keys[:, :, :valid_tokens, :]
+            values = values[:, :, :valid_tokens, :]
             if ignored_leading_local_tokens:
                 keys = keys[:, :, int(ignored_leading_local_tokens) :, :]
                 values = values[:, :, int(ignored_leading_local_tokens) :, :]

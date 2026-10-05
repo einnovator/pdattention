@@ -11,6 +11,7 @@ import pytest
 from pra_hf.deployment import PRAWireRequest, PRAWireResource
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 from pra_mlx.agent_executor import MLXAgentHistoryExecutor, enforce_retention_floor
+from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
 
 
 class _FakeMX(ModuleType):
@@ -76,6 +77,18 @@ class _FakeCache:
         self.keys = np.concatenate((self.keys, values), axis=2)
         self.values = np.concatenate((self.values, values + 100), axis=2)
         self.offset += width
+
+
+class _PaddedFakeCache:
+    def __init__(self, *, valid_tokens: int, capacity: int) -> None:
+        values = np.arange(capacity, dtype=np.float32).reshape(1, 1, capacity, 1)
+        self.keys = np.repeat(values, 2, axis=3)
+        self.values = self.keys + 100
+        self.offset = valid_tokens
+
+    @property
+    def state(self):
+        return self.keys, self.values
 
 
 class _Tokenizer:
@@ -369,6 +382,35 @@ def test_mlx_plain_path_checks_context_before_allocating_cache(fake_mlx) -> None
             messages=({"role": "user", "content": "too long"},),
             max_new_tokens=2,
         ))
+
+
+def test_graft_uses_logical_offset_not_padded_cache_capacity(fake_mlx) -> None:
+    executor = object.__new__(MLXAgentHistoryExecutor)
+    prior_keys = np.full((1, 1, 2, 2), -1, dtype=np.float32)
+    prior_values = np.full((1, 1, 2, 2), -2, dtype=np.float32)
+    memory = MLXNativeMemory(
+        (MLXNativeLayerKV(prior_keys, prior_values),),
+        source_tokens=2,
+    )
+    cache = _PaddedFakeCache(valid_tokens=3, capacity=8)
+
+    updated, metrics = executor._graft(
+        memory,
+        (cache,),
+        expected_local_tokens=3,
+    )
+
+    assert updated.source_tokens == 5
+    assert updated.layers[0].keys.shape[2] == 5
+    assert updated.layers[0].values.shape[2] == 5
+    np.testing.assert_array_equal(
+        updated.layers[0].keys[:, :, 2:, :], cache.keys[:, :, :3, :]
+    )
+    assert metrics.local_tokens == 3
+    assert (
+        metrics.canonical_suffix_graft_d2d_bytes
+        == cache.keys[:, :, :3, :].nbytes * 2
+    )
 
 
 def test_mlx_native_path_checks_context_before_owner_extension(fake_mlx) -> None:
