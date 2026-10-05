@@ -90,6 +90,17 @@ current user instruction yields a repeatable frozen next action but autonomous
 \textsc{Full} still reaches 25 calls without verification or submission and
 never invokes the installed transactional command.
 
+A final post-sampler control removes those added affordances and returns to
+ordinary Bash.  On Task~4, boundary-free Atomic E2---the active instruction
+epoch plus the two latest terminally closed epochs---preserves the official
+solve in two of two matched repeats.  In both repeats \textsc{Full} uses 12
+calls and 216,344 cumulative input tokens, while Atomic E2 uses six calls,
+selects 84,760 of its 104,530-token own-history counterfactual, and emits the
+same correct patch.  This is 18.91\% own logical omission and 60.82\% paired
+end-to-end saving.  The latter includes trajectory contraction and is not a
+K/V-saving estimate.  This repeat-qualified single-identity result promotes
+Atomic E2 to cross-task confirmation, not to a production default.
+
 Finally, per-request omission can reverse end-to-end: one six-issue policy
 resolves 6/6 and omits 55.34\% against its own trajectory, yet expands from 60
 to 114 calls and consumes 43.87\% more input than paired Full.  We therefore
@@ -1096,6 +1107,53 @@ insertion and no test, so no selective arm is admitted.  The evidence and
 effective-options traces are released under
 \path{sampling_contract_audit_v1}.
 
+\subsection{Post-sampler Atomic-E2 replication}
+
+We next remove the rejected static workflow anchor and transactional-edit
+capability and return both arms to the same ordinary mini-swe-agent Bash
+surface.  Atomic E2 uses no evaluator task identifier or explicit boundary:
+user instructions are observable roots, terminal evidence closes an
+instruction component, and the active component plus the two most recent
+closed components remain intact.  Older closed components are removed only as
+whole causal groups.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Repeat-qualified Task~4 Atomic-E2 pair after sampler and pairing
+audits.  Own saving isolates policy omission on the candidate trajectory;
+paired saving also includes trajectory contraction.}
+\label{tab:atomic-e2-post-sampler}
+\begin{tabular}{lrrrrr}
+\toprule
+Repeat & FULL & Atomic E2 & Calls (F/E2) & Own saving & Paired saving \\
+\midrule
+1 & pass & pass & 12/6 & 18.91\% & 60.82\% \\
+2 & pass & pass & 12/6 & 18.91\% & 60.82\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both schema-2 pairs pass the strict execution-identity validator.  The model
+digest, tokenizer, temperature, effective top-$k$ 20, completion ceiling,
+persistent-prefix digest, scaffold, and tool surface match within each pair.
+Both Full controls consume 216,344 cumulative input tokens.  Both Atomic-E2
+arms select 84,760 tokens from a 104,530-token candidate-trajectory Full
+counterfactual, exclude 60 causal groups (19,770 tokens), and submit the same
+correct patch.  Full also submits the same correct patch across its two
+repeats.  The first action differs: Atomic E2 begins with a more direct source
+search and finishes in half as many calls.  Consequently the result supports
+official-outcome and action-cost preservation, not exact-trajectory equality.
+
+The 18.91\% coordinate is the portable logical omission ratio to freeze for
+native K/V evaluation.  The 60.82\% coordinate is workload economics: it
+cannot be advertised as engine-independent K/V omission because it also
+credits six avoided model calls.  Evidence is released under
+\path{atomic_e2_task04_repeat_v1}.  One upstream stall before the first model
+response was quarantined and excluded.  One repeated task identity cannot
+establish population accuracy, so Atomic E2 advances only to a second
+repeat-qualified identity and then to a frozen cross-engine realization.
+
 \paragraph{Oracle scope.}
 Leave-one-bundle-out and bounded subset search answer whether headroom exists
 on a frozen successful trajectory.  They cannot predict the new trajectory
@@ -1127,9 +1185,12 @@ those physical and numerical gates.
 Agent history is neither a bag of tokens nor merely current world state:
 provenance, control, and semantic evidence can outlive the state they create.
 Boundary-free policies expose removable history, but current cohorts remain
-small.  The defensible endpoint is official resolution, calls, and cumulative
-work---not nominal retention.  Logical policy and physical realization remain
-separate contracts.
+small.  The post-sampler Atomic-E2 result preserves one official solve in two
+of two matched repeats while reducing calls and omitting 18.91\% of its own
+logical history, but it remains a single-identity promotion candidate.  The
+defensible endpoint is official resolution, calls, and cumulative work---not
+nominal retention.  Logical policy and physical realization remain separate
+contracts.
 
 \ifdefined\PaperEightFiveTechnicalReport
 \clearpage
@@ -5755,7 +5816,10 @@ failure-aware saving in that ladder.  The frozen-prefix diagnosis reverses the
 outcome: E2 resolves 2/2 and \textsc{Full} 0/2 at equal mean calls, with E2
 sending 21.92\% fewer tokens.  Because byte-identical no-removal requests also
 diverge at temperature zero, this is evidence of a noisy outcome surface, not
-an accuracy gain.  No instruction-epoch profile transfers to Paper~4.5.
+an accuracy gain.  No instruction-epoch profile transferred to Paper~4.5 at
+that stage.  The later post-sampler Task~4 control is the first
+repeat-qualified Atomic-E2 candidate eligible for a frozen runtime mapping,
+subject to cross-task confirmation.
 The frozen profile screen identifies E0+M1/V1/P1 at 39.81\% opportunity and
 R1/M1/V1/P1 at 37.43\%, but their first autonomous pilots both fail with the
 same incorrect patch.  Coarse semantic role floors therefore do not substitute

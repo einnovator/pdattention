@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_atomic_e2_task04_repeat_v1",
+  "evidence_class": "repeat_qualified_autonomous_agent_logical_selection",
+  "repository_revision": "36e18df64aef1fe39ba17d48273c01ad520ecb6c",
+  "instance_id": "pytest-dev__pytest-7982",
+  "episode_index": 4,
+  "prior_episode_count": 3,
+  "prefix_sha256": "75b0135f34db8dcb277c50cc700b5b996c112fbb15863dd8c71e77f18e8bf73f",
+  "model": "qwen3-coder:30b-ctx131k",
+  "model_digest": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+  "quantization": "Q4_K_M",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "top_k": 20,
+  "seed": 0,
+  "harness": "mini-swe-agent 2.4.6",
+  "grader": "official SWE-bench Docker harness 4.1.0",
+  "policy": {
+    "name": "Atomic E2",
+    "implementation": "persistent_instruction_epoch_retirement",
+    "boundary_mode": "boundary_free",
+    "completed_instruction_epochs": 2,
+    "retire_closed_instructions": true,
+    "keep_completed_task_statements": false,
+    "recent_turn_floor": 0,
+    "mutation_turn_floor": 0,
+    "verification_turn_floor": 0,
+    "protocol_turn_floor": 0,
+    "finalization_turn_floor": 0,
+    "materialization": "whole_record_drop",
+    "static_workflow_anchor": "none",
+    "transactional_replace_tool": false,
+    "synthetic_receipts": false,
+    "evaluator_task_ids_visible_to_selector": false
+  },
+  "repeats": [
+    {
+      "repeat": 1,
+      "pair_id": "p85-task04-atomicepoch-topk20-r01",
+      "full": {
+        "official_resolved": true,
+        "calls": 12,
+        "cumulative_materialized_tokens": 216344
+      },
+      "atomic_e2": {
+        "official_resolved": true,
+        "calls": 6,
+        "cumulative_full_counterfactual_tokens": 104530,
+        "cumulative_selected_tokens": 84760,
+        "excluded_causal_groups": 60,
+        "excluded_tokens": 19770,
+        "own_trajectory_saving_fraction": 0.18913230651487611,
+        "paired_saving_fraction": 0.6082165440224827,
+        "first_action_divergence": 1
+      },
+      "strict_pair_validator": "pass"
+    },
+    {
+      "repeat": 2,
+      "pair_id": "p85-task04-atomicepoch-topk20-r02",
+      "full": {
+        "official_resolved": true,
+        "calls": 12,
+        "cumulative_materialized_tokens": 216344
+      },
+      "atomic_e2": {
+        "official_resolved": true,
+        "calls": 6,
+        "cumulative_full_counterfactual_tokens": 104530,
+        "cumulative_selected_tokens": 84760,
+        "excluded_causal_groups": 60,
+        "excluded_tokens": 19770,
+        "own_trajectory_saving_fraction": 0.18913230651487611,
+        "paired_saving_fraction": 0.6082165440224827,
+        "first_action_divergence": 1
+      },
+      "strict_pair_validator": "pass"
+    }
+  ],
+  "aggregate": {
+    "paired_official_preservation": "2/2",
+    "full_calls": 24,
+    "atomic_e2_calls": 12,
+    "call_delta": -12,
+    "full_materialized_tokens": 432688,
+    "atomic_e2_full_counterfactual_tokens": 209060,
+    "atomic_e2_selected_tokens": 169520,
+    "own_trajectory_saving_fraction": 0.18913230651487611,
+    "paired_saving_fraction": 0.6082165440224827,
+    "same_candidate_patch_across_repeats": true
+  },
+  "interpretation": {
+    "promotion": "repeat_qualified_single_identity_candidate",
+    "production_default": false,
+    "population_accuracy_claim": false,
+    "engine_kv_claim": false,
+    "note": "Own-trajectory saving isolates logical omission. Paired saving also includes the shorter six-call trajectory and must not be interpreted as an engine-independent K/V saving ratio."
+  },
+  "excluded_execution": {
+    "arm": "Atomic E2 repeat 1 initial attempt",
+    "reason": "upstream stalled before the first model response",
+    "counted": false
+  }
+}
