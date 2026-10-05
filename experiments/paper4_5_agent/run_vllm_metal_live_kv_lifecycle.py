@@ -1,4 +1,4 @@
-"""Qualify request-owned sparse live K/V on matched vLLM-Metal 0.29."""
+"""Qualify request-owned sparse live K/V on a recognized vLLM-Metal release."""
 
 from __future__ import annotations
 

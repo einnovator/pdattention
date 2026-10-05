@@ -670,6 +670,17 @@ def test_vllm_packaged_runtime_qualification_is_derived_fail_closed() -> None:
     assert failures == []
 
     qualified, failures = _qualify_packaged_runtime(
+        vllm_version="0.28.0+cpu",
+        metal_version="0.3.0",
+        source_revision="14705ad974863f68d00315655514f200366441bf",
+        vllm_provenance=provenance,
+        metal_provenance=provenance,
+        artifact_overlay=False,
+    )
+    assert qualified
+    assert failures == []
+
+    qualified, failures = _qualify_packaged_runtime(
         vllm_version="0.28.0",
         metal_version="0.29.0",
         source_revision="7390805822b2d7a208b09d55bd07b7572f727e20",

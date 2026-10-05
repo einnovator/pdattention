@@ -25,6 +25,10 @@ _PACKAGED_RELEASES = {
         "vllm_base_version": "0.29.0",
         "source_revision": "7390805822b2d7a208b09d55bd07b7572f727e20",
     },
+    "0.3.0": {
+        "vllm_base_version": "0.28.0",
+        "source_revision": "14705ad974863f68d00315655514f200366441bf",
+    },
 }
 
 
