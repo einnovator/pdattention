@@ -960,6 +960,42 @@ def test_sparse_same_subset_mismatch_fails_closed_and_releases_borrows(fake_mlx)
     assert executor.runtime.snapshot()["active_request_ids"] == ()
 
 
+def test_distribution_gate_accepts_negligible_probability_drift(fake_mlx) -> None:
+    executor = MLXAgentHistoryExecutor(
+        _Model(sparse_delta=0.01),
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        max_abs_logit_delta=0.005,
+        same_subset_gate_mode="distribution",
+        max_probability_delta=0.01,
+        max_total_variation=0.01,
+        agent_history_qualified=True,
+        fused_disjoint_attention=False,
+    )
+    initial = (
+        {"role": "system", "content": "S" * 40},
+        {"role": "user", "content": "U" * 40},
+    )
+    executor.generate(_request(initial))
+    logical = (*initial, {"role": "assistant", "content": "A"}, {
+        "role": "user", "content": "O" * 40,
+    })
+
+    result = executor.generate(_request(
+        logical,
+        request_messages=(logical[0], logical[1], logical[3]),
+        retention=0.9,
+        request_id="distribution-gate",
+    ))
+
+    trace = result.trace[0]
+    assert trace["same_subset_gate_mode"] == "distribution"
+    assert trace["same_subset_max_abs_logit_delta"] > 0.005
+    assert trace["same_subset_gate_passed"] is True
+
+
 def test_append_rewrite_and_tenant_crossing_fail_closed(fake_mlx) -> None:
     executor = _executor()
     initial = (

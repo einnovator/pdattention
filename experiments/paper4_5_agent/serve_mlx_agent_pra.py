@@ -312,6 +312,17 @@ def main() -> None:
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
     parser.add_argument(
+        "--same-subset-gate-mode",
+        choices=("raw_logit", "distribution"),
+        default="raw_logit",
+        help=(
+            "Sparse same-subset numerical gate. Distribution mode still "
+            "requires exact greedy tokens at every generated position."
+        ),
+    )
+    parser.add_argument("--max-probability-delta", type=float, default=1e-5)
+    parser.add_argument("--max-total-variation", type=float, default=1e-5)
+    parser.add_argument(
         "--require-full-retention-reference",
         action="store_true",
         help=(
@@ -388,6 +399,9 @@ def main() -> None:
         chat_template_profile=chat_template_profile,
         chat_template_digest=template_digest,
         max_abs_logit_delta=args.max_abs_logit_delta,
+        same_subset_gate_mode=args.same_subset_gate_mode,
+        max_probability_delta=args.max_probability_delta,
+        max_total_variation=args.max_total_variation,
         prefill_step_size=args.prefill_step_size,
         require_full_retention_reference=args.require_full_retention_reference,
         agent_history_qualified=args.agent_history_qualified,

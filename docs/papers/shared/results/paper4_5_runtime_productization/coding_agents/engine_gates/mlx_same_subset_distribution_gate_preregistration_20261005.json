@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "evidence_class": "prospective_engine_gate_declaration",
+  "date": "2026-10-05",
+  "status": "declared_before_confirmation_execution",
+  "scope": {
+    "engine": "direct MLX fused disjoint attention",
+    "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+    "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+    "mlx_version": "0.32.1",
+    "mlx_lm_version": "0.32.0"
+  },
+  "motivation": {
+    "exploratory_raw_logit_delta": 0.013671875,
+    "exploratory_centered_logit_delta": 0.013671875,
+    "exploratory_max_probability_delta": 2.38418579e-07,
+    "exploratory_total_variation": 1.74856353e-07,
+    "exploratory_winner_token_equal": true,
+    "interpretation": "Different attention reduction order perturbs low-probability logits. Raw-logit equality is retained as telemetry, while the prospective gate tests decoded behavior and normalized probability mass."
+  },
+  "prospective_gate": {
+    "mode": "distribution",
+    "require_exact_greedy_token_at_every_output_position": true,
+    "maximum_probability_delta": 1e-05,
+    "maximum_total_variation": 1e-05,
+    "raw_logit_delta": "reported_not_gating",
+    "centered_logit_delta": "reported_not_gating",
+    "failure_behavior": "fail_closed_before_returning_the_completion"
+  },
+  "execution_order": [
+    "Confirm the complete Task 1 sparse requests under the declared gate.",
+    "Run one held-out sparse request or task without changing thresholds.",
+    "Admit autonomous tail-90 evidence only if both exact-token and probability-distance conditions pass."
+  ],
+  "claim_boundary": "The exploratory observation does not qualify tail-90. A confirmation on the same task is not held-out evidence, and no production-default gate is claimed until held-out replication."
+}

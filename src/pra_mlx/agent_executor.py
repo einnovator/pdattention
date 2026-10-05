@@ -235,6 +235,9 @@ class MLXAgentHistoryExecutor:
         chat_template_profile: str = "native",
         chat_template_digest: str | None = None,
         max_abs_logit_delta: float = 0.005,
+        same_subset_gate_mode: str = "raw_logit",
+        max_probability_delta: float = 1e-5,
+        max_total_variation: float = 1e-5,
         require_same_subset_reference: bool = True,
         require_full_retention_reference: bool = False,
         agent_history_qualified: bool = False,
@@ -246,6 +249,14 @@ class MLXAgentHistoryExecutor:
             raise ValueError("wire_tail_tokens must be positive.")
         if max_abs_logit_delta < 0:
             raise ValueError("max_abs_logit_delta cannot be negative.")
+        if same_subset_gate_mode not in {"raw_logit", "distribution"}:
+            raise ValueError(
+                "same_subset_gate_mode must be raw_logit or distribution."
+            )
+        if max_probability_delta < 0:
+            raise ValueError("max_probability_delta cannot be negative.")
+        if max_total_variation < 0:
+            raise ValueError("max_total_variation cannot be negative.")
         if prefill_step_size <= 0:
             raise ValueError("prefill_step_size must be positive.")
         if max_model_len <= 0:
@@ -262,6 +273,9 @@ class MLXAgentHistoryExecutor:
             raise ValueError("Configured chat template digest does not match the tokenizer.")
         self.chat_template_digest = observed
         self.max_abs_logit_delta = float(max_abs_logit_delta)
+        self.same_subset_gate_mode = str(same_subset_gate_mode)
+        self.max_probability_delta = float(max_probability_delta)
+        self.max_total_variation = float(max_total_variation)
         self.require_same_subset_reference = bool(require_same_subset_reference)
         self.require_full_retention_reference = bool(
             require_full_retention_reference
@@ -304,7 +318,10 @@ class MLXAgentHistoryExecutor:
             "streaming": False,
             "prefix_cache_enabled": False,
             "same_subset_reference_required": self.require_same_subset_reference,
+            "same_subset_gate_mode": self.same_subset_gate_mode,
             "same_subset_max_abs_logit_delta": self.max_abs_logit_delta,
+            "same_subset_max_probability_delta": self.max_probability_delta,
+            "same_subset_max_total_variation": self.max_total_variation,
             "full_retention_prefix_cache_reference_required": (
                 self.require_full_retention_reference
             ),
@@ -1098,9 +1115,17 @@ class MLXAgentHistoryExecutor:
                     same_subset_reference_token = reference_token
                     output_index = same_subset_compared_tokens
                     same_subset_compared_tokens += 1
+                    numeric_gate_failed = (
+                        step_delta > self.max_abs_logit_delta
+                        if self.same_subset_gate_mode == "raw_logit"
+                        else (
+                            step_probability_delta > self.max_probability_delta
+                            or step_total_variation > self.max_total_variation
+                        )
+                    )
                     if (
                         reference_token != token
-                        or step_delta > self.max_abs_logit_delta
+                        or numeric_gate_failed
                     ):
                         raise RuntimeError(
                             "MLX sparse same-subset correctness gate failed: "
@@ -1110,7 +1135,10 @@ class MLXAgentHistoryExecutor:
                             f"centered_logit_delta={step_centered_delta:.9g}, "
                             f"max_probability_delta={step_probability_delta:.9g}, "
                             f"total_variation={step_total_variation:.9g}, "
-                            f"limit={self.max_abs_logit_delta:.9g}, "
+                            f"gate_mode={self.same_subset_gate_mode}, "
+                            f"raw_logit_limit={self.max_abs_logit_delta:.9g}, "
+                            f"probability_limit={self.max_probability_delta:.9g}, "
+                            f"total_variation_limit={self.max_total_variation:.9g}, "
                             f"candidate_token={token}, "
                             f"reference_token={reference_token}."
                         )
@@ -1345,7 +1373,10 @@ class MLXAgentHistoryExecutor:
                 same_subset_max_probability_delta
             ),
             "same_subset_max_total_variation": same_subset_max_total_variation,
+            "same_subset_gate_mode": self.same_subset_gate_mode,
             "same_subset_gate_limit": self.max_abs_logit_delta,
+            "same_subset_probability_gate_limit": self.max_probability_delta,
+            "same_subset_total_variation_gate_limit": self.max_total_variation,
             "same_subset_candidate_first_token_id": same_subset_candidate_token,
             "same_subset_reference_first_token_id": same_subset_reference_token,
             "same_subset_first_token_match": (
@@ -1360,8 +1391,23 @@ class MLXAgentHistoryExecutor:
             ),
             "segmented_attention_active": use_segmented,
             "same_subset_gate_passed": (
-                None if plan.full_retention else logit_delta is not None
-                and logit_delta <= self.max_abs_logit_delta
+                None
+                if plan.full_retention
+                else (
+                    logit_delta is not None
+                    and (
+                        logit_delta <= self.max_abs_logit_delta
+                        if self.same_subset_gate_mode == "raw_logit"
+                        else (
+                            same_subset_max_probability_delta is not None
+                            and same_subset_max_probability_delta
+                            <= self.max_probability_delta
+                            and same_subset_max_total_variation is not None
+                            and same_subset_max_total_variation
+                            <= self.max_total_variation
+                        )
+                    )
+                )
             ),
             "full_retention_prefix_cache_reference_required": (
                 bool(self.require_full_retention_reference)
