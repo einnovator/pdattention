@@ -1031,6 +1031,10 @@ def test_token_exact_diagnostic_reports_but_does_not_gate_probability(fake_mlx) 
     assert trace["same_subset_max_probability_delta"] > 0
     assert trace["same_subset_gate_passed"] is True
     assert trace["same_subset_qualification_eligible"] is False
+    assert executor.capabilities()["agent_history_kv_qualified"] is False
+    assert executor.capabilities()["qualification_status"] == (
+        "measurement-only token-exact diagnostic"
+    )
 
 
 def test_append_rewrite_and_tenant_crossing_fail_closed(fake_mlx) -> None:

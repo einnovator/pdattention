@@ -306,6 +306,10 @@ class MLXAgentHistoryExecutor:
             )
 
     def capabilities(self) -> Mapping[str, object]:
+        qualification_eligible = (
+            self.agent_history_qualified
+            and self.same_subset_gate_mode != "token_exact_diagnostic"
+        )
         return {
             "adapter": "mlx_lm_direct_agent",
             "integration_level": "E2",
@@ -334,11 +338,15 @@ class MLXAgentHistoryExecutor:
             # MLX slice aliasing and attention temporaries remain measured,
             # rather than being promoted to a blanket zero-copy claim.
             "selected_history_physical_copy_known": self.agent_history_qualified,
-            "agent_history_kv_qualified": self.agent_history_qualified,
+            "agent_history_kv_qualified": qualification_eligible,
             "qualification_status": (
                 "qualified model/profile with per-request same-subset enforcement"
-                if self.agent_history_qualified
-                else "per-request same-subset gate required"
+                if qualification_eligible
+                else (
+                    "measurement-only token-exact diagnostic"
+                    if self.same_subset_gate_mode == "token_exact_diagnostic"
+                    else "per-request same-subset gate required"
+                )
             ),
             "segmented_attention_layers": self.patched_layers,
             "segmented_attention_dispatch": "sparse_only",
