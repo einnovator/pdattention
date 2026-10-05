@@ -933,6 +933,13 @@ def _pairing_manifest(instance_id: str, behavior: str) -> dict:
         "seed": 0,
         "max_calls": 40,
         "max_completion_tokens": 1024,
+        "selection": {
+            "static_workflow_anchor": "none",
+            "static_workflow_anchor_location": "system_prefix",
+        },
+        "transactional_replace_tool": False,
+        "canonicalize_unordered_search_output": False,
+        "upstream_dialect": "openai",
     }
 
 
@@ -966,3 +973,20 @@ def test_pairing_identity_rejects_within_task_behavior_change():
         assert "agent_behavior_sha256" in str(error)
     else:
         raise AssertionError("pairing identity change was accepted")
+
+
+def test_pairing_identity_rejects_workflow_anchor_change():
+    baseline = [_pairing_manifest("task-a", "behavior-a")]
+    candidate = [dict(baseline[0])]
+    candidate[0]["selection"] = {
+        **baseline[0]["selection"],
+        "static_workflow_anchor": "coding_active_request_v8",
+        "static_workflow_anchor_location": "current_instruction",
+    }
+
+    with pytest.raises(ValueError, match="behavioral identity"):
+        _validate_sequence_pairing_identity(
+            candidate_manifests=candidate,
+            baseline_manifests=baseline,
+            expected_pair_id="campaign:sequence:r1",
+        )

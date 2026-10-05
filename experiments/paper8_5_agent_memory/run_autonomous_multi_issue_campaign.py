@@ -835,6 +835,39 @@ _SAME_PREFIX_FULL_FIELDS = (
     "workspace_source_identity_sha256",
 )
 
+_BEHAVIORAL_PAIRING_DEFAULTS = {
+    "static_workflow_anchor": "none",
+    "static_workflow_anchor_location": "system_prefix",
+    "transactional_replace_tool": False,
+    "canonicalize_unordered_search_output": False,
+    "upstream_dialect": "openai",
+}
+
+
+def _behavioral_pairing_identity(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    selection = manifest.get("selection") or {}
+    return {
+        "static_workflow_anchor": selection.get(
+            "static_workflow_anchor",
+            _BEHAVIORAL_PAIRING_DEFAULTS["static_workflow_anchor"],
+        ),
+        "static_workflow_anchor_location": selection.get(
+            "static_workflow_anchor_location",
+            _BEHAVIORAL_PAIRING_DEFAULTS["static_workflow_anchor_location"],
+        ),
+        "transactional_replace_tool": bool(manifest.get(
+            "transactional_replace_tool",
+            _BEHAVIORAL_PAIRING_DEFAULTS["transactional_replace_tool"],
+        )),
+        "canonicalize_unordered_search_output": bool(manifest.get(
+            "canonicalize_unordered_search_output",
+            _BEHAVIORAL_PAIRING_DEFAULTS["canonicalize_unordered_search_output"],
+        )),
+        "upstream_dialect": manifest.get(
+            "upstream_dialect", _BEHAVIORAL_PAIRING_DEFAULTS["upstream_dialect"]
+        ),
+    }
+
 
 def _validate_same_prefix_full_qualification(
     *, candidate_episode: Mapping[str, Any], candidate_manifest: Mapping[str, Any],
@@ -850,6 +883,10 @@ def _validate_same_prefix_full_qualification(
             candidate_manifest.get(field) != control_manifest.get(field)
         ):
             raise ValueError(f"same-prefix FULL changed manifest identity {field}")
+    if _behavioral_pairing_identity(candidate_manifest) != (
+        _behavioral_pairing_identity(control_manifest)
+    ):
+        raise ValueError("same-prefix FULL changed behavioral pairing identity")
     candidate_session = candidate_manifest.get("persistent_session") or {}
     control_session = control_manifest.get("persistent_session") or {}
     if candidate_session.get("episode_index") != control_session.get("episode_index"):
@@ -907,6 +944,17 @@ def _validate_sequence_pairing_identity(
                 raise ValueError(
                     f"paired episode {index} changed manifest identity {field}"
                 )
+        candidate_behavior = _behavioral_pairing_identity(candidate)
+        baseline_behavior = _behavioral_pairing_identity(baseline)
+        if candidate_behavior != baseline_behavior:
+            changed = sorted(
+                key for key in candidate_behavior
+                if candidate_behavior[key] != baseline_behavior[key]
+            )
+            raise ValueError(
+                f"paired episode {index} changed behavioral identity "
+                + ", ".join(changed)
+            )
         scaffold_revisions.add(str(baseline["scaffold_identity_sha256"]))
         harness_revisions.add(str(baseline["harness_version_observed"]))
         ordered_agent_behaviors.append(str(baseline["agent_behavior_sha256"]))

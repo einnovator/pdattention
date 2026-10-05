@@ -57,7 +57,15 @@ def _run(
         "instrument_observations": True,
         "scaffold_identity_sha256": "scaffold",
         "pair_id": pair_id,
-        "selection": {"policy": policy, "materialization_mode": "whole_record"},
+        "selection": {
+            "policy": policy,
+            "materialization_mode": "whole_record",
+            "static_workflow_anchor": "none",
+            "static_workflow_anchor_location": "system_prefix",
+        },
+        "transactional_replace_tool": False,
+        "canonicalize_unordered_search_output": False,
+        "upstream_dialect": "openai",
         "agent_command_template": [
             "python", "-m", "minisweagent.run", "-c", "scaffold.yaml",
             "-c", "model.model_kwargs.temperature=0.0",
@@ -113,6 +121,27 @@ def test_autonomous_pair_reports_gross_net_calls_and_divergence(tmp_path):
     assert candidate["first_action_divergence_kind"] == "command_mismatch"
     assert candidate["saving_before_first_action_divergence_fraction"] == 0
     assert candidate["official_outcome"] == "resolved"
+
+
+def test_autonomous_pair_rejects_model_visible_anchor_mismatch(tmp_path):
+    full_path = _run(
+        tmp_path, "full-anchor", policy="full", calls=2, tokens=100,
+        resolved=True, pair_id="pair-anchor",
+    )
+    candidate_path = _run(
+        tmp_path, "candidate-anchor", policy="h3_read_superseded", calls=2,
+        tokens=80, resolved=True, pair_id="pair-anchor",
+    )
+    manifest_path = candidate_path / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["selection"]["static_workflow_anchor"] = "coding_active_request_v8"
+    manifest["selection"]["static_workflow_anchor_location"] = "current_instruction"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    full = load_autonomous_run(full_path)
+    candidate = load_autonomous_run(candidate_path)
+    with pytest.raises(ValueError, match="frozen execution identity"):
+        pair_autonomous(candidate, full)
 
 
 def test_schema2_pair_recovers_observed_docker_platform(tmp_path):

@@ -31,7 +31,25 @@ STRICT_PAIRING_KEYS = (
     "environment_image_id", "workspace_source_identity_sha256",
     "instrument_observations", "agent_behavior_sha256",
     "scaffold_identity_sha256",
+    "static_workflow_anchor", "static_workflow_anchor_location",
+    "transactional_replace_tool", "canonicalize_unordered_search_output",
+    "upstream_dialect",
 )
+
+
+def _pairing_value(manifest: Mapping[str, Any], key: str) -> Any:
+    """Return behaviorally relevant identity, including normalized old manifests."""
+
+    selection = manifest.get("selection") or {}
+    if key == "static_workflow_anchor":
+        return selection.get(key, "none")
+    if key == "static_workflow_anchor_location":
+        return selection.get(key, "system_prefix")
+    if key in {"transactional_replace_tool", "canonicalize_unordered_search_output"}:
+        return bool(manifest.get(key, False))
+    if key == "upstream_dialect":
+        return manifest.get(key, "openai")
+    return manifest.get(key)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -397,7 +415,7 @@ def load_autonomous_run(
         raise ValueError(
             f"{trace_path}: materialized-token total does not match metrics"
         )
-    pairing_identity = {key: manifest.get(key) for key in STRICT_PAIRING_KEYS}
+    pairing_identity = {key: _pairing_value(manifest, key) for key in STRICT_PAIRING_KEYS}
     # Early schema-2 manifests recorded Docker's immutable observed OS and
     # architecture but left ``docker_platform`` null when no platform was
     # explicitly requested.  Recover that same observed identity for pairing;
