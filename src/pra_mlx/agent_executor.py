@@ -917,6 +917,8 @@ class MLXAgentHistoryExecutor:
         logit_delta: float | None = None
         same_subset_candidate_token: int | None = None
         same_subset_reference_token: int | None = None
+        same_subset_reference_calls = 0
+        same_subset_compared_chunks = 0
         full_reference_cache: Sequence[object] | None = None
         full_reference_logits: object | None = None
         full_reference_max_delta: float | None = None
@@ -948,27 +950,6 @@ class MLXAgentHistoryExecutor:
                     )
                     calls += 1
                     materialized_calls += 1
-            _set_cache_query_start(candidate_cache, plan.source_position_base)
-            logits = self._evaluate(wire, candidate_cache)
-            calls += 1
-            if plan.full_retention and self.require_full_retention_reference:
-                # Qualification-only control: advance a standard mlx-lm
-                # prefix cache built from the identical record-aligned source
-                # beside resident PRA K/V for every decoded token.
-                full_reference_cache = state.full_reference_cache
-                if full_reference_cache is None:
-                    raise RuntimeError(
-                        "MLX full-retention prefix-cache reference is missing."
-                    )
-                full_reference_logits = self._evaluate(
-                    wire, full_reference_cache
-                )
-                full_reference_calls += 1
-            elif self.require_full_retention_reference:
-                raise RuntimeError(
-                    "MLX full-retention reference mode cannot execute a "
-                    "reduced-history plan."
-                )
             if not plan.full_retention and self.require_same_subset_reference:
                 # A positioned compact record must not attend selected source
                 # K/V that originally followed it.  Preserve those original
@@ -978,9 +959,9 @@ class MLXAgentHistoryExecutor:
                 # ordinary packed reference used by the original gate.
                 positioned_reference = bool(materialized)
                 same_subset_reference_kind = (
-                    "packed_original_position_mlx_prompt_cache"
+                    "vector_chunked_packed_original_position_mlx_prompt_cache"
                     if positioned_reference
-                    else "packed_mlx_prompt_cache"
+                    else "vector_chunked_packed_mlx_prompt_cache"
                 )
                 reference = self.runtime.begin_request(
                     request_id + "-same-subset-reference",
@@ -1016,30 +997,76 @@ class MLXAgentHistoryExecutor:
                             ],
                             reference_cache,
                         )
-                _set_cache_query_start(reference_cache, plan.source_position_base)
-                reference_logits = self._evaluate(wire, reference_cache)
                 reference_pack_bytes = (
                     reference.selection.memory.nbytes
                     if reference.selection.physical_kv_copy
                     else 0
                 )
-                logit_delta = _max_abs_delta(
-                    logits[0, -1], reference_logits[0, -1]
-                )
+
+            # MLX uses a different full-attention kernel for query widths
+            # above eight.  The interval-addressed sparse consumer mirrors
+            # vector SDPA, so a large wire suffix must use the same bounded
+            # vector-sized chunks in both candidate and packed oracle.  The
+            # old one-shot path compared unlike kernels and accumulated a
+            # false 14B-model logit failure even when the winning token was
+            # identical.  Full-retention requests deliberately retain native
+            # one-shot prefill so PRA-100 remains comparable with plain MLX.
+            wire_prefill_step = (
+                self._materialized_prefill_step() if use_segmented else len(wire)
+            )
+            wire_model_calls = 0
+            _set_cache_query_start(candidate_cache, plan.source_position_base)
+            if reference is not None:
+                _set_cache_query_start(reference_cache, plan.source_position_base)
+            logits = None
+            for offset in range(0, len(wire), wire_prefill_step):
+                wire_chunk = wire[offset : offset + wire_prefill_step]
+                logits = self._evaluate(wire_chunk, candidate_cache)
+                calls += 1
+                wire_model_calls += 1
+                if reference is None:
+                    continue
+                reference_logits = self._evaluate(wire_chunk, reference_cache)
+                same_subset_reference_calls += 1
+                same_subset_compared_chunks += 1
+                chunk_delta = _max_abs_delta(logits, reference_logits)
+                logit_delta = max(logit_delta or 0.0, chunk_delta)
                 same_subset_candidate_token = _argmax_token(logits[0, -1])
                 same_subset_reference_token = _argmax_token(
                     reference_logits[0, -1]
                 )
-                reference.finish()
-                reference = None
-                if logit_delta > self.max_abs_logit_delta:
+                if chunk_delta > self.max_abs_logit_delta:
                     raise RuntimeError(
                         "MLX sparse same-subset correctness gate failed: "
-                        f"max_abs_logit_delta={logit_delta:.9g}, "
+                        f"wire_chunk={same_subset_compared_chunks - 1}, "
+                        f"max_abs_logit_delta={chunk_delta:.9g}, "
                         f"limit={self.max_abs_logit_delta:.9g}, "
                         f"candidate_token={same_subset_candidate_token}, "
                         f"reference_token={same_subset_reference_token}."
                     )
+            assert logits is not None
+            if reference is not None:
+                reference.finish()
+                reference = None
+
+            if plan.full_retention and self.require_full_retention_reference:
+                # Qualification-only control: advance a standard mlx-lm
+                # prefix cache built from the identical record-aligned source
+                # beside resident PRA K/V for every decoded token.
+                full_reference_cache = state.full_reference_cache
+                if full_reference_cache is None:
+                    raise RuntimeError(
+                        "MLX full-retention prefix-cache reference is missing."
+                    )
+                full_reference_logits = self._evaluate(
+                    wire, full_reference_cache
+                )
+                full_reference_calls += 1
+            elif self.require_full_retention_reference:
+                raise RuntimeError(
+                    "MLX full-retention reference mode cannot execute a "
+                    "reduced-history plan."
+                )
 
             eos = self._eos_ids()
             while len(generated) < request.resolved_max_new_tokens:
@@ -1168,6 +1195,8 @@ class MLXAgentHistoryExecutor:
             "materialized_history_model_calls": materialized_calls,
             "materialized_history_prefill_step": materialized_prefill_step,
             "wire_tokens": len(wire),
+            "wire_prefill_step": wire_prefill_step,
+            "wire_model_calls": wire_model_calls,
             "logical_prompt_tokens": len(prompt),
             "effective_attention_prompt_tokens": (
                 plan.selected_tokens + materialized_tokens + len(wire)
@@ -1252,6 +1281,8 @@ class MLXAgentHistoryExecutor:
             ),
             "same_subset_reference_pack_bytes": reference_pack_bytes,
             "same_subset_reference_kind": same_subset_reference_kind,
+            "same_subset_reference_model_calls": same_subset_reference_calls,
+            "same_subset_compared_wire_chunks": same_subset_compared_chunks,
             "same_subset_max_abs_logit_delta": logit_delta,
             "same_subset_gate_limit": self.max_abs_logit_delta,
             "same_subset_candidate_first_token_id": same_subset_candidate_token,
