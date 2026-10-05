@@ -313,11 +313,13 @@ def main() -> None:
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
     parser.add_argument(
         "--same-subset-gate-mode",
-        choices=("raw_logit", "distribution"),
+        choices=("raw_logit", "distribution", "token_exact_diagnostic"),
         default="raw_logit",
         help=(
             "Sparse same-subset numerical gate. Distribution mode still "
-            "requires exact greedy tokens at every generated position."
+            "requires exact greedy tokens at every generated position. "
+            "token_exact_diagnostic measures the full completion and is not "
+            "qualification."
         ),
     )
     parser.add_argument("--max-probability-delta", type=float, default=1e-5)

@@ -996,6 +996,43 @@ def test_distribution_gate_accepts_negligible_probability_drift(fake_mlx) -> Non
     assert trace["same_subset_gate_passed"] is True
 
 
+def test_token_exact_diagnostic_reports_but_does_not_gate_probability(fake_mlx) -> None:
+    executor = MLXAgentHistoryExecutor(
+        _Model(sparse_delta=0.01),
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        max_abs_logit_delta=0.0,
+        same_subset_gate_mode="token_exact_diagnostic",
+        max_probability_delta=0.0,
+        max_total_variation=0.0,
+        fused_disjoint_attention=False,
+    )
+    initial = (
+        {"role": "system", "content": "S" * 40},
+        {"role": "user", "content": "U" * 40},
+    )
+    executor.generate(_request(initial))
+    logical = (*initial, {"role": "assistant", "content": "A"}, {
+        "role": "user", "content": "O" * 40,
+    })
+
+    result = executor.generate(_request(
+        logical,
+        request_messages=(logical[0], logical[1], logical[3]),
+        retention=0.9,
+        request_id="token-exact-diagnostic",
+    ))
+
+    trace = result.trace[0]
+    assert trace["same_subset_gate_mode"] == "token_exact_diagnostic"
+    assert trace["same_subset_max_abs_logit_delta"] > 0
+    assert trace["same_subset_max_probability_delta"] > 0
+    assert trace["same_subset_gate_passed"] is True
+    assert trace["same_subset_qualification_eligible"] is False
+
+
 def test_append_rewrite_and_tenant_crossing_fail_closed(fake_mlx) -> None:
     executor = _executor()
     initial = (

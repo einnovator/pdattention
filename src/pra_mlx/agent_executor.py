@@ -249,9 +249,14 @@ class MLXAgentHistoryExecutor:
             raise ValueError("wire_tail_tokens must be positive.")
         if max_abs_logit_delta < 0:
             raise ValueError("max_abs_logit_delta cannot be negative.")
-        if same_subset_gate_mode not in {"raw_logit", "distribution"}:
+        if same_subset_gate_mode not in {
+            "raw_logit",
+            "distribution",
+            "token_exact_diagnostic",
+        }:
             raise ValueError(
-                "same_subset_gate_mode must be raw_logit or distribution."
+                "same_subset_gate_mode must be raw_logit, distribution, or "
+                "token_exact_diagnostic."
             )
         if max_probability_delta < 0:
             raise ValueError("max_probability_delta cannot be negative.")
@@ -1115,14 +1120,18 @@ class MLXAgentHistoryExecutor:
                     same_subset_reference_token = reference_token
                     output_index = same_subset_compared_tokens
                     same_subset_compared_tokens += 1
-                    numeric_gate_failed = (
-                        step_delta > self.max_abs_logit_delta
-                        if self.same_subset_gate_mode == "raw_logit"
-                        else (
+                    if self.same_subset_gate_mode == "raw_logit":
+                        numeric_gate_failed = step_delta > self.max_abs_logit_delta
+                    elif self.same_subset_gate_mode == "distribution":
+                        numeric_gate_failed = (
                             step_probability_delta > self.max_probability_delta
                             or step_total_variation > self.max_total_variation
                         )
-                    )
+                    else:
+                        # Measurement-only: exact greedy tokens remain
+                        # mandatory, but probability metrics do not stop the
+                        # replay. This mode is never engine qualification.
+                        numeric_gate_failed = False
                     if (
                         reference_token != token
                         or numeric_gate_failed
@@ -1399,15 +1408,22 @@ class MLXAgentHistoryExecutor:
                         logit_delta <= self.max_abs_logit_delta
                         if self.same_subset_gate_mode == "raw_logit"
                         else (
-                            same_subset_max_probability_delta is not None
-                            and same_subset_max_probability_delta
-                            <= self.max_probability_delta
-                            and same_subset_max_total_variation is not None
-                            and same_subset_max_total_variation
-                            <= self.max_total_variation
+                            (
+                                same_subset_max_probability_delta is not None
+                                and same_subset_max_probability_delta
+                                <= self.max_probability_delta
+                                and same_subset_max_total_variation is not None
+                                and same_subset_max_total_variation
+                                <= self.max_total_variation
+                            )
+                            if self.same_subset_gate_mode == "distribution"
+                            else True
                         )
                     )
                 )
+            ),
+            "same_subset_qualification_eligible": (
+                self.same_subset_gate_mode != "token_exact_diagnostic"
             ),
             "full_retention_prefix_cache_reference_required": (
                 bool(self.require_full_retention_reference)
