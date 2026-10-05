@@ -10,7 +10,11 @@ import pytest
 
 from pra_hf.deployment import PRAWireRequest, PRAWireResource
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
-from pra_mlx.agent_executor import MLXAgentHistoryExecutor, enforce_retention_floor
+from pra_mlx.agent_executor import (
+    MLXAgentHistoryExecutor,
+    _distribution_delta,
+    enforce_retention_floor,
+)
 from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
 
 
@@ -41,6 +45,16 @@ class _FakeMX(ModuleType):
     @staticmethod
     def abs(value):
         return np.abs(value)
+
+    @staticmethod
+    def sum(value):
+        return np.sum(value)
+
+    @staticmethod
+    def softmax(value, axis=-1):
+        shifted = value - np.max(value, axis=axis, keepdims=True)
+        exponent = np.exp(shifted)
+        return exponent / np.sum(exponent, axis=axis, keepdims=True)
 
     @staticmethod
     def get_active_memory():
@@ -284,6 +298,19 @@ def _manifest(messages):
         "role": row["role"],
         "content_sha256": hashlib.sha256(row["content"].encode()).hexdigest(),
     } for index, row in enumerate(messages)]
+
+
+def test_distribution_delta_ignores_additive_logit_offset(fake_mlx) -> None:
+    candidate = np.array([1.0, 2.0, 4.0], dtype=np.float32)
+    shifted = candidate + 0.125
+
+    centered, maximum_probability, total_variation = _distribution_delta(
+        candidate, shifted
+    )
+
+    assert centered == pytest.approx(0.0, abs=1e-7)
+    assert maximum_probability == pytest.approx(0.0, abs=1e-7)
+    assert total_variation == pytest.approx(0.0, abs=1e-7)
 
 
 def _executor(model=None):
@@ -915,7 +942,13 @@ def test_sparse_same_subset_mismatch_fails_closed_and_releases_borrows(fake_mlx)
         "role": "user", "content": "O" * 40,
     })
     with pytest.raises(
-        RuntimeError, match=r"candidate_token=\d+, reference_token=\d+"
+        RuntimeError,
+        match=(
+            r"centered_logit_delta=[\d.e+-]+, "
+            r"max_probability_delta=[\d.e+-]+, "
+            r"total_variation=[\d.e+-]+.*"
+            r"candidate_token=\d+, reference_token=\d+"
+        ),
     ):
         executor.generate(_request(
             logical,

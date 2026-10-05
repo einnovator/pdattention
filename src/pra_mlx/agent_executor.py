@@ -76,6 +76,35 @@ def _argmax_token(logits: object) -> int:
     return int(item() if callable(item) else token)
 
 
+def _distribution_delta(left: object, right: object) -> tuple[float, float, float]:
+    """Measure same-subset drift after removing softmax-invariant offsets.
+
+    Raw logits can differ by a constant without changing the decoded
+    distribution.  Report that separately from maximum probability error and
+    total variation; the strict raw-logit gate remains unchanged.
+    """
+
+    import mlx.core as mx
+
+    left32 = left.astype(mx.float32)
+    right32 = right.astype(mx.float32)
+    left_centered = left32 - mx.max(left32)
+    right_centered = right32 - mx.max(right32)
+    centered = mx.max(mx.abs(left_centered - right_centered))
+    left_probability = mx.softmax(left32, axis=-1)
+    right_probability = mx.softmax(right32, axis=-1)
+    probability_error = mx.abs(left_probability - right_probability)
+    maximum_probability = mx.max(probability_error)
+    total_variation = 0.5 * mx.sum(probability_error)
+    mx.eval(centered, maximum_probability, total_variation)
+
+    def scalar(value: object) -> float:
+        item = getattr(value, "item", None)
+        return float(item() if callable(item) else value)
+
+    return scalar(centered), scalar(maximum_probability), scalar(total_variation)
+
+
 def _render_text(
     tokenizer: object,
     messages: Sequence[Mapping[str, Any]],
@@ -921,6 +950,9 @@ class MLXAgentHistoryExecutor:
         same_subset_reference_logits: object | None = None
         same_subset_compared_tokens = 0
         same_subset_reference_calls = 0
+        same_subset_max_centered_logit_delta: float | None = None
+        same_subset_max_probability_delta: float | None = None
+        same_subset_max_total_variation: float | None = None
         full_reference_cache: Sequence[object] | None = None
         full_reference_logits: object | None = None
         full_reference_max_delta: float | None = None
@@ -1042,7 +1074,26 @@ class MLXAgentHistoryExecutor:
                     step_delta = _max_abs_delta(
                         logits[0, -1], same_subset_reference_logits[0, -1]
                     )
+                    (
+                        step_centered_delta,
+                        step_probability_delta,
+                        step_total_variation,
+                    ) = _distribution_delta(
+                        logits[0, -1], same_subset_reference_logits[0, -1]
+                    )
                     logit_delta = max(logit_delta or 0.0, step_delta)
+                    same_subset_max_centered_logit_delta = max(
+                        same_subset_max_centered_logit_delta or 0.0,
+                        step_centered_delta,
+                    )
+                    same_subset_max_probability_delta = max(
+                        same_subset_max_probability_delta or 0.0,
+                        step_probability_delta,
+                    )
+                    same_subset_max_total_variation = max(
+                        same_subset_max_total_variation or 0.0,
+                        step_total_variation,
+                    )
                     same_subset_candidate_token = token
                     same_subset_reference_token = reference_token
                     output_index = same_subset_compared_tokens
@@ -1056,6 +1107,9 @@ class MLXAgentHistoryExecutor:
                             f"output_token_index={output_index}, "
                             f"max_abs_logit_delta={step_delta:.9g}, "
                             f"max_observed_logit_delta={logit_delta:.9g}, "
+                            f"centered_logit_delta={step_centered_delta:.9g}, "
+                            f"max_probability_delta={step_probability_delta:.9g}, "
+                            f"total_variation={step_total_variation:.9g}, "
                             f"limit={self.max_abs_logit_delta:.9g}, "
                             f"candidate_token={token}, "
                             f"reference_token={reference_token}."
@@ -1284,6 +1338,13 @@ class MLXAgentHistoryExecutor:
             "same_subset_reference_model_calls": same_subset_reference_calls,
             "same_subset_compared_output_tokens": same_subset_compared_tokens,
             "same_subset_max_abs_logit_delta": logit_delta,
+            "same_subset_max_centered_logit_delta": (
+                same_subset_max_centered_logit_delta
+            ),
+            "same_subset_max_probability_delta": (
+                same_subset_max_probability_delta
+            ),
+            "same_subset_max_total_variation": same_subset_max_total_variation,
             "same_subset_gate_limit": self.max_abs_logit_delta,
             "same_subset_candidate_first_token_id": same_subset_candidate_token,
             "same_subset_reference_first_token_id": same_subset_reference_token,
