@@ -591,9 +591,13 @@ the same next token but exceed the frozen 0.005 raw-logit tolerance, and a
 diagnostic remains token-identical for 68 decisions while its delta grows to
 0.126282.  At the first sparse decision the 0.013672 raw delta remains 0.013672
 after offset centering, but maximum probability error is only
-$2.38\times10^{-7}$ and total variation is $1.75\times10^{-7}$.  The strict
-gate remains unchanged pending a predeclared distributional contract.  This is
-an engine-consumer blocker, not a policy-quality result; no post-refactor
+$2.38\times10^{-7}$ and total variation is $1.75\times10^{-7}$.  A prospectively
+declared $10^{-5}$ distribution gate then fails at output token six with
+$4.90\times10^{-4}$ maximum probability error and $5.02\times10^{-4}$ total
+variation.  Finally, a measurement-only replay keeps all 89 output tokens exact
+but reaches 0.00702 maximum probability error and 0.00710 total variation.
+This accumulated drift is too large to address by loosening a threshold; it is
+an engine-consumer blocker, not a policy-quality result, and no post-refactor
 tail-90 saving point is claimed.
 
 The next strict gate uses Qwen3-4B BF16 revision
@@ -5306,11 +5310,16 @@ full-completion oracle remains token-identical for 68 generation decisions,
 yet its raw-logit delta grows to 0.126282.  A new distribution diagnostic shows
 that the first 0.013672 raw-logit error is not a pure additive offset---the
 centered error is also 0.013672---but its maximum probability error is only
-$2.38\times10^{-7}$ and total variation is $1.75\times10^{-7}$.  This
-localizes the current blocker to the numerical contract of the sparse MLX
-consumer rather than autonomous selection quality; no saving or quality point
-is credited, and the 0.005 gate is not relaxed post hoc.  The consolidated
-receipt is archived under
+$2.38\times10^{-7}$ and total variation is $1.75\times10^{-7}$.  The subsequent
+prospective $10^{-5}$ distribution gate fails at output token six; maximum
+probability error and total variation are then $4.90\times10^{-4}$ and
+$5.02\times10^{-4}$.  A measurement-only replay completes the entire first
+sparse response with all 89 greedy tokens equal, zero selected-history
+re-encoding/copy, and 89.98\% retention, but its worst probability error and
+total variation grow to 0.00702 and 0.00710.  This localizes the blocker to
+accumulating sparse-consumer numerical drift rather than autonomous selection
+quality; no saving or quality point is credited, and no observed threshold is
+promoted post hoc.  The consolidated receipt is archived under
 \path{coding_agents/engine_agent_gates/mlx_qwen25coder14b_task01_post_transactional_20261005/}.
 
 HF now has the corresponding direct, no-gateway agent bridge in code.  It keeps

@@ -27,9 +27,13 @@ the fused sparse consumer exceeds the frozen identical-subset logit tolerance.
 Same winner tokens, including a 68-decision diagnostic prefix, are not treated
 as sufficient qualification. At the first sparse decision, maximum probability
 error is only `2.38e-7` and total variation is `1.75e-7`, despite a centered
-logit delta of `0.013671875`. The strict gate remains unchanged until a
-distributional contract is predeclared. Consequently this directory contains
-no admitted tail-90 saving or quality claim.
+logit delta of `0.013671875`. A prospectively declared `1e-5` distribution gate
+then fails at output token six. A diagnostic-only replay retains exact greedy
+tokens for the complete 89-token sparse response, but maximum probability
+error and total variation grow to `0.00702` and `0.00710`. This is now treated
+as accumulating consumer drift requiring a kernel repair, not as a reason to
+relax the gate. Consequently this directory contains no admitted tail-90 saving
+or quality claim.
 
 ## Official harness qualification
 
