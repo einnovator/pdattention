@@ -147,7 +147,16 @@ def main():
     if line_number is None:
         updated = data.replace(old, new, 1)
     else:
-        lines[line_number - 1] = selected.replace(old, new, 1)
+        match_offset = selected.index(old)
+        unchanged_prefix = selected[:match_offset]
+        effective_new = new
+        if (
+            b"\n" in new
+            and unchanged_prefix
+            and not unchanged_prefix.strip(b" \t")
+        ):
+            effective_new = new.replace(b"\n", b"\n" + unchanged_prefix)
+        lines[line_number - 1] = selected.replace(old, effective_new, 1)
         updated = b"".join(lines)
     original_mode = stat.S_IMODE(path.stat().st_mode)
     descriptor, temporary = tempfile.mkstemp(prefix=path.name + ".pra-", dir=path.parent)

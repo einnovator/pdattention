@@ -1887,6 +1887,23 @@ def test_transactional_replace_tool_is_atomic_and_fails_closed(tmp_path):
     assert wrong_line.returncode == 2
     assert target.read_bytes() == before
 
+    target.write_bytes(b"        old\n")
+    multiline = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(target),
+            "old",
+            r"if enabled:\n    replacement",
+            "--line=1",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert multiline.returncode == 0
+    assert target.read_bytes() == b"        if enabled:\n            replacement\n"
+
 
 @pytest.mark.parametrize(
     ("command", "reason"),
