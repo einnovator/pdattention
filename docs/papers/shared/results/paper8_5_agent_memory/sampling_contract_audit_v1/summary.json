@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_ollama_sampling_contract_audit",
+  "repository_revision": "3b3cb891",
+  "instance_id": "django__django-14089",
+  "task_index": 7,
+  "model": "qwen3-coder:30b-ctx131k",
+  "model_revision": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "seed": 0,
+  "transport_finding": {
+    "openai_compatible_requested_top_k": 1,
+    "openai_compatible_live_slot_top_k": 20,
+    "ollama_native_top_k_1_live_slot_top_k": 1,
+    "ollama_native_top_k_20_live_slot_top_k": 20
+  },
+  "corrected_full_controls": [
+    {
+      "label": "native_top_k_1",
+      "official_resolved": false,
+      "calls": 7,
+      "actions": 6,
+      "cumulative_full_tokens": 251723,
+      "action_sequence_sha256": "bec8f345ff71ce8678561e753fe7c69774a30936595b52d5dc5a532337e1e961"
+    },
+    {
+      "label": "native_top_k_20",
+      "official_resolved": false,
+      "calls": 7,
+      "actions": 6,
+      "cumulative_full_tokens": 251723,
+      "action_sequence_sha256": "bec8f345ff71ce8678561e753fe7c69774a30936595b52d5dc5a532337e1e961"
+    }
+  ],
+  "selective_arm_run": false,
+  "selective_arm_blocker": "two corrected Full admissions failed official grading",
+  "interpretation": "requested sampler metadata was not an effective-engine contract; top-k did not explain the repeated Task 7 failure at temperature zero"
+}

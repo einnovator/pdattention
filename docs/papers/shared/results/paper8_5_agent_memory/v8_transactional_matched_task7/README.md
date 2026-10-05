@@ -3,8 +3,12 @@
 This bundle replaces the earlier unmatched interpretation of the Task 7
 workflow-affordance experiment.  Both primary arms use the same six-episode
 persistent prefix, Qwen3-Coder-30B model digest, mini-swe-agent scaffold,
-top-k-one decoding, 1,024-token completion ceiling, static transactional
-workflow anchor, and installed `pra_replace` compatibility tool.  The only
+the same requested sampler fields, 1,024-token completion ceiling, static
+transactional workflow anchor, and installed `pra_replace` compatibility tool.
+A later live-slot audit shows that the OpenAI-compatible endpoint ignored the
+requested `top_k=1` and used effective `top_k=20` in both arms.  The pair is
+still internally matched, but it is not an engine-qualified top-k-one control.
+The only
 intended difference is Full history versus the boundary-free P0/W0 frontier
 selection plan.
 

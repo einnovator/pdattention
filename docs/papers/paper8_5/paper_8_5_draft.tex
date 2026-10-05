@@ -68,18 +68,21 @@ saves 51.36\% against its own counterfactual, but has no valid paired N=6
 denominator because Full's cold 53,484-token Task-6 request produces no
 response before the frozen timeout.
 
-A stricter decoding audit finds that nominal temperature zero is not an exact
-trajectory control on the served Qwen endpoint: identical requests vary from
-one valid action to twelve code blocks while the model retains a top-$k$ of
-20.  Explicit top-$k=1$ makes the selective first request identical in 5/5
-repeats.  Under that control, a task-neutral static workflow anchor plus
-closed-task P0/W0 retirement preserves the official Task~7 solve and cuts
-paired cumulative input by 75.24\%, but uses 14 calls rather than Full's six.
-After replacing fragile shell editing with a matched, digest-recorded
-transactional capability and correcting its resource receipt, Full and P0/W0
-again both resolve.  The selective arm uses 30,647 tokens versus Full's
-213,298, an 85.63\% paired reduction, but uses eight versus six calls and seven
-versus six executed actions.  This stronger mechanism point preserves
+A transport audit finds that requested generation parameters are not effective
+engine evidence.  Ollama's OpenAI-compatible endpoint accepts top-$k=1$, yet
+the live llama slot remains at top-$k=20$; the new native transport applies the
+value under engine options and records it.  Corrected Task~7 \textsc{Full}
+controls at effective top-$k$ 1 and 20 emit the same six commands and both fail
+officially in seven calls.  Hence the earlier matched anchor experiments share
+an effective top-$k$ of 20 and remain mechanism comparisons, but are not
+top-$k$-one or genuinely greedy controls.  In those matched historical arms, a
+task-neutral anchor plus closed-task P0/W0 retirement preserves the Task~7
+solve and cuts paired cumulative input by 75.24\%, but uses 14 calls rather
+than Full's six.  After replacing fragile shell editing with a matched,
+digest-recorded transactional capability and correcting its resource receipt,
+Full and P0/W0 again both resolve.  The selective arm uses 30,647 tokens versus
+Full's 213,298, an 85.63\% paired reduction, but uses eight versus six calls
+and seven versus six executed actions.  This mechanism point preserves
 capability and removes edit/recovery churn, while still failing the strict
 no-call-increase gate on one identity.  It also does not transfer as a prompt
 mechanism: on Task~4, moving a stricter anchor from the system prefix to the
@@ -1037,13 +1040,17 @@ static system prefix repairs the frozen first-action failure on both Task~4
 and Task~7: P0/W0 reduces the reconstructed requests by 93.1\% and 93.0\%,
 respectively, with stable bounded searches in 2/2 repeats per arm.
 
-The subsequent autonomous Task~7 pair exposes two further controls.  First,
-nominal temperature zero is not operationally deterministic on this endpoint:
-the served Modelfile retains temperature 0.7, top-$k$ 20, and top-$p$ 0.8
-defaults, and exact replays vary from one valid action to twelve code blocks.
-Declaring top-$k=1$ makes the selective first request identical in 5/5 repeats
-and is now a mandatory pairing coordinate.  Second, under this genuinely
-greedy control, anchored \textsc{Full} and P0/W0 both resolve officially.
+The subsequent autonomous Task~7 pair initially appeared to expose two further
+controls.  Exact replays vary from one valid action to twelve code blocks, and
+declaring top-$k=1$ makes the selective first request identical in 5/5 repeats.
+However, a later live-slot audit shows that Ollama's OpenAI-compatible endpoint
+silently retained top-$k$ 20.  Commit \texttt{3b3cb891} therefore adds a
+fail-closed native transport that maps sampler controls into Ollama options and
+captures the effective contract.  Corrected \textsc{Full} controls at native
+top-$k$ 1 and 20 emit the same six commands and both fail officially in seven
+calls.  The historical pair remains internally matched at effective top-$k$
+20, but must not be described as top-$k$-one or genuinely greedy.  Under that
+historical matched control, anchored \textsc{Full} and P0/W0 both resolve.
 P0/W0 selects 52,807 cumulative input tokens versus Full's 213,287, for
 75.24\% clean paired saving (89.84\% against its own 519,679-token
 counterfactual), but uses 14 calls rather than six.  The extra work is an
@@ -1082,6 +1089,12 @@ pre-edit replay is repeatable in 3/3 trials, yet autonomous \textsc{Full} reache
 command, and does not submit; no selective arm is admitted.  Prompt placement
 is therefore insufficient, and typed-action reliability remains a separate
 gate.  See \path{v9_task4_current_instruction_anchor}.
+
+The sampler audit also blocks the proposed Task~7 M2/P1 expansion.  The two
+corrected unanchored \textsc{Full} controls fail with the same malformed global
+insertion and no test, so no selective arm is admitted.  The evidence and
+effective-options traces are released under
+\path{sampling_contract_audit_v1}.
 
 \paragraph{Oracle scope.}
 Leave-one-bundle-out and bounded subset search answer whether headroom exists

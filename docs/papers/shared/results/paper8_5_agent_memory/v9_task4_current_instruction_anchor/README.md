@@ -6,6 +6,11 @@ user instruction rather than in the global system prefix.  The treatment is
 ingest-time text shared by any later Full/selective pair; it is not a receipt
 synthesized from cached history.
 
+A subsequent live-slot audit found that the OpenAI-compatible endpoint ignored
+the manifest's requested `top_k=1` and retained effective `top_k=20`.  This
+negative Full admission remains descriptive of that effective backend contract;
+it is not an engine-enforced top-k-one result.
+
 The frozen next-action counterfactual had become exactly repeatable (3/3), but
 the autonomous result did not transfer.  On `django__django-15741`, Full reached
 the 25-call limit, did not submit, and failed official grading.  Its 25 executed
@@ -25,4 +30,3 @@ The empty `full_current_instruction` directory from the first launch is not
 part of this evidence: that launch failed before execution because its log made
 the immutable output directory non-empty.  `full_current_instruction_retry01`
 is the only executed run represented here.
-
