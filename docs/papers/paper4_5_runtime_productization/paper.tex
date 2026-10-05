@@ -692,14 +692,16 @@ qualified at $N=3$, while $N=6$ remains a capacity boundary rather than a
 correctness or performance result.
 
 The strict Paper~8.5 Task~4 M2/P1 handoff now also has complete matched
-six-request sequences on three engines.  Direct MLX-LM 0.31.3 / MLX 0.32.2
+six-request sequences on four engines.  Direct MLX-LM 0.31.3 / MLX 0.32.2
 qualifies 6/6 \textsc{Full} requests at 100\% retention and 6/6 M2/P1 requests
 at 46.92\% weighted retention, or 53.08\% resident-K/V omission.  SGLang-MLX
 at pinned revision \texttt{ef20fab} independently obtains the identical
-46.92/53.08\% retention/omission split.  vLLM-Metal 0.29.0 qualifies the same
-6+6 requests at 100\% and 47.04\% retention, or 52.96\% omission.  Every cell
-re-encodes zero selected-history tokens, allocates zero selection-pack bytes,
-attaches without physical K/V copy, and clears its lifecycle gate.  vLLM's
+46.92/53.08\% retention/omission split.  Patched llama.cpp on Qwen3-0.6B Q8
+also obtains exactly 46.92/53.08\% with repeat-exact selected-page attachment,
+zero re-encoding/copy, and clean release; unlike the tensor-engine rows, it
+does not yet provide an independent dense-logit reference.  vLLM-Metal 0.29.0
+qualifies the same 6+6 requests at 100\% and 47.04\% retention, or 52.96\%
+omission.  Every cell clears its declared lifecycle gate.  vLLM's
 0.12-point lower omission is accounted for by 21-token complete-page rounding
 on each request.  These are frozen request-sequence mechanism results, not
 autonomous solves; unrelated host load excludes elapsed times from runtime
@@ -4458,6 +4460,15 @@ attachment copies while clearing every lifecycle check.  Exact agreement with
 direct MLX establishes that the frozen policy ledger, rather than an engine-
 specific selector, determines token-level saving for these span-addressed
 consumers.  Unrelated host load again excludes elapsed time from economics.
+
+Patched llama.cpp revision \texttt{e6e5d63} on the official Qwen3-0.6B Q8
+GGUF likewise clears 6/6 \textsc{Full} and 6/6 M2/P1 requests.  Its weighted
+retention is exactly 46.92\%, hence 53.08\% omission, with zero selected-history
+re-encoding or K/V-copy bytes and exact two-token repeats after independent
+request-slot release.  This confirms the token-level ledger on a third exact-
+span consumer.  Its narrower gate is repeat-exact page attachment and cleanup;
+it does not claim the independent dense-logit comparison available on direct
+MLX and SGLang-MLX, nor autonomous task success.
 
 vLLM-Metal 0.29.0 now clears all six frozen Task~4 requests on the 48~GB M4
 Pro.  Every PRA-100 request matches an independent ordinary prefix-cache

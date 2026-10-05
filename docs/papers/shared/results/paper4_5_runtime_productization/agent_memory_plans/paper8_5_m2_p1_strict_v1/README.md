@@ -68,6 +68,8 @@ do not add policy-accuracy observations.
 | MLX-LM 0.31.3 / MLX 0.32.2 | M2/P1 | 6/6 | 46.92% | 53.08% | 0 | 0 B | 0/6 |
 | SGLang-MLX `ef20fab` | Full | 6/6 | 100.00% | 0.00% | 0 | 0 B | 0/6 |
 | SGLang-MLX `ef20fab` | M2/P1 | 6/6 | 46.92% | 53.08% | 0 | 0 B | 0/6 |
+| llama.cpp `e6e5d63` | Full | 6/6 | 100.00% | 0.00% | 0 | 0 B | 0/6 |
+| llama.cpp `e6e5d63` | M2/P1 | 6/6 | 46.92% | 53.08% | 0 | 0 B | 0/6 |
 | vLLM-Metal 0.29.0 | Full | 6/6 | 100.00% | 0.00% | 0 | 0 B | 0/6 |
 | vLLM-Metal 0.29.0 | M2/P1 | 6/6 | 47.04% | 52.96% | 0 | 0 B | 0/6 |
 
@@ -77,3 +79,10 @@ identical retention. vLLM-Metal rounds each request to complete pages, adding
 the approximately 0.12-point omission difference without changing the logical
 selection ledger. The shared MLX/SGLang host carried unrelated load, so its
 elapsed times are provenance rather than runtime-economics evidence.
+
+The llama.cpp row has a deliberately narrower correctness boundary. It proves
+repeat-exact selected-page attachment, source-position preservation, zero
+selected-history re-encoding/copy, and cleanup after request/source release.
+It does not substitute those checks for the independent dense-logit reference
+used by MLX and SGLang, and it remains a request sequence rather than an
+autonomous task result.
