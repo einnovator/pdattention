@@ -223,7 +223,11 @@ def _direct_handler(
                 result = executor.generate(request)
                 if bool(request.metadata.get("ephemeral_session", False)):
                     executor.close_session(str(request.session_id))
+                cleanup = getattr(executor, "release_request_temporaries", None)
+                cleanup_metrics = cleanup() if callable(cleanup) else None
                 response = _completion(request, result)
+                if cleanup_metrics is not None:
+                    response["pra"]["post_request_cleanup"] = dict(cleanup_metrics)
                 write_receipt({
                     "event": "request_end",
                     "request_id": request.request_id,
@@ -231,6 +235,7 @@ def _direct_handler(
                     "elapsed_seconds": time.perf_counter() - started,
                     "usage": response.get("usage"),
                     "finish_reason": response["choices"][0]["finish_reason"],
+                    "post_request_cleanup": cleanup_metrics,
                 })
                 self._json(200, response)
             except LiveKVSessionTerminatedError as error:

@@ -40,6 +40,16 @@ def test_mlx_endpoint_writes_request_shape_without_message_text(tmp_path) -> Non
         def close_session(session_id):
             raise AssertionError(f"unexpected ephemeral session {session_id}")
 
+        @staticmethod
+        def release_request_temporaries():
+            return {
+                "active_bytes_before": 20,
+                "active_bytes_after": 10,
+                "cache_bytes_before": 5,
+                "cache_bytes_after": 0,
+                "python_objects_collected": 2,
+            }
+
     receipt = tmp_path / "requests.jsonl"
     interaction = tmp_path / "interactions.jsonl"
     server = ThreadingHTTPServer(
@@ -68,6 +78,13 @@ def test_mlx_endpoint_writes_request_shape_without_message_text(tmp_path) -> Non
         with urllib.request.urlopen(request) as response:
             payload = json.loads(response.read())
         assert payload["choices"][0]["message"]["content"] == "OK"
+        assert payload["pra"]["post_request_cleanup"] == {
+            "active_bytes_before": 20,
+            "active_bytes_after": 10,
+            "cache_bytes_before": 5,
+            "cache_bytes_after": 0,
+            "python_objects_collected": 2,
+        }
     finally:
         server.shutdown()
         server.server_close()
@@ -79,6 +96,7 @@ def test_mlx_endpoint_writes_request_shape_without_message_text(tmp_path) -> Non
     assert rows[0]["messages"][0]["content_chars"] == 13
     assert "secret prompt" not in receipt.read_text()
     assert rows[1]["usage"]["total_tokens"] == 4
+    assert rows[1]["post_request_cleanup"]["cache_bytes_after"] == 0
     transcript = [json.loads(line) for line in interaction.read_text().splitlines()]
     assert transcript[0]["messages"] == [{
         "message_index": 0,

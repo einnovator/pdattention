@@ -14,6 +14,7 @@ the current portable MLX segmented attention kernel is already qualified.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import threading
@@ -1538,6 +1539,32 @@ class MLXAgentHistoryExecutor:
 
     def stream(self, request: PRAWireRequest):
         raise RuntimeError("Frozen MLX agent gate is intentionally non-streaming.")
+
+    def release_request_temporaries(self) -> Mapping[str, int]:
+        """Release unreachable MLX allocator state between qualified requests.
+
+        Resident session K/V remains strongly owned by ``_sessions``.  This
+        cleanup only collects request-local candidate/reference graphs and
+        returns unused allocator blocks to the system.  The server records the
+        before/after counters so the cleanup cost is not hidden from timing.
+        """
+
+        import mlx.core as mx
+
+        with self._lock:
+            active_before = int(mx.get_active_memory())
+            cache_before = int(mx.get_cache_memory())
+            collected = int(gc.collect())
+            clear = getattr(mx, "clear_cache", None)
+            if callable(clear):
+                clear()
+            return {
+                "active_bytes_before": active_before,
+                "active_bytes_after": int(mx.get_active_memory()),
+                "cache_bytes_before": cache_before,
+                "cache_bytes_after": int(mx.get_cache_memory()),
+                "python_objects_collected": collected,
+            }
 
     def close_session(self, session_id: str) -> None:
         with self._lock:
