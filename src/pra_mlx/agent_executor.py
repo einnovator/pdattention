@@ -970,17 +970,17 @@ class MLXAgentHistoryExecutor:
                     "reduced-history plan."
                 )
             if not plan.full_retention and self.require_same_subset_reference:
-                # A positioned compact record must not attend selected source
-                # K/V that originally followed it.  Preserve those original
-                # causal coordinates in an independently packed identical-
-                # subset reference consumed by MLX's native dense attention.
-                # Requests without positioned materialization retain the
-                # ordinary packed reference used by the original gate.
-                positioned_reference = bool(materialized)
+                # Compare the disjoint candidate with an independently packed
+                # oracle using the identical selected K/V, original positions,
+                # and explicit Boolean causal mask.  The candidate always
+                # requires that explicit mask: even without compact records,
+                # its local suffix is physically separate from selected
+                # history.  Letting the packed oracle fall back to MLX's
+                # implicit ``causal`` mode compares different attention
+                # dispatches and can create quantized-model logit drift that
+                # is unrelated to interval addressing.
                 same_subset_reference_kind = (
                     "packed_original_position_mlx_prompt_cache"
-                    if positioned_reference
-                    else "packed_mlx_prompt_cache"
                 )
                 reference = self.runtime.begin_request(
                     request_id + "-same-subset-reference",
@@ -997,10 +997,8 @@ class MLXAgentHistoryExecutor:
                     reference.selection.memory,
                     segmented=False,
                     query_position_base=plan.source_position_base,
-                    causal_intervals=(
-                        tuple((row.start, row.end) for row in plan.intervals)
-                        if positioned_reference
-                        else ()
+                    causal_intervals=tuple(
+                        (row.start, row.end) for row in plan.intervals
                     ),
                 )
                 for row in materialized:
