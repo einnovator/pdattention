@@ -343,6 +343,119 @@ def _response_usage(response_body: bytes) -> dict[str, int | None]:
     }
 
 
+def openai_to_ollama_native_chat(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Translate one non-streaming OpenAI chat request without dropping knobs.
+
+    Ollama's OpenAI-compatible endpoint accepts ``top_k`` on the wire but, as
+    observed on 0.12.3, silently retains its default sampler value. The native
+    endpoint applies the same value under ``options``. Paper 8.5 relies on a
+    fixed decoding contract, so this adapter is deliberately explicit and
+    fail-closed rather than treating transport acceptance as sampler evidence.
+    """
+
+    if payload.get("stream") not in {None, False}:
+        raise ValueError("ollama_native transport requires stream=false")
+    model = payload.get("model")
+    messages = payload.get("messages")
+    if not isinstance(model, str) or not model:
+        raise ValueError("ollama_native transport requires a model")
+    if not isinstance(messages, list):
+        raise ValueError("ollama_native transport requires a message list")
+    response_format = payload.get("response_format")
+    if (
+        response_format is not None
+        and response_format != "text"
+        and response_format != {"type": "text"}
+    ):
+        raise ValueError("ollama_native transport supports only text responses")
+    supported = {
+        "model", "messages", "stream", "temperature", "top_p", "top_k",
+        "seed", "max_tokens", "max_completion_tokens", "stop", "tools",
+        "tool_choice", "response_format",
+    }
+    unsupported = sorted(set(payload) - supported)
+    if unsupported:
+        raise ValueError(
+            "ollama_native transport cannot prove parameters: "
+            + ", ".join(unsupported)
+        )
+
+    options: dict[str, Any] = {}
+    for source, target in (
+        ("temperature", "temperature"),
+        ("top_p", "top_p"),
+        ("top_k", "top_k"),
+        ("seed", "seed"),
+        ("max_tokens", "num_predict"),
+    ):
+        if source in payload:
+            options[target] = payload[source]
+    if "max_completion_tokens" in payload:
+        if (
+            "num_predict" in options
+            and options["num_predict"] != payload["max_completion_tokens"]
+        ):
+            raise ValueError("conflicting completion-token limits")
+        options["num_predict"] = payload["max_completion_tokens"]
+    if "stop" in payload:
+        options["stop"] = payload["stop"]
+
+    native: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": options,
+    }
+    if "tools" in payload:
+        native["tools"] = payload["tools"]
+    tool_choice = payload.get("tool_choice")
+    if tool_choice not in {None, "auto"}:
+        raise ValueError(
+            "ollama_native transport cannot prove non-auto tool_choice semantics"
+        )
+    return native
+
+
+def ollama_native_to_openai_chat(response_body: bytes) -> bytes:
+    """Translate a successful Ollama native response to the agent contract."""
+
+    try:
+        native = json.loads(response_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("ollama_native response is not valid JSON") from error
+    if not isinstance(native, Mapping):
+        raise ValueError("ollama_native response is not an object")
+    message = native.get("message")
+    if not isinstance(message, Mapping):
+        raise ValueError("ollama_native response lacks a message object")
+    normalized_message = dict(message)
+    normalized_message.setdefault("role", "assistant")
+    normalized_message.setdefault("content", "")
+    prompt_tokens = int(native.get("prompt_eval_count") or 0)
+    completion_tokens = int(native.get("eval_count") or 0)
+    digest = hashlib.sha256(response_body).hexdigest()[:20]
+    converted = {
+        "id": f"chatcmpl-ollama-native-{digest}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": native.get("model"),
+        "system_fingerprint": "fp_ollama_native",
+        "choices": [{
+            "index": 0,
+            "message": normalized_message,
+            "finish_reason": native.get("done_reason") or (
+                "stop" if native.get("done") else None
+            ),
+        }],
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+    }
+    return json.dumps(converted, separators=(",", ":")).encode("utf-8")
+
+
 def join_instrumentation_sidecars(
     messages: list[dict[str, Any]],
     instrumentation_root: Path | None,
@@ -1506,6 +1619,7 @@ class AutonomousSelectionProxy:
         upstream_connect_attempts: int = 1,
         upstream_connect_retry_seconds: float = 1.0,
         upstream_curl_executable: str | None = None,
+        upstream_dialect: str = "openai",
         curl_runner: Callable[..., Any] = subprocess.run,
         native_request_builder: Callable[..., Mapping[str, Any]] | None = None,
         first_request_capture_path: Path | None = None,
@@ -1521,6 +1635,8 @@ class AutonomousSelectionProxy:
             raise ValueError("upstream connect retry seconds cannot be negative")
         if upstream_qualification_path is not None and not upstream_qualification_path.startswith("/"):
             raise ValueError("upstream qualification path must be absolute")
+        if upstream_dialect not in {"openai", "ollama_native"}:
+            raise ValueError("upstream_dialect must be openai or ollama_native")
         if initial_request_count < 0 or initial_successful_request_count < 0:
             raise ValueError("initial request counters cannot be negative")
         if initial_successful_request_count > initial_request_count:
@@ -1541,6 +1657,7 @@ class AutonomousSelectionProxy:
         self.upstream_connect_attempts = upstream_connect_attempts
         self.upstream_connect_retry_seconds = upstream_connect_retry_seconds
         self.upstream_curl_executable = upstream_curl_executable
+        self.upstream_dialect = upstream_dialect
         self._curl_runner = curl_runner
         self.native_request_builder = native_request_builder
         self.first_request_capture_path = (
@@ -1779,6 +1896,11 @@ class AutonomousSelectionProxy:
 
     def _target(self, incoming_path: str) -> str:
         root = self.upstream_base_url.removesuffix("/v1")
+        if (
+            self.upstream_dialect == "ollama_native"
+            and urlparse(incoming_path).path == "/v1/chat/completions"
+        ):
+            return root + "/api/chat"
         return root + incoming_path
 
     def _open_qualified_upstream(self) -> http.client.HTTPConnection:
@@ -2041,7 +2163,16 @@ class AutonomousSelectionProxy:
                 transformation = replace(
                     transformation, payload=dict(native_payload),
                 )
-            body = json.dumps(transformation.payload).encode("utf-8")
+            upstream_payload = transformation.payload
+            if self.upstream_dialect == "ollama_native":
+                upstream_payload = openai_to_ollama_native_chat(
+                    transformation.payload
+                )
+                transformation.trace["upstream_sampling_contract"] = {
+                    "dialect": "ollama_native",
+                    "effective_options": dict(upstream_payload["options"]),
+                }
+            body = json.dumps(upstream_payload).encode("utf-8")
 
         headers = {
             key: value for key, value in handler.headers.items()
@@ -2120,6 +2251,15 @@ class AutonomousSelectionProxy:
                 })
             raise
 
+        raw_upstream_response_body = response_body
+        if (
+            transformation is not None
+            and self.upstream_dialect == "ollama_native"
+            and 200 <= int(status) < 300
+        ):
+            response_body = ollama_native_to_openai_chat(response_body)
+            response_headers = {"Content-Type": "application/json"}
+
         if self.request_capture_directory is not None:
             # Preserve the exact upstream body paired with the already-captured
             # logical and selected requests.  A response hash alone is not
@@ -2131,6 +2271,11 @@ class AutonomousSelectionProxy:
             (self.request_capture_directory / f"{stem}_response.json").write_bytes(
                 response_body
             )
+            if self.upstream_dialect == "ollama_native":
+                (
+                    self.request_capture_directory
+                    / f"{stem}_upstream_response.json"
+                ).write_bytes(raw_upstream_response_body)
 
         if transformation is not None and 200 <= int(status) < 300:
             with self._lock:
@@ -2183,6 +2328,7 @@ class AutonomousSelectionProxy:
                     ),
                 },
                 "upstream_status": status,
+                "upstream_dialect": self.upstream_dialect,
                 "response_sha256": hashlib.sha256(response_body).hexdigest(),
                 "response_sha256_scope": (
                     "raw_http_body_includes_volatile_response_metadata"

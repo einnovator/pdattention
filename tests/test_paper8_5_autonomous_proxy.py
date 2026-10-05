@@ -20,6 +20,8 @@ from experiments.paper8_5_agent_memory.autonomous_proxy import (
     AutonomousSelectionProxy,
     STATIC_WORKFLOW_ANCHORS,
     join_instrumentation_sidecars,
+    ollama_native_to_openai_chat,
+    openai_to_ollama_native_chat,
     summarize_openai_tool_receipts,
     transform_autonomous_payload,
 )
@@ -2184,6 +2186,7 @@ def test_sidecar_sequence_mismatch_fails_closed(tmp_path):
 class _Upstream:
     def __init__(self, statuses=None) -> None:
         self.requests: list[dict] = []
+        self.paths: list[str] = []
         self.client_ports: list[int] = []
         self.qualification_requests = 0
         self.statuses = list(statuses or ())
@@ -2204,21 +2207,35 @@ class _Upstream:
 
             def do_POST(self):  # noqa: N802
                 outer.client_ports.append(self.client_address[1])
+                outer.paths.append(self.path)
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 outer.requests.append(json.loads(body))
-                response = json.dumps({
-                    "id": "response-1",
-                    "pra": {
-                        "selected_history_reencoded_tokens": 0,
-                        "selected_history_kv_copy_bytes": 0,
-                    },
-                    "choices": [{
+                if self.path == "/api/chat":
+                    response = json.dumps({
+                        "model": outer.requests[-1]["model"],
                         "message": {
                             "role": "assistant",
                             "content": "```mswea_bash_command\ncat a.py\n```",
-                        }
-                    }],
-                }).encode()
+                        },
+                        "done": True,
+                        "done_reason": "stop",
+                        "prompt_eval_count": 23,
+                        "eval_count": 7,
+                    }).encode()
+                else:
+                    response = json.dumps({
+                        "id": "response-1",
+                        "pra": {
+                            "selected_history_reencoded_tokens": 0,
+                            "selected_history_kv_copy_bytes": 0,
+                        },
+                        "choices": [{
+                            "message": {
+                                "role": "assistant",
+                                "content": "```mswea_bash_command\ncat a.py\n```",
+                            }
+                        }],
+                    }).encode()
                 status = outer.statuses.pop(0) if outer.statuses else 200
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -2304,6 +2321,86 @@ def test_proxy_forwards_and_records_explicit_greedy_top_k(tmp_path):
     assert upstream.requests[0]["top_k"] == 1
     row = json.loads(trace.read_text(encoding="utf-8"))
     assert row["generation"]["top_k"] == 1
+
+
+def test_ollama_native_translation_preserves_sampler_contract():
+    payload = _payload()
+    payload.update({"top_k": 1, "max_tokens": 1024, "stream": False})
+
+    native = openai_to_ollama_native_chat(payload)
+
+    assert native["stream"] is False
+    assert native["options"] == {
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "top_k": 1,
+        "seed": 0,
+        "num_predict": 1024,
+    }
+    with pytest.raises(ValueError, match="cannot prove parameters"):
+        openai_to_ollama_native_chat({**payload, "logprobs": True})
+
+
+def test_ollama_native_response_translation_preserves_usage_and_action():
+    native = json.dumps({
+        "model": "locked-model",
+        "message": {
+            "role": "assistant",
+            "content": "```mswea_bash_command\ncat a.py\n```",
+        },
+        "done": True,
+        "done_reason": "stop",
+        "prompt_eval_count": 23,
+        "eval_count": 7,
+    }).encode()
+
+    converted = json.loads(ollama_native_to_openai_chat(native))
+
+    assert converted["choices"][0]["message"]["content"].endswith("```")
+    assert converted["choices"][0]["finish_reason"] == "stop"
+    assert converted["usage"] == {
+        "prompt_tokens": 23,
+        "completion_tokens": 7,
+        "total_tokens": 30,
+    }
+
+
+def test_proxy_ollama_native_uses_api_chat_and_effective_options(tmp_path):
+    upstream = _Upstream()
+    trace = tmp_path / "trace.jsonl"
+    capture = tmp_path / "captures"
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="full",
+            expected_model="locked-model",
+            fill_missing_generation_parameters=True,
+            top_k=1,
+            max_completion_tokens=1024,
+            max_calls=1,
+        ),
+        trace_path=trace,
+        upstream_dialect="ollama_native",
+        request_capture_directory=capture,
+    )
+    payload = _payload()
+    url = proxy.start()
+    try:
+        status, response = _post(f"{url}/chat/completions", payload)
+        assert status == 200
+    finally:
+        proxy.close()
+        upstream.close()
+
+    assert upstream.paths == ["/api/chat"]
+    assert upstream.requests[0]["options"]["top_k"] == 1
+    assert upstream.requests[0]["options"]["num_predict"] == 1024
+    assert response["usage"]["total_tokens"] == 30
+    row = json.loads(trace.read_text(encoding="utf-8"))
+    assert row["upstream_dialect"] == "ollama_native"
+    assert row["upstream_sampling_contract"]["effective_options"]["top_k"] == 1
+    assert (capture / "request_0001_response.json").is_file()
+    assert (capture / "request_0001_upstream_response.json").is_file()
 
 
 def test_proxy_optionally_captures_unmodified_first_request(tmp_path):

@@ -1165,6 +1165,7 @@ def run(args: argparse.Namespace) -> Path:
         "grader_version_requested": args.grader_version,
         "grader_version_observed": _package_version("swebench"),
         "upstream_base_url": args.upstream_base_url,
+        "upstream_dialect": args.upstream_dialect,
         "upstream_api_key_environment": args.upstream_api_key_env,
         "upstream_qualification_path": args.upstream_qualification_path,
         "upstream_connect_attempts": args.upstream_connect_attempts,
@@ -1246,6 +1247,7 @@ def run(args: argparse.Namespace) -> Path:
         upstream_connect_attempts=args.upstream_connect_attempts,
         upstream_connect_retry_seconds=args.upstream_connect_retry_seconds,
         upstream_curl_executable=args.upstream_curl_executable,
+        upstream_dialect=args.upstream_dialect,
         native_request_builder=native_request_builder,
         request_capture_directory=(
             output / "model_visible_requests"
@@ -1590,6 +1592,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=True,
     )
     parser.add_argument("--upstream-base-url", required=True)
+    parser.add_argument(
+        "--upstream-dialect",
+        choices=("openai", "ollama_native"),
+        default="openai",
+        help=(
+            "Wire contract used after selection. ollama_native translates the "
+            "validated OpenAI request to /api/chat so non-standard sampler "
+            "controls such as top_k are actually applied."
+        ),
+    )
     parser.add_argument("--upstream-api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--model", required=True, help="Published model identity.")
     parser.add_argument("--served-model", required=True, help="Exact OpenAI request model value.")
