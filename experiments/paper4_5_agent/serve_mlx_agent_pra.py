@@ -167,6 +167,42 @@ def _direct_handler(
                     "message": "request does not own this frozen engine run",
                 })
                 return
+            request_id: str | None = None
+            session_id: str | None = None
+            started = time.perf_counter()
+
+            def release_temporaries() -> tuple[Mapping[str, int] | None, str | None]:
+                cleanup = getattr(executor, "release_request_temporaries", None)
+                if not callable(cleanup):
+                    return None, None
+                try:
+                    return cleanup(), None
+                except Exception as cleanup_error:  # noqa: BLE001 - diagnostic boundary
+                    traceback.print_exc()
+                    return None, f"{type(cleanup_error).__name__}: {cleanup_error}"
+
+            def write_error_receipt(
+                status: int,
+                error: BaseException,
+                cleanup_metrics: Mapping[str, int] | None,
+                cleanup_error: str | None,
+            ) -> None:
+                error_message = str(error)
+                write_receipt({
+                    "event": "request_error",
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "elapsed_seconds": time.perf_counter() - started,
+                    "http_status": status,
+                    "error_type": type(error).__name__,
+                    "error_message_chars": len(error_message),
+                    "error_message_sha256": hashlib.sha256(
+                        error_message.encode("utf-8")
+                    ).hexdigest(),
+                    "post_request_cleanup": cleanup_metrics,
+                    "cleanup_error": cleanup_error,
+                })
+
             try:
                 payload = json.loads(
                     self.rfile.read(int(self.headers.get("Content-Length", "0")))
@@ -174,7 +210,8 @@ def _direct_handler(
                 if payload.get("stream"):
                     raise ValueError("streaming is disabled for the frozen agent gate")
                 request = PRAWireRequest.from_openai(payload)
-                started = time.perf_counter()
+                request_id = request.request_id
+                session_id = request.session_id
                 messages = payload.get("messages") or []
                 message_receipts = [
                     {
@@ -223,11 +260,12 @@ def _direct_handler(
                 result = executor.generate(request)
                 if bool(request.metadata.get("ephemeral_session", False)):
                     executor.close_session(str(request.session_id))
-                cleanup = getattr(executor, "release_request_temporaries", None)
-                cleanup_metrics = cleanup() if callable(cleanup) else None
+                cleanup_metrics, cleanup_error = release_temporaries()
                 response = _completion(request, result)
                 if cleanup_metrics is not None:
                     response["pra"]["post_request_cleanup"] = dict(cleanup_metrics)
+                if cleanup_error is not None:
+                    response["pra"]["post_request_cleanup_error"] = cleanup_error
                 write_receipt({
                     "event": "request_end",
                     "request_id": request.request_id,
@@ -236,17 +274,24 @@ def _direct_handler(
                     "usage": response.get("usage"),
                     "finish_reason": response["choices"][0]["finish_reason"],
                     "post_request_cleanup": cleanup_metrics,
+                    "cleanup_error": cleanup_error,
                 })
                 self._json(200, response)
             except LiveKVSessionTerminatedError as error:
+                cleanup_metrics, cleanup_error = release_temporaries()
+                write_error_receipt(409, error, cleanup_metrics, cleanup_error)
                 self._json(409, {
                     "error": "session_terminated",
                     "message": str(error),
                 })
             except (ValueError, TypeError, PermissionError) as error:
+                cleanup_metrics, cleanup_error = release_temporaries()
+                write_error_receipt(400, error, cleanup_metrics, cleanup_error)
                 self._json(400, {"error": type(error).__name__, "message": str(error)})
             except Exception as error:  # noqa: BLE001 - diagnostic boundary
                 traceback.print_exc()
+                cleanup_metrics, cleanup_error = release_temporaries()
+                write_error_receipt(500, error, cleanup_metrics, cleanup_error)
                 self._json(500, {
                     "error": "engine_internal_error",
                     "message": str(error),

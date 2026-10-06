@@ -134,3 +134,71 @@ def test_mlx_endpoint_rejects_a_stale_run_lease(tmp_path) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_mlx_endpoint_cleans_up_and_records_rejected_request(tmp_path) -> None:
+    class Tokenizer:
+        @staticmethod
+        def apply_chat_template(messages, *, tokenize, add_generation_prompt):
+            return [1, 2, 3]
+
+    class Executor:
+        tokenizer = Tokenizer()
+        cleanup_calls = 0
+
+        @staticmethod
+        def generate(request):
+            raise ValueError("declared context exceeds frozen engine window")
+
+        @classmethod
+        def release_request_temporaries(cls):
+            cls.cleanup_calls += 1
+            return {
+                "active_bytes_before": 30,
+                "active_bytes_after": 20,
+                "cache_bytes_before": 10,
+                "cache_bytes_after": 0,
+                "python_objects_collected": 1,
+            }
+
+    receipt = tmp_path / "requests.jsonl"
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        _direct_handler(Executor(), "model", request_log=receipt),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = {
+            "model": "model",
+            "messages": [{"role": "user", "content": "private oversized prompt"}],
+            "max_tokens": 1024,
+        }
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
+            data=json.dumps(body).encode(),
+            headers={"content-type": "application/json"},
+        )
+        try:
+            urllib.request.urlopen(request)
+        except urllib.error.HTTPError as error:
+            assert error.code == 400
+            payload = json.loads(error.read())
+        else:
+            raise AssertionError("invalid request was accepted")
+        assert payload == {
+            "error": "ValueError",
+            "message": "declared context exceeds frozen engine window",
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert Executor.cleanup_calls == 1
+    rows = [json.loads(line) for line in receipt.read_text().splitlines()]
+    assert [row["event"] for row in rows] == ["request_start", "request_error"]
+    assert rows[1]["http_status"] == 400
+    assert rows[1]["error_type"] == "ValueError"
+    assert rows[1]["post_request_cleanup"]["cache_bytes_after"] == 0
+    assert "private oversized prompt" not in receipt.read_text()
