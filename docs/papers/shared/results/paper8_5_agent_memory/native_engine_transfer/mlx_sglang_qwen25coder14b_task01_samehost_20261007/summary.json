@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_same_host_cross_engine_policy_transfer",
+  "date": "2026-10-07",
+  "instance_id": "django__django-15277",
+  "agent": "mini-swe-agent 2.4.6",
+  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+  "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+  "engines": [
+    "direct-MLX",
+    "SGLang-MLX"
+  ],
+  "host": "Apple M4 48GB",
+  "quality": {
+    "plain_resolved": "2/2 engines",
+    "pra100_resolved": "2/2 engines",
+    "tail90_resolved": "2/2 engines",
+    "calls_each_arm_each_engine": 6,
+    "command_trajectory_sha256_all_arms_engines": "f242c564fe9759f162420b1e47b1d17386caf536bf845395a562170c68b42998",
+    "patch_sha256_all_arms_engines": "13a95a668f18a043489d047b53bb7fa79e5397b801a1fab02e5b9b0cb7bad7bb",
+    "plain_and_pra100_assistant_trajectory_sha256": "1e05f050ab21c1d25837abdea0538927a6176cbf86111412036d8a2203d25e6f",
+    "tail90_assistant_trajectory_sha256": "539c67467e6ede045dfa633e9e9c5de46519cc613316b2594a3fe6962a2a8272"
+  },
+  "tail90_logical_ledger_each_engine": {
+    "full_message_tokens": 14731,
+    "selected_message_tokens": 14075,
+    "selected_kv_tokens": 14225,
+    "completion_tokens": 470,
+    "mean_realized_retention_fraction": 0.9572776307654817,
+    "own_materialized_saving_fraction": 0.04453193944742384,
+    "paired_input_plus_completion_saving_fraction": 0.04094685480680471,
+    "selected_kv_reduction_vs_pra100_fraction": 0.04709271168274387
+  },
+  "environmental_control": {
+    "result": "excluded",
+    "finding": "an M5-host plain run returned the unordered recursive grep lines in a different order and failed after a different edit trajectory",
+    "interpretation": "model-visible observation identity must be held fixed before attributing a cross-engine trajectory difference to consumption"
+  },
+  "paper4_5_physical_bundle": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_sglang_qwen25coder14b_task01_samehost_20261007",
+  "claim_scope": "one short task; engine-independent logical identity, not population accuracy or a 30--50% persistent-session point"
+}

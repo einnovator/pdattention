@@ -2450,20 +2450,29 @@ action with unrelated old state would not prove that state semantically
 necessary.  This distinction prevents tuning the selector to accidental
 consumer sensitivity.
 
-A fresh current-stack SGLang transfer supplies a separate positive,
+A fresh current-stack same-host transfer supplies a separate positive,
 low-opportunity policy point.  On Django-15277 with Qwen2.5-Coder-14B and the
 unmodified mini-swe-agent scaffold, Full, PRA-100, and matched token-tail-90
-all resolve in six calls and submit the byte-identical patch.  PRA-100 matches
-all six assistant contents and commands; tail-90 first changes reasoning text
-at request four but preserves all six commands.  It saves 4.45\% of its own
-materialized input and 4.09\% of paired input-plus-completion work.  This is
+all resolve in six calls on direct MLX and SGLang-MLX and submit the same patch.
+Within each arm the assistant-content, command-trajectory, and patch hashes
+match across engines.  Tail-90 also produces exactly 14,075 selected of 14,731
+full message-content tokens and 14,225 selected K/V tokens on both engines.  It
+saves 4.45\% of its own materialized input and 4.09\% of paired
+input-plus-completion work.  This is
 consistent with a short trajectory that offers little retireable history, not
 with the 30--50\% persistent-session target.  Prompt-only workflow anchors
 and transactional-edit restrictions changed Full behavior before selection,
 so those stopped controls are scaffold diagnostics and are excluded from the
 quality--saving curve.  The frozen reduction is under
-\path{shared/results/paper8_5_agent_memory/native_engine_transfer/sglang_qwen25coder14b_task01_standard_20261007/};
+\path{shared/results/paper8_5_agent_memory/native_engine_transfer/mlx_sglang_qwen25coder14b_task01_samehost_20261007/};
 Paper~4.5 owns its K/V-movement and consumer-memory accounting.
+
+An otherwise identical M5-host plain control is excluded because recursive
+\texttt{grep} returned the same matches in a different filesystem order.  The
+second action and final patch then diverged before selection.  This control
+shows that model-visible observation identity, not only task/model/sampler
+identity, is required before assigning a cross-engine behavioral difference to
+the consumer.
 
 Earlier HF request-level rows and pre-correction MLX, SGLang, and vLLM rows
 remain quarantined until fresh \textsc{Full}, PRA-100, and reduced-policy
