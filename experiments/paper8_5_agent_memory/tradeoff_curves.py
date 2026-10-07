@@ -35,6 +35,7 @@ STRICT_PAIRING_KEYS = (
     "transactional_replace_tool", "transactional_replace_only",
     "require_python_syntax_clean_submission",
     "canonicalize_unordered_search_output",
+    "canonicalize_volatile_filesystem_metadata",
     "upstream_dialect",
 )
 
@@ -51,6 +52,7 @@ def _pairing_value(manifest: Mapping[str, Any], key: str) -> Any:
         "transactional_replace_tool", "transactional_replace_only",
         "require_python_syntax_clean_submission",
         "canonicalize_unordered_search_output",
+        "canonicalize_volatile_filesystem_metadata",
     }:
         return bool(manifest.get(key, False))
     if key == "upstream_dialect":

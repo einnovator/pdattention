@@ -271,6 +271,9 @@ def build_agent_command(
             "environment.canonicalize_unordered_search_output="
             f"{str(bool(getattr(args, 'canonicalize_unordered_search_output', False))).lower()}",
             "-c",
+            "environment.canonicalize_volatile_filesystem_metadata="
+            f"{str(bool(getattr(args, 'canonicalize_volatile_filesystem_metadata', False))).lower()}",
+            "-c",
             "environment.transactional_replace_tool="
             f"{str(bool(getattr(args, 'transactional_replace_tool', False))).lower()}",
             "-c",
@@ -1247,6 +1250,9 @@ def run(args: argparse.Namespace) -> Path:
         "canonicalize_unordered_search_output": bool(
             args.canonicalize_unordered_search_output
         ),
+        "canonicalize_volatile_filesystem_metadata": bool(
+            args.canonicalize_volatile_filesystem_metadata
+        ),
         "transactional_replace_tool": bool(
             getattr(args, "transactional_replace_tool", False)
         ),
@@ -1830,6 +1836,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Lexicographically order independent lines from simple recursive "
             "find/grep searches. This evaluation control is recorded separately "
             "from PRA selection and is disabled by default."
+        ),
+    )
+    parser.add_argument(
+        "--canonicalize-volatile-filesystem-metadata",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Replace only the volatile timestamp field in a simple long-format "
+            "ls observation. This matched evaluation control is recorded "
+            "separately from PRA selection and is disabled by default."
         ),
     )
     parser.add_argument(

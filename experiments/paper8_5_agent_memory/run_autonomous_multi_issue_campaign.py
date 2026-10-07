@@ -842,6 +842,7 @@ _BEHAVIORAL_PAIRING_DEFAULTS = {
     "transactional_replace_only": False,
     "require_python_syntax_clean_submission": False,
     "canonicalize_unordered_search_output": False,
+    "canonicalize_volatile_filesystem_metadata": False,
     "upstream_dialect": "openai",
 }
 
@@ -872,6 +873,12 @@ def _behavioral_pairing_identity(manifest: Mapping[str, Any]) -> dict[str, Any]:
         "canonicalize_unordered_search_output": bool(manifest.get(
             "canonicalize_unordered_search_output",
             _BEHAVIORAL_PAIRING_DEFAULTS["canonicalize_unordered_search_output"],
+        )),
+        "canonicalize_volatile_filesystem_metadata": bool(manifest.get(
+            "canonicalize_volatile_filesystem_metadata",
+            _BEHAVIORAL_PAIRING_DEFAULTS[
+                "canonicalize_volatile_filesystem_metadata"
+            ],
         )),
         "upstream_dialect": manifest.get(
             "upstream_dialect", _BEHAVIORAL_PAIRING_DEFAULTS["upstream_dialect"]

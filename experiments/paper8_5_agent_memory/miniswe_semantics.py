@@ -56,6 +56,11 @@ _OUTPUT_LIMIT = re.compile(
     r"\|\s*(?:head|tail)(?:\s+-n)?\s+-?\d+\b|\bsed\s+-n\s+['\"]?\d+\s*,\s*\d+p"
 )
 _STDERR_SUPPRESSION = re.compile(r"(?:2|&)?>\s*/dev/null")
+_LONG_LS_TIME = re.compile(
+    r"^(?P<prefix>[bcdlps-][rwxStTs-]{9}[+@.]?\s+\d+\s+\S+\s+\S+\s+\d+\s+)"
+    r"(?P<timestamp>\S+\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4}))"
+    r"(?P<suffix>\s+.*)$"
+)
 
 
 def normalize_resource(value: str) -> str:
@@ -193,6 +198,49 @@ def canonicalize_unordered_search_output(command: str, output: str) -> tuple[str
     return canonical, canonical != output
 
 
+def canonicalize_volatile_filesystem_metadata(
+    command: str, output: str,
+) -> tuple[str, bool]:
+    """Remove volatile timestamps from one plain long-format ``ls`` result.
+
+    Container creation changes directory mtimes even when the repository bytes
+    are identical.  Those timestamps changed a frozen agent's second action and
+    eventually produced a 9-call solve versus a 30-call failure.  This opt-in
+    evaluation control preserves permissions, ownership, sizes, names, and
+    symlink targets; it only replaces the conventional ``Mon DD HH:MM/YYYY``
+    field.  Composed shell commands and non-long listings fail closed.
+    """
+
+    if not output or "\x00" in output:
+        return output, False
+    if any(token in command for token in ("\n", "\r", "&&", "||", ";", "|", ">", "<", "`", "$(")):
+        return output, False
+    try:
+        arguments = shlex.split(command)
+    except ValueError:
+        return output, False
+    if not arguments or arguments[0] != "ls":
+        return output, False
+    options = [row for row in arguments[1:] if row.startswith("-")]
+    if not any(row == "--long" or (not row.startswith("--") and "l" in row[1:]) for row in options):
+        return output, False
+    trailing_newline = output.endswith("\n")
+    lines = output.splitlines()
+    changed = False
+    canonical_lines: list[str] = []
+    for line in lines:
+        match = _LONG_LS_TIME.match(line)
+        if match is None:
+            canonical_lines.append(line)
+            continue
+        canonical_lines.append(
+            f"{match.group('prefix')}<mtime>{match.group('suffix')}"
+        )
+        changed = True
+    canonical = "\n".join(canonical_lines) + ("\n" if trailing_newline else "")
+    return canonical, changed
+
+
 def resource_span(command: str, resource: str) -> ResourceAccess:
     if re.search(r"(?:^|[;&|]\s*)cat\b", command):
         return ResourceAccess(resource, "unknown", "whole")
@@ -263,6 +311,7 @@ __all__ = [
     "bash_action_contract",
     "classify_bash_effect",
     "classify_bash_operation",
+    "canonicalize_volatile_filesystem_metadata",
     "canonicalize_unordered_search_output",
     "declared_turn_metadata",
     "extract_resource_ids",

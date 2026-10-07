@@ -21,7 +21,10 @@ from .observation_instrumentation import (
     stable_environment_fingerprint,
 )
 from .miniswe_semantics import extract_resource_ids
-from .miniswe_semantics import canonicalize_unordered_search_output
+from .miniswe_semantics import (
+    canonicalize_unordered_search_output,
+    canonicalize_volatile_filesystem_metadata,
+)
 from .submission_protocol import (
     PYTHON_WORKSPACE_CHECK_SOURCE,
     submission_recovery_observation,
@@ -40,6 +43,7 @@ class InstrumentedDockerEnvironmentConfig(DockerEnvironmentConfig):
     visible_output_limit: int = 10_000
     require_unified_diff_submission: bool = False
     canonicalize_unordered_search_output: bool = False
+    canonicalize_volatile_filesystem_metadata: bool = False
     transactional_replace_tool: bool = False
     transactional_replace_only: bool = False
     require_python_syntax_clean_submission: bool = False
@@ -201,6 +205,22 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
             normalization = {
                 "schema_version": 1,
                 "kind": "unordered_search_lines_lexicographic",
+                "changed": changed,
+                "original_sha256": hashlib.sha256(raw_output.encode()).hexdigest(),
+                "visible_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
+            }
+        if (
+            self.config.canonicalize_volatile_filesystem_metadata
+            and int(output.get("returncode", -1)) == 0
+        ):
+            raw_output = str(output.get("output", ""))
+            canonical, changed = canonicalize_volatile_filesystem_metadata(
+                command, raw_output
+            )
+            output["output"] = canonical
+            normalization = {
+                "schema_version": 1,
+                "kind": "long_ls_volatile_timestamp",
                 "changed": changed,
                 "original_sha256": hashlib.sha256(raw_output.encode()).hexdigest(),
                 "visible_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
