@@ -52,13 +52,54 @@ def _max_distribution_delta(
         return float("inf"), float("inf"), float("inf")
     centered = probability = variation = 0.0
     for left_step, right_step in zip(left, right):
-        step_centered, step_probability, step_variation = _distribution_delta(
-            left_step, right_step
-        )
+        if isinstance(left_step, np.ndarray) and isinstance(right_step, np.ndarray):
+            # ``--distribution-only`` moves these small coordinates to host
+            # memory before releasing model-sized K/V.  NumPy arrays cannot
+            # interpret ``mlx.core.float32`` in the MLX-only comparator.
+            left32 = left_step.astype(np.float32, copy=False)
+            right32 = right_step.astype(np.float32, copy=False)
+            left_centered = left32 - np.max(left32)
+            right_centered = right32 - np.max(right32)
+            step_centered = float(
+                np.max(np.abs(left_centered - right_centered))
+            )
+            left_probability = np.exp(left_centered)
+            left_probability /= np.sum(left_probability)
+            right_probability = np.exp(right_centered)
+            right_probability /= np.sum(right_probability)
+            probability_error = np.abs(left_probability - right_probability)
+            step_probability = float(np.max(probability_error))
+            step_variation = float(0.5 * np.sum(probability_error))
+        else:
+            step_centered, step_probability, step_variation = _distribution_delta(
+                left_step, right_step
+            )
         centered = max(centered, step_centered)
         probability = max(probability, step_probability)
         variation = max(variation, step_variation)
     return centered, probability, variation
+
+
+def _qualification_coordinates(
+    checks: dict[str, bool],
+) -> tuple[bool, bool, bool]:
+    """Return same-consumer, cross-consumer, and strict-combined gates.
+
+    The dense-engine oracle is intentionally a separate coordinate: a raw
+    cross-consumer numerical failure must remain visible without being
+    misreported as selected-K/V corruption.  The strict combined result keeps
+    the historical fail-closed behavior.
+    """
+
+    cross_names = {
+        "dense_engine_oracle_token_exact",
+        "dense_engine_oracle_logit_within_tolerance",
+    }
+    same_consumer = all(
+        passed for name, passed in checks.items() if name not in cross_names
+    )
+    cross_consumer = all(checks.get(name, False) for name in cross_names)
+    return same_consumer, cross_consumer, all(checks.values())
 
 
 def _fingerprint(memory: MLXNativeMemory) -> str:
@@ -519,6 +560,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         runtime.terminate_session(
             identities["tenant_id"], identities["session_id"]
         )
+        same_consumer_qualified, cross_consumer_qualified, combined_qualified = (
+            _qualification_coordinates(checks)
+        )
         result = {
             "schema_version": "paper4.5.mlx-live-kv-distribution.v1",
             "probe": "mlx_large_model_sparse_kv_distribution",
@@ -580,7 +624,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 dense_engine_distribution_delta[2]
             ),
             "checks": checks,
-            "distribution_qualified": all(checks.values()),
+            "same_consumer_distribution_qualified": same_consumer_qualified,
+            "cross_consumer_distribution_qualified": cross_consumer_qualified,
+            "distribution_qualified": combined_qualified,
             "qualification_blockers": [
                 name for name, passed in checks.items() if not passed
             ],
@@ -763,6 +809,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             else 0
         ),
     }
+    selection_lifecycle_qualified, cross_consumer_qualified, combined_qualified = (
+        _qualification_coordinates(checks)
+    )
     result = {
         "schema_version": "paper4.5.mlx-live-kv-lifecycle.v4",
         "probe": "mlx_real_model_request_owned_sparse_kv",
@@ -922,7 +971,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             )
         },
         "elapsed_seconds": time.perf_counter() - started,
-        "engine_lifecycle_qualified": all(checks.values()),
+        "selection_lifecycle_qualified": selection_lifecycle_qualified,
+        "cross_consumer_qualified": cross_consumer_qualified,
+        "engine_lifecycle_qualified": combined_qualified,
         "qualification_blockers": []
         if all(checks.values())
         else [name for name, passed in checks.items() if not passed],
