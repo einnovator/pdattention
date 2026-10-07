@@ -2666,6 +2666,7 @@ def test_proxy_delivers_exact_wire_plan_to_native_builder(tmp_path):
         logical_payload, kwargs = builder_calls[0]
         assert logical_payload["messages"] == _payload()["messages"]
         assert kwargs["session_id"] == "session-1"
+        assert kwargs["requested_retention_fraction"] == 1.0
         assert kwargs["wire_plan"]["selected_record_ids"] == [
             f"m{index}" for index in range(len(_payload()["messages"]))
         ]

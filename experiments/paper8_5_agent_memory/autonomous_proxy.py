@@ -2250,6 +2250,7 @@ class AutonomousSelectionProxy:
                     request_index=native_request_index,
                     count_tokens=self.count_tokens,
                     tokenizer_identity=self.config.tokenizer_identity,
+                    requested_retention_fraction=self.config.budget_fraction,
                 )
                 if not isinstance(native_payload, Mapping):
                     raise TypeError("native request builder did not return a mapping")
