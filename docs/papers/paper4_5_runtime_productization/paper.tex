@@ -48,15 +48,16 @@ With frozen RAG selections on Qwen3-4B MLX, cold native execution is 3.2\%
 slower than selected text, but warm repeated selection reduces mean TTFT from
 2.640 to 0.166 seconds and total latency from 3.031 to 0.638 seconds.  Ordinary
 exact prefix-cache reuse remains a required baseline; PRA's distinct advantage
-is changing or detached addressable evidence.  On one fresh locked coding task,
-MLX and SGLang-MLX PRA-100 reproduce all six plain-engine actions and the exact
-patch without re-encoding selected history or copying selected K/V.  Their
-task-aware 90\% treatments also preserve the solve and six-call count, but
-realize only 2.19\% cumulative physical-input saving on the short trajectory;
-SGLang additionally exposes a 17.5~MB suffix-graft copy and 1.61~GB peak
-consumer temporary.  A stricter frozen matched-tail policy instead loses the
-solve identically on MLX and SGLang-MLX after omitting one early discovery
-bundle, despite zero history re-encoding and selected-K/V copy.  A separate
+is changing or detached addressable evidence.  On one fresh current-stack
+SGLang-MLX coding task with the unmodified mini-swe-agent scaffold, PRA-100
+reproduces all six plain-engine actions and the exact patch without re-encoding
+selected history or copying selected K/V.  Matched token-tail at a nominal
+90\% budget also preserves all six commands and the patch.  It saves 4.45\%
+of its own materialized input, 4.09\% of paired input-plus-completion work,
+and 4.71\% of selected K/V relative to PRA-100.  The same arm nevertheless
+copies 37.16~MB in suffix grafts and peaks at 1.61~GB of consumer temporary
+memory.  This six-call task is a correctness and accounting point, not evidence
+for the 30--50\% persistent-session target.  A separate
 frozen plan omits about 40\% of resident
 history, but its receipt-bearing transfers remain hybrid transformed-context
 evidence rather than strict resident-subset reuse.
@@ -579,6 +580,24 @@ evidence is archived under
 \path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b_postfix_6e97f0c6/}.
 The frozen matched-tail transfer and first-divergence receipt are archived under
 \path{shared/results/paper4_5_runtime_productization/coding_agents/agent_policy_transfer/sglang_task01_matched_tail_ad1152b9/}.
+
+A fresh current-stack SGLang-MLX revalidation separates that historical policy
+diagnostic from the agent scaffold.  With the standard
+\texttt{swebench\_backticks.yaml} scaffold, plain, PRA-100, and matched
+token-tail-90 all resolve Task~01 in six calls and submit the byte-identical
+patch.  PRA-100 matches all six assistant contents and commands.  Tail-90 first
+changes reasoning text at request four but preserves all six commands; it
+realizes 4.45\% own materialized-input saving, 4.09\% paired
+input-plus-completion saving, and 4.71\% selected-K/V reduction relative to
+PRA-100.  It re-encodes no selected history and copies no selected K/V for
+attachment, but separately reports 37.16~MB of suffix-graft copying and a
+1.61~GB consumer-temporary peak.  Added workflow anchors and transactional-edit
+restrictions changed the plain agent's localization behavior before selection;
+those stopped controls are scaffold diagnostics, not PRA failures.  This row
+supersedes the SGLang Task~01 scaffold-conditioned outcome above as the current
+agent gate; it does not replace the distinct direct-MLX or Qwen3/Scikit rows.
+The receipt is under
+\path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_qwen25coder14b_task01_standard_20261007/}.
 
 A current direct-MLX revalidation after the transactional-edit refactor changes
 Task~01 from six to nine calls and therefore supersedes the older direct-MLX
