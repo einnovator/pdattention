@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "study": "same_host_cross_engine_autonomous_agent_gate",
+  "date": "2026-10-07",
+  "status": "direct_mlx_and_sglang_match_logical_ledger_and_agent_behavior",
+  "host": {
+    "system": "Apple M4 48GB",
+    "role": "same hardware, Docker image, task workspace source and observation stream for both engines"
+  },
+  "common_contract": {
+    "instance_id": "django__django-15277",
+    "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+    "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+    "agent": "mini-swe-agent 2.4.6",
+    "scaffold": "swebench_backticks.yaml",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "top_k": 20,
+    "seed": 0,
+    "max_completion_tokens": 1024,
+    "first_search_observation_sha256": "2919b2caa24548345401387d5b2c300e730a59a7716ca628f84c8e8ce961b8a9"
+  },
+  "logical_identity": {
+    "plain": {
+      "resolved_each_engine": true,
+      "calls_each_engine": 6,
+      "materialized_tokens_each_engine": 14718,
+      "completion_tokens_each_engine": 448,
+      "assistant_trajectory_sha256": "1e05f050ab21c1d25837abdea0538927a6176cbf86111412036d8a2203d25e6f",
+      "command_trajectory_sha256": "f242c564fe9759f162420b1e47b1d17386caf536bf845395a562170c68b42998",
+      "patch_sha256": "13a95a668f18a043489d047b53bb7fa79e5397b801a1fab02e5b9b0cb7bad7bb"
+    },
+    "pra100": {
+      "resolved_each_engine": true,
+      "calls_each_engine": 6,
+      "materialized_tokens_each_engine": 14718,
+      "completion_tokens_each_engine": 448,
+      "selected_kv_tokens_each_engine": 14928,
+      "assistant_trajectory_sha256": "1e05f050ab21c1d25837abdea0538927a6176cbf86111412036d8a2203d25e6f",
+      "command_trajectory_sha256": "f242c564fe9759f162420b1e47b1d17386caf536bf845395a562170c68b42998",
+      "patch_sha256": "13a95a668f18a043489d047b53bb7fa79e5397b801a1fab02e5b9b0cb7bad7bb"
+    },
+    "tail90": {
+      "resolved_each_engine": true,
+      "calls_each_engine": 6,
+      "requested_retention_fraction": 0.9,
+      "mean_realized_retention_fraction_each_engine": 0.9572776307654817,
+      "minimum_realized_retention_fraction_each_engine": 0.8831729173581149,
+      "full_message_tokens_each_engine": 14731,
+      "selected_message_tokens_each_engine": 14075,
+      "completion_tokens_each_engine": 470,
+      "selected_kv_tokens_each_engine": 14225,
+      "assistant_trajectory_sha256": "539c67467e6ede045dfa633e9e9c5de46519cc613316b2594a3fe6962a2a8272",
+      "command_trajectory_sha256": "f242c564fe9759f162420b1e47b1d17386caf536bf845395a562170c68b42998",
+      "patch_sha256": "13a95a668f18a043489d047b53bb7fa79e5397b801a1fab02e5b9b0cb7bad7bb"
+    }
+  },
+  "savings": {
+    "tail90_own_materialized_fraction": 0.04453193944742384,
+    "tail90_paired_materialized_vs_pra100_fraction": 0.043688001087104245,
+    "tail90_paired_input_plus_completion_vs_plain_fraction": 0.04094685480680471,
+    "tail90_selected_kv_reduction_vs_pra100_fraction": 0.04709271168274387,
+    "interpretation": "identical logical opportunity on both engines; low yield because this is a short single-task trajectory"
+  },
+  "engine_realization": {
+    "direct_mlx": {
+      "packages": {
+        "mlx": "0.32.1",
+        "mlx-lm": "0.32.0"
+      },
+      "source_revision": "5c6907a8",
+      "pra100": {
+        "selected_history_reencoded_tokens": 0,
+        "selected_history_kv_copy_bytes": 0,
+        "total_kv_copy_bytes": 5556928512,
+        "consumer_temporary_cumulative_bytes": 3917021184,
+        "consumer_temporary_peak_bytes": 955351040
+      },
+      "tail90": {
+        "selected_history_reencoded_tokens": 0,
+        "selected_history_kv_copy_bytes": 0,
+        "total_kv_copy_bytes": 8363114496,
+        "consumer_temporary_cumulative_bytes": 4969906176,
+        "consumer_temporary_peak_bytes": 1230602240,
+        "sparse_requests": 3,
+        "same_subset_max_abs_logit_delta": 0.0,
+        "same_subset_gate_passed_all_sparse_requests": true
+      }
+    },
+    "sglang_mlx": {
+      "server_source_revision": "d4d97732",
+      "plan_builder_source_revision": "5c6907a8",
+      "pra100": {
+        "selected_history_reencoded_tokens": 0,
+        "selected_history_kv_copy_bytes": 0,
+        "total_kv_copy_bytes": 0,
+        "consumer_temporary_cumulative_bytes": 302744648,
+        "consumer_temporary_peak_bytes": 51076732
+      },
+      "tail90": {
+        "selected_history_reencoded_tokens": 0,
+        "selected_history_kv_copy_bytes": 0,
+        "total_kv_copy_bytes": 37158912,
+        "consumer_temporary_cumulative_bytes": 3371703880,
+        "consumer_temporary_peak_bytes": 1610612740
+      }
+    }
+  },
+  "environmental_control": {
+    "excluded_remote_path": "/Users/jorge.simao/git/rd/paper45-mlx-task01-63bf9fec/plain_standard_r01",
+    "host": "Apple M5 16GB",
+    "outcome": "plain failed in seven calls",
+    "cause": "the unordered recursive grep observation used a different line order before the second action",
+    "different_observation_sha256": "1699c91e47cf3fe9df2cb40539de87258309049535f4edfde61287382d472829",
+    "classification": "environment-observation confound; excluded from engine comparison"
+  },
+  "direct_mlx_artifacts": {
+    "root": "/Users/admin.jorge.simao/git/rd/paper45-directmlx-task01-5c6907a8",
+    "plain": {
+      "official_result_sha256": "005c7ac90796569fa0c9fc9a2723c2d80ce6a37fce9ad9e82acec8b68fabcf29",
+      "autonomous_metrics_sha256": "6b0437b685b8362c358467a6731cc4a837898b8802cab31d4bc3c432f4c2ff30",
+      "run_manifest_sha256": "ce4acf20c89bfd75ed03c6a11ab5b05c834e8fb9f9cfca6ebbb84a1c4726a4e6",
+      "request_selection_sha256": "351b620a1a1eb27823b9bf7e8f1a66aa67b6f8de5889221189dc9e713b3cc39d",
+      "persistent_episode_sha256": "2b4b49799545a2f20aec2b2dccae3746cba6e3afbb057c2ddc3bdb1fae56b09b"
+    },
+    "pra100": {
+      "official_result_sha256": "2cba7b4a87db34cd33953ecd1c298af13c9fd420602cb9e032f322647551275c",
+      "autonomous_metrics_sha256": "f7a5e052f8c83316a04dec78448e5348abdf079f6a62557216e47773843a7318",
+      "run_manifest_sha256": "d1d77d427a7eb63030ee22bc4c2c85e40b734b605ab6962d8c974d0a68350e14",
+      "request_selection_sha256": "7816172d5e8a981ff782ac7c7554d18730645e60e2b84e83ee021c2ad3ba2cc6",
+      "persistent_episode_sha256": "b3e1f7f00b8e6da47d5c1893b5a834a581634b0db0c8b8697d752f6a03135b00"
+    },
+    "tail90": {
+      "official_result_sha256": "7b75e6eb0ea46a8b942b6bccfdb06efbc47929289c4aa928a9be750cbe42bef7",
+      "autonomous_metrics_sha256": "2b113eaa742a0e57405fd42f144f703c868d9e4df70b471d65b7c80c447f65ae",
+      "run_manifest_sha256": "dd1e953ed29530dda6eb96d3c150609c9cb67563b86eb113621a4e41b3a53b6d",
+      "request_selection_sha256": "9102fa14f09e5630330106dfd028dd5f9b2621c7c80d66d2a6c60b153109fe8d",
+      "persistent_episode_sha256": "cea1a8303aaf6abcd6793279c015c85e0587674388e3f5d4ac72d3f0c218ae6f"
+    }
+  },
+  "invalid_runs": [
+    {
+      "path": "/Users/admin.jorge.simao/git/rd/paper45-directmlx-task01-5c6907a8/tail90_standard_samehost_r01",
+      "reason": "server was deliberately configured for full-retention-reference-only qualification and rejected reduced plans",
+      "counted": false
+    }
+  ],
+  "claim_scope": "one task identity on one host; exact cross-engine logical and behavioral identity, not a population-accuracy or latency estimate"
+}

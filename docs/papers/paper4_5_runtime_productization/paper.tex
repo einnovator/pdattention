@@ -48,15 +48,17 @@ With frozen RAG selections on Qwen3-4B MLX, cold native execution is 3.2\%
 slower than selected text, but warm repeated selection reduces mean TTFT from
 2.640 to 0.166 seconds and total latency from 3.031 to 0.638 seconds.  Ordinary
 exact prefix-cache reuse remains a required baseline; PRA's distinct advantage
-is changing or detached addressable evidence.  On one fresh current-stack
-SGLang-MLX coding task with the unmodified mini-swe-agent scaffold, PRA-100
-reproduces all six plain-engine actions and the exact patch without re-encoding
-selected history or copying selected K/V.  Matched token-tail at a nominal
-90\% budget also preserves all six commands and the patch.  It saves 4.45\%
+is changing or detached addressable evidence.  On one fresh same-host coding
+task with the unmodified mini-swe-agent scaffold, direct MLX and SGLang-MLX
+PRA-100 reproduce all six plain-engine actions and the exact patch without
+re-encoding selected history or copying selected K/V.  Matched token-tail at a
+nominal 90\% budget also preserves all six commands and the patch on both
+engines, with an identical logical ledger.  It saves 4.45\%
 of its own materialized input, 4.09\% of paired input-plus-completion work,
-and 4.71\% of selected K/V relative to PRA-100.  The same arm nevertheless
-copies 37.16~MB in suffix grafts and peaks at 1.61~GB of consumer temporary
-memory.  This six-call task is a correctness and accounting point, not evidence
+and 4.71\% of selected K/V relative to PRA-100.  Physical costs differ:
+tail-90 reports 8.36~GB total K/V movement and a 1.23~GB temporary peak on
+direct MLX, versus 37.16~MB and 1.61~GB on SGLang-MLX.  This six-call task is a
+correctness and accounting point, not evidence
 for the 30--50\% persistent-session target.  A separate
 frozen plan omits about 40\% of resident
 history, but its receipt-bearing transfers remain hybrid transformed-context
@@ -598,6 +600,25 @@ supersedes the SGLang Task~01 scaffold-conditioned outcome above as the current
 agent gate; it does not replace the distinct direct-MLX or Qwen3/Scikit rows.
 The receipt is under
 \path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_qwen25coder14b_task01_standard_20261007/}.
+
+Repeating direct MLX on that same host closes the first cross-engine autonomous
+pair.  Plain and PRA-100 reproduce the SGLang assistant trajectory byte for
+byte; tail-90 reproduces SGLang's distinct assistant trajectory byte for byte.
+All six arms share the same six-command hash and patch hash.  Both engines also
+report exactly 14,075 selected of 14,731 full message-content tokens and 14,225
+selected K/V tokens under tail-90.  Direct MLX's three sparse requests match
+their packed original-position references at raw-logit delta 0.0.  It still
+moves 8.36~GB of other K/V data and peaks at 1.23~GB of consumer temporary,
+while SGLang moves 37.16~MB and peaks at 1.61~GB.  Thus logical savings transfer
+exactly while physical realization remains engine-specific.
+
+An M5-host direct-MLX plain control is excluded from this comparison.  Its
+recursive \texttt{grep} returned the same matches in a different filesystem
+order, causing the second action and eventual patch to diverge before any PRA
+selection.  Moving direct MLX to the SGLang host restored the complete
+trajectory.  The admissible comparison and excluded observation-order control
+are archived under
+\path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_sglang_qwen25coder14b_task01_samehost_20261007/}.
 
 A current direct-MLX revalidation after the transactional-edit refactor changes
 Task~01 from six to nine calls and therefore supersedes the older direct-MLX
