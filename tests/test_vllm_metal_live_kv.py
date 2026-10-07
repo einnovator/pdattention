@@ -31,6 +31,15 @@ class _BlockPool:
     def evict_blocks(self, block_ids: set[int]) -> None:
         self.evicted.append(set(block_ids))
 
+    def get_new_blocks(self, count: int):
+        available = [block for block in self.blocks if block.ref_cnt == 0]
+        if len(available) < count:
+            raise ValueError("insufficient test blocks")
+        result = available[:count]
+        for block in result:
+            block.ref_cnt += 1
+        return result
+
 
 class _Bridge:
     block_size = 4
@@ -223,3 +232,25 @@ def test_vllm_metal_failed_selection_releases_source_borrow() -> None:
             expected_generation=1,
         )
     assert runtime.registry.view("source").active_request_ids == ()
+
+
+def test_scheduler_owned_restore_releases_handle_and_pool_pages() -> None:
+    runtime, bridge, pool, _restored = _runtime()
+
+    runtime._restore_pages = lambda source_id, payload, source_tokens: (
+        tuple(range(8, 14)),
+        "scheduler-restored-source",
+        "scheduler",
+    )
+    for block in pool.blocks[8:14]:
+        block.ref_cnt = 1
+    bridge.handles["scheduler-restored-source"] = tuple(range(8, 14))
+
+    runtime.offload_source("source")
+    restored = _begin(runtime, "restored-on-scheduler")
+    restored.finish()
+    runtime.offload_source("source")
+
+    assert "scheduler-restored-source" in bridge.released
+    assert [block.ref_cnt for block in pool.blocks[8:14]] == [0] * 6
+    assert pool.evicted[-1] == set(range(8, 14))

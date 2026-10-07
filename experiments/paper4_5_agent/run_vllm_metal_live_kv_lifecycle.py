@@ -629,7 +629,15 @@ def main() -> None:
     parser.add_argument("--continuation-tokens", type=int, default=16)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.10)
-    parser.add_argument("--reserve-blocks", type=int, default=256)
+    parser.add_argument(
+        "--reserve-blocks",
+        type=int,
+        default=0,
+        help=(
+            "Detached physical tail pages. Zero uses scheduler-pool pages for "
+            "restore and avoids reallocating the full Metal cache."
+        ),
+    )
     parser.add_argument("--engine-source-revision", default="unknown")
     parser.add_argument("--artifact-overlay", action="store_true")
     parser.add_argument("--hardware-label", default="unspecified")

@@ -125,7 +125,8 @@ class VLLMMetalLiveKVRuntime:
         *,
         dump_pages: Callable[[tuple[int, ...], int], bytes] | None = None,
         restore_pages: Callable[
-            [str, bytes, int], tuple[tuple[int, ...], str]
+            [str, bytes, int],
+            tuple[tuple[int, ...], str] | tuple[tuple[int, ...], str, str],
         ]
         | None = None,
     ) -> None:
@@ -158,7 +159,7 @@ class VLLMMetalLiveKVRuntime:
 
     def _default_restore_pages(
         self, source_id: str, payload: bytes, source_tokens: int
-    ) -> tuple[tuple[int, ...], str]:
+    ) -> tuple[tuple[int, ...], str, str]:
         from pra_mlx.native import deserialize_native_memory
 
         memory = deserialize_native_memory(payload)
@@ -166,7 +167,15 @@ class VLLMMetalLiveKVRuntime:
             raise RuntimeError("Restored vLLM-Metal source length changed.")
         self._restore_generation += 1
         handle = f"__pra_restored__:{source_id}:{self._restore_generation}"
-        return self.bridge.materialize(handle, memory), handle
+        block_count = memory.source_tokens // self.bridge.block_size
+        blocks = tuple(self.block_pool.get_new_blocks(block_count))
+        block_ids = tuple(int(block.block_id) for block in blocks)
+        try:
+            self.bridge.materialize_into_scheduler_pages(handle, memory, block_ids)
+        except BaseException:
+            self.block_pool.free_blocks(blocks)
+            raise
+        return block_ids, handle, "scheduler"
 
     def _dump_source(self, source: VLLMMetalLiveSource) -> object:
         return VLLMMetalOffloadedSource(
@@ -178,14 +187,19 @@ class VLLMMetalLiveKVRuntime:
     def _restore_source(self, value: object) -> VLLMMetalLiveSource:
         if not isinstance(value, VLLMMetalOffloadedSource):
             raise TypeError("Invalid vLLM-Metal offloaded live-K/V payload.")
-        blocks, handle = self._restore_pages(
-            value.source_id, value.payload, value.source_tokens
-        )
+        restored = self._restore_pages(value.source_id, value.payload, value.source_tokens)
+        if len(restored) == 2:
+            blocks, handle = restored
+            origin = "reserve"
+        else:
+            blocks, handle, origin = restored
+        if origin not in {"scheduler", "reserve"}:
+            raise RuntimeError("Invalid vLLM-Metal restore ownership mode.")
         source = VLLMMetalLiveSource(
             value.source_id,
             tuple(map(int, blocks)),
             value.source_tokens,
-            "reserve",
+            origin,
             handle,
             True,
         )
@@ -362,12 +376,15 @@ class VLLMMetalLiveKVRuntime:
             return request.cancel()
 
     def _release_physical_source(self, source: VLLMMetalLiveSource) -> None:
+        if source.owning_handle is not None:
+            self.bridge.release(source.owning_handle)
         if source.origin == "scheduler":
             blocks = self._blocks(source.block_ids)
             self.block_pool.free_blocks(blocks)
             self.block_pool.evict_blocks(set(source.block_ids))
-        elif source.origin == "reserve" and source.owning_handle is not None:
-            self.bridge.release(source.owning_handle)
+        elif source.origin == "reserve":
+            if source.owning_handle is None:
+                raise RuntimeError("Reserve source lost its owning handle.")
         else:
             raise RuntimeError("Unknown vLLM-Metal live source ownership mode.")
 

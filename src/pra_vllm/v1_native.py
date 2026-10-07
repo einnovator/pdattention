@@ -218,8 +218,8 @@ class VLLMMetalV1NativeBridge:
     integration_level = "E2"
 
     def __init__(self, runner: object, *, reserve_blocks: int = 64) -> None:
-        if reserve_blocks <= 0:
-            raise ValueError("vLLM PRA reserve_blocks must be positive.")
+        if reserve_blocks < 0:
+            raise ValueError("vLLM PRA reserve_blocks must be non-negative.")
         self.runner = runner
         self.runtime = runner.paged_attention_runtime
         if self.runtime is None:
@@ -256,7 +256,8 @@ class VLLMMetalV1NativeBridge:
             runner.__class__.__module__, fromlist=["prepare_grouped"]
         )
         self._original_prepare = self._model_runner_module.prepare_grouped
-        self._expand_runtime_cache()
+        if self.reserve_blocks:
+            self._expand_runtime_cache()
         self._install_hooks()
 
     def _expand_runtime_cache(self) -> None:
@@ -333,6 +334,63 @@ class VLLMMetalV1NativeBridge:
             int(getattr(self, "_materialize_copy_events", 0)) + 1
         )
         return block_ids
+
+    def materialize_into_scheduler_pages(
+        self,
+        logical_key: str,
+        memory: MLXNativeMemory,
+        block_ids: Sequence[int],
+    ) -> tuple[int, ...]:
+        """Restore K/V into pages already owned through vLLM's block pool.
+
+        The caller must allocate and retain the pages in the scheduler block
+        pool before calling this method.  The bridge only writes the canonical
+        K/V values and creates a non-owning logical name; it neither grows the
+        physical Metal cache nor returns scheduler pages from ``release``.
+        This avoids the old-cache plus expanded-cache transient that can
+        otherwise double resident K/V memory during bridge construction.
+        """
+
+        import mlx.core as mx
+
+        key = str(logical_key)
+        if key in self._handles:
+            raise ValueError(f"vLLM PRA logical key is already registered: {key}")
+        blocks = tuple(map(int, block_ids))
+        if not blocks or len(blocks) != len(set(blocks)):
+            raise ValueError("Scheduler restore requires distinct physical pages.")
+        if any(block < 0 or block >= self.scheduler_blocks for block in blocks):
+            raise ValueError("Scheduler restore pages must belong to the block pool.")
+        if len(memory.layers) != self.runtime.kv_cache.num_layers:
+            raise ValueError("Selected memory does not match vLLM model layers.")
+        if memory.source_tokens % self.block_size:
+            raise ValueError("Scheduler restore requires complete physical pages.")
+        block_count = memory.source_tokens // self.block_size
+        if len(blocks) != block_count:
+            raise ValueError("Scheduler restore page count does not match K/V memory.")
+        cache = self.runtime.kv_cache
+        for index, layer in enumerate(memory.layers):
+            keys = layer.keys[0].transpose(1, 0, 2).reshape(
+                block_count,
+                self.block_size,
+                cache.kv_heads_per_layer[index],
+                cache.head_dim_per_layer[index],
+            )
+            values = layer.values[0].transpose(1, 0, 2).reshape(
+                block_count,
+                self.block_size,
+                cache.kv_heads_per_layer[index],
+                cache.head_dim_per_layer[index],
+            )
+            cache.key_caches[index][list(blocks)] = keys
+            cache.value_caches[index][list(blocks)] = values
+        mx.eval(*cache.key_caches, *cache.value_caches)
+        self._handles[key] = blocks
+        self._borrowed_handles.add(key)
+        self._materialize_copy_events = (
+            int(getattr(self, "_materialize_copy_events", 0)) + 1
+        )
+        return blocks
 
     def borrow_resident_pages(
         self,
@@ -574,6 +632,7 @@ class VLLMMetalV1NativeBridge:
             "integration_level": self.integration_level,
             "native_kv_generation": True,
             "scheduler_invisible_tail_pages": self.reserve_blocks,
+            "scheduler_pool_restore": True,
             "ordinary_prefix_namespace_used": False,
             "page_aligned_selection_required": True,
             "consumer_layers": "all",
