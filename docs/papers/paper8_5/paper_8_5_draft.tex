@@ -92,16 +92,17 @@ never invokes the installed transactional command.
 
 A final post-sampler control removes those added affordances and returns to
 ordinary Bash.  Boundary-free Atomic E2 keeps the active instruction epoch
-plus the two latest terminally closed epochs.  Across three task identities
-and two matched repeats each, \textsc{Full} and Atomic E2 both resolve 6/6;
-aggregate calls fall from 59 to 45.  Atomic E2 selects 540,694 tokens from its
-1,090,645-token own-history counterfactual, for 50.42\% own logical omission
-and 60.40\% paired end-to-end saving.  The held-out depth-six cluster alone
-preserves 2/2 solves, reduces calls from 18 to 16, and reaches 58.77\% own
-omission.  Paired saving includes trajectory contraction and is not a
-K/V-saving estimate.  This three-cluster cohort meets the observed
-approximately-50\% own-saving/no-loss/no-call-increase gate, but is too small
-for a population-accuracy or production-default claim.
+plus the two latest terminally closed epochs.  Across four task identities
+and seven matched \textsc{Full}-success pairs, \textsc{Full} and Atomic E2 both
+resolve 7/7; aggregate calls fall from 71 to 57.  Atomic E2 selects 669,087
+tokens from its 1,404,642-token own-history counterfactual, for 52.37\% own
+logical omission and 60.18\% paired end-to-end saving.  The new fourth
+identity preserves the solve and 12-call cost while omitting 59.11\% on its
+admitted pair; its second \textsc{Full} control fails, so no treatment is run
+for that repeat.  Paired saving includes trajectory contraction and is not a
+K/V-saving estimate.  This cohort meets the observed approximately-50\%
+own-saving/no-loss/no-call-increase gate conditionally, but is too small and
+too baseline-unstable for a population-accuracy or production-default claim.
 
 Finally, per-request omission can reverse end-to-end: one six-issue policy
 resolves 6/6 and omits 55.34\% against its own trajectory, yet expands from 60
@@ -888,7 +889,7 @@ Recent Frontier M2/P1 & Pi selective $N=6$ & 6 & ---; 5/6 & ---/194 & ---/3,446,
 Transactional anchor + P0/W0 & matched Task~7 mechanism & 1 & 1/1; 1/1 & 6/8 & 213,298/30,647 & 89.70/85.63\% & $+2$ calls, $+1$ action; not promoted \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
-Atomic E2 & post-sampler confirmation & 3 (6 runs) & 6/6; 6/6 & 59/45 & 1,365,498/540,694 & 50.42/60.40\% & leading selection-only candidate; small cohort \\
+Atomic E2 & post-sampler confirmation & 4 (7 paired runs) & 7/7; 7/7 & 71/57 & 1,680,162/669,087 & 52.37/60.18\% & leading selection-only candidate; one fourth-identity Full repeat fails \\
 Recent Frontier M2/P1 & held-out & 8 & 3/8; 3/3 elig. & 37/37 elig. & 829,884/497,538 elig. & 15.59/40.05\% & no eligible loss; Full only 3/8 \\
 Recent Frontier M2/P1 & held-out order 2 & 8 & 1/8; 1/1 elig. & 27/27 elig. & 153,654/153,654 elig. & n.a./0.00\% & exact abstention; Full only 1/8 \\
 Prompt Pinned E2+F1C & held-out & 1/8 & 0/1; --- & 14/--- & 97,604/--- & --- & Full failed; no candidate \\
@@ -906,9 +907,9 @@ so no unconditional saving is reported.  The Pi N=5 row is the exact matched
 prefix; charging its two discarded Task-5 attempts changes paired saving from
 37.51\% to 29.05\% and calls from 155 to 179.  The N=6 row reports own saving
 only because persistent \textsc{Full} does not complete Task~6.  Atomic E2's
-input column uses paired Full as the first denominator, while its 50.42\% own
-saving uses the separately reported 1,090,645-token candidate counterfactual;
-the 60.40\% paired value additionally includes trajectory contraction.}
+input column uses paired Full as the first denominator, while its 52.37\% own
+saving uses the separately reported 1,404,642-token candidate counterfactual;
+the 60.18\% paired value additionally includes trajectory contraction.}
 \label{tab:editorial-headline-policies}
 \end{table}
 
@@ -978,7 +979,7 @@ Profile & Logical policy & Non-negotiable state & Current evidence \\
 \midrule
 Exact & Full history & all canonical records & control and repeatability baseline \\
 Conservative & wide Recent Frontier & prompts, current turn, recent mutation/verification/protocol spine & bounds session growth; parameters require workload gate \\
-Balanced candidate & Atomic E2 & active instruction epoch plus the two latest terminally closed epochs, retired only as whole instruction--interaction units & 6/6 paired solves across three identities and two repeats, 50.42\% own omission, 60.40\% paired saving, and 59-to-45 calls; leading selection-only candidate, but not a default until the identity denominator expands \\
+Balanced candidate & Atomic E2 & active instruction epoch plus the two latest terminally closed epochs, retired only as whole instruction--interaction units & 7/7 paired solves across four identities, 52.37\% own omission, 60.18\% paired saving, and 71-to-57 calls; leading selection-only candidate, but the fourth identity is not repeat-qualified and the denominator remains small \\
 Diagnostic frontier & repeat-qualified Recent Frontier (M2/P1) & prompts plus a bounded mutation/verification/protocol spine & matched Pi N=5 preserves 3/3 Full successes at 37.51\% clean paired saving (29.05\% failure-aware); useful cross-agent evidence, but discarded attempts and admission failures prevent default promotion \\
 Experimental transformed & Prompt Pinned (E2+F1C) & all prompts, active/recent epochs, closure evidence & 3/3 cold identities; model-visible closure receipts require new evaluation and therefore prevent strict native-subset promotion \\
 \bottomrule
@@ -1138,12 +1139,13 @@ Task / depth & Repeats & Solves (F/E2) & Calls (F/E2) & Own saving & Paired savi
 pytest-7982 / N=4 & 2 & 2/2--2/2 & 24/12 & 18.91\% & 60.82\% \\
 scikit-14496 / N=6 & 2 & 2/2--2/2 & 17/17 & 57.09\% & 56.77\% \\
 django-15368 / N=6 & 2 & 2/2--2/2 & 18/16 & 58.77\% & 63.51\% \\
-Aggregate & 6 & 6/6--6/6 & 59/45 & 50.42\% & 60.40\% \\
+django-12741 / N=6 & 1 & 1/1--1/1 & 12/12 & 59.11\% & 59.20\% \\
+Aggregate & 7 & 7/7--7/7 & 71/57 & 52.37\% & 60.18\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-All six schema-2 pairs pass the strict execution-identity validator.  The model
+All seven schema-2 pairs pass the strict execution-identity validator.  The model
 digest, tokenizer, temperature, effective top-$k$ 20, completion ceiling,
 persistent-prefix digest, scaffold, and tool surface match within each pair.
 At N=4, both candidate repeats select 84,760 of 104,530 counterfactual tokens
@@ -1162,20 +1164,30 @@ and 475,729 cumulative tokens; Atomic E2 uses 16 calls, selects 173,582 of its
 history.  Repeat-level call deltas are $+2$ and $-4$, another direct warning
 that temperature zero does not imply an invariant autonomous trajectory.
 
-Across the task-clustered cohort, Atomic E2 selects 540,694 tokens from its
-1,090,645-token own counterfactual: 50.42\% portable logical omission.  The
-60.40\% paired coordinate additionally credits the call reduction from 59 to
-45 and therefore cannot be advertised as engine-independent K/V omission.
-Evidence is released under \path{atomic_e2_three_identity_repeat_v3}, which
-extends \path{atomic_e2_two_identity_repeat_v2}; the Task~4 sub-bundle remains
-in \path{atomic_e2_task04_repeat_v1}.  One upstream stall before the first
+The admitted django-12741 pair resolves in 12 calls in each arm.  Atomic E2
+selects 128,393 of its 313,997-token counterfactual, omitting 59.11\% with no
+reacquisition; paired saving is 59.20\%.  Its second \textsc{Full} control
+fails after nine calls, so no second policy arm is eligible.  Two additional
+screened identities also fail their contemporaneous \textsc{Full} controls.
+These are unconditional baseline-reliability outcomes, not selection losses.
+
+Across the task-clustered conditional-preservation cohort, Atomic E2 selects
+669,087 tokens from its 1,404,642-token own counterfactual: 52.37\% portable
+logical omission.  The 60.18\% paired coordinate additionally credits the
+call reduction from 71 to 57 and therefore cannot be advertised as
+engine-independent K/V omission.  Evidence is released under
+\path{atomic_e2_four_identity_extension_v4}, which extends
+\path{atomic_e2_three_identity_repeat_v3} and
+\path{atomic_e2_two_identity_repeat_v2}; the Task~4 sub-bundle remains in
+\path{atomic_e2_task04_repeat_v1}.  One upstream stall before the first
 Task~4 model response and two pre-inference launch errors before the original
 N=6 control are quarantined outside the denominators.  In the held-out screen,
 two other formerly successful identities fail their contemporaneous Full arm,
 so the policy arm is not run; those failures remain unconditional baseline
-reliability evidence rather than being retried away.  Three task identities
-are enough to promote a frozen ledger to runtime study, but not to establish
-population accuracy or a production default.
+reliability evidence rather than being retried away.  Four conditionally
+admitted task identities are enough to strengthen the frozen runtime study,
+but not to establish population accuracy or a production default; the fourth
+identity is not repeat-qualified.
 
 \paragraph{Oracle scope.}
 Leave-one-bundle-out and bounded subset search answer whether headroom exists
@@ -1208,10 +1220,12 @@ those physical and numerical gates.
 Agent history is neither a bag of tokens nor merely current world state:
 provenance, control, and semantic evidence can outlive the state they create.
 Boundary-free policies expose removable history, but current cohorts remain
-small.  Post-sampler Atomic E2 preserves 6/6 paired solves across three task
-identities, reduces calls from 59 to 45, and omits 50.42\% of its own logical
-history.  It passes the observed promotion gate but remains too small for a
-population-accuracy or production-default claim.  The defensible endpoint is
+small.  Post-sampler Atomic E2 preserves 7/7 paired solves across four task
+identities, reduces calls from 71 to 57, and omits 52.37\% of its own logical
+history.  One fourth-identity \textsc{Full} repeat fails and is not treated,
+so the result is conditional preservation rather than near-certain population
+accuracy.  It passes the observed promotion gate but remains too small for a
+production-default claim.  The defensible endpoint is
 official resolution, calls, and cumulative work---not nominal retention.
 Logical policy and physical realization remain separate contracts.
 
