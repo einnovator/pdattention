@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
+import threading
 from types import ModuleType
+import urllib.request
 
 import numpy as np
 import pytest
@@ -14,6 +17,7 @@ from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 from experiments.paper4_5_agent.serve_sglang_mlx_agent_pra import (
     DIRECT_SERVER_CLASS,
     _completion,
+    _direct_handler,
     _install_transformers_config_registration_compatibility,
 )
 from pra_sglang.agent_executor import (
@@ -45,6 +49,44 @@ def test_sglang_mlx_http_dispatch_is_single_threaded_for_stream_affinity() -> No
     from http.server import HTTPServer
 
     assert DIRECT_SERVER_CLASS is HTTPServer
+
+
+def test_sglang_health_discloses_import_guard_qualification() -> None:
+    class Capabilities:
+        @staticmethod
+        def to_dict() -> dict[str, object]:
+            return {"agent_history_kv_qualified": True}
+
+    adapter = SimpleNamespace(
+        capabilities=lambda: Capabilities(),
+        prefix_cache_enabled=True,
+        chat_template_profile="native",
+        chat_template_digest="digest",
+        additional_stop_token_ids=(),
+        effective_stop_token_ids=(1,),
+        default_repetition_penalty=1.0,
+        default_repeat_last_n=64,
+    )
+    guard = {
+        "triton_import_stub_installed": True,
+        "forbidden_execution_attempts": [],
+    }
+    server = DIRECT_SERVER_CLASS(
+        ("127.0.0.1", 0),
+        _direct_handler(adapter, "model", import_guard_report=guard),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{server.server_port}/health"
+        ) as response:
+            payload = json.loads(response.read())
+        assert payload["sglang_mlx_import_guard"] == guard
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_sglang_transformers_duplicate_config_registration_is_compatible(

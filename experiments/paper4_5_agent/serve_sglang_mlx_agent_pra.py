@@ -9,6 +9,7 @@ session lifecycle.
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import hmac
 import json
 import traceback
@@ -91,7 +92,13 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
     return response
 
 
-def _direct_handler(adapter: object, model: str, run_token: str | None = None):
+def _direct_handler(
+    adapter: object,
+    model: str,
+    run_token: str | None = None,
+    *,
+    import_guard_report: Mapping[str, Any] | None = None,
+):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
             encoded = json.dumps(payload, default=str).encode("utf-8")
@@ -142,6 +149,10 @@ def _direct_handler(adapter: object, model: str, run_token: str | None = None):
                         adapter.default_repetition_penalty
                     ),
                     "default_repeat_last_n": adapter.default_repeat_last_n,
+                    "sglang_mlx_import_guard": (
+                        dict(import_guard_report)
+                        if import_guard_report is not None else None
+                    ),
                     "effective_capabilities": capabilities,
                     "engine": capabilities,
                 })
@@ -289,14 +300,18 @@ def main() -> None:
     served_model = args.served_model or args.model
 
     from pra_hf.engine_memory import LogicalPRABlockStore
-    _install_transformers_config_registration_compatibility()
-    from pra_sglang import (
-        SGLangEngineAdapter,
-        SGLangMLXAgentHistoryExecutor,
-        configure_append_stable_template,
+    from experiments.paper4_5_agent.sglang_mlx_import_guard import (
+        sglang_mlx_import_guard,
     )
+    _install_transformers_config_registration_compatibility()
+    with sglang_mlx_import_guard() as import_guard:
+        from pra_sglang import (
+            SGLangEngineAdapter,
+            SGLangMLXAgentHistoryExecutor,
+            configure_append_stable_template,
+        )
+        from sglang.srt.hardware_backend.mlx.model_runner import MlxModelRunner
     from pra_hf.agent_executor import resolve_append_stable_template_profile
-    from sglang.srt.hardware_backend.mlx.model_runner import MlxModelRunner
     from transformers import AutoTokenizer
 
     block_store = LogicalPRABlockStore()
@@ -349,7 +364,12 @@ def main() -> None:
     try:
         DIRECT_SERVER_CLASS(
             (args.host, args.port),
-            _direct_handler(adapter, served_model, args.run_token),
+            _direct_handler(
+                adapter,
+                served_model,
+                args.run_token,
+                import_guard_report=asdict(import_guard),
+            ),
         ).serve_forever()
     finally:
         executor.close()
