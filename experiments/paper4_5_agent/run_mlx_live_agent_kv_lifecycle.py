@@ -14,6 +14,7 @@ import numpy as np
 
 from pra_hf.live_history import LiveKVSelectionPlan
 from pra_hf.agent_executor import split_generation_prompt
+from pra_mlx.agent_executor import _distribution_delta
 from pra_mlx.mlx_live_kv import MLXLiveKVRequestCancelled, MLXLiveKVRuntime
 from pra_mlx.qwen3_segmented import install_qwen3_segmented_attention
 from pra_mlx.native import (
@@ -34,6 +35,30 @@ from .frozen_agent_plan import (
     load_frozen_agent_decisions,
 )
 from .sparse_gate_common import sparse_causal_plan
+
+
+def _max_distribution_delta(
+    left: list[object], right: list[object],
+) -> tuple[float, float, float]:
+    """Reduce centered-logit and probability drift over generation steps.
+
+    The lifecycle gate deliberately keeps its existing raw-logit threshold.
+    These additional coordinates distinguish a softmax-invariant offset from
+    a distribution-changing cross-consumer difference when that strict gate
+    fails at larger model scale.
+    """
+
+    if len(left) != len(right):
+        return float("inf"), float("inf"), float("inf")
+    centered = probability = variation = 0.0
+    for left_step, right_step in zip(left, right):
+        step_centered, step_probability, step_variation = _distribution_delta(
+            left_step, right_step
+        )
+        centered = max(centered, step_centered)
+        probability = max(probability, step_probability)
+        variation = max(variation, step_variation)
+    return centered, probability, variation
 
 
 def _fingerprint(memory: MLXNativeMemory) -> str:
@@ -455,6 +480,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     reference_logits = list(reference_result.step_logits)
     engine_oracle_logits = list(engine_oracle_result.step_logits)
     restored_logits = list(restored_result.step_logits)
+    same_subset_distribution_delta = _max_distribution_delta(
+        candidate_logits, reference_logits
+    )
+    dense_engine_distribution_delta = _max_distribution_delta(
+        candidate_logits, engine_oracle_logits
+    )
+    restored_distribution_delta = _max_distribution_delta(
+        candidate_logits, restored_logits
+    )
     checks = {
         "two_concurrent_borrowers": two_borrowers == ("candidate", "reference"),
         "offload_rejected_with_two_borrowers": (
@@ -658,12 +692,27 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "offloaded_payload_bytes": len(offloaded) if isinstance(offloaded, bytes) else None,
         "max_abs_logit_delta_same_subset": _max_delta(candidate_logits, reference_logits),
         "same_subset_logit_exact": _max_delta(candidate_logits, reference_logits) == 0.0,
+        "same_subset_max_centered_logit_delta": same_subset_distribution_delta[0],
+        "same_subset_max_probability_delta": same_subset_distribution_delta[1],
+        "same_subset_max_total_variation": same_subset_distribution_delta[2],
         "max_abs_logit_delta_dense_engine_oracle": _max_delta(
             candidate_logits, engine_oracle_logits
+        ),
+        "dense_engine_oracle_max_centered_logit_delta": (
+            dense_engine_distribution_delta[0]
+        ),
+        "dense_engine_oracle_max_probability_delta": (
+            dense_engine_distribution_delta[1]
+        ),
+        "dense_engine_oracle_max_total_variation": (
+            dense_engine_distribution_delta[2]
         ),
         "dense_engine_oracle_token_ids": list(engine_oracle_result.token_ids),
         "candidate_token_ids": list(candidate_result.token_ids),
         "max_abs_logit_delta_after_restore": _max_delta(candidate_logits, restored_logits),
+        "restored_max_centered_logit_delta": restored_distribution_delta[0],
+        "restored_max_probability_delta": restored_distribution_delta[1],
+        "restored_max_total_variation": restored_distribution_delta[2],
         "checks": checks,
         "runtime_snapshot": runtime.snapshot(),
         "selection_plan": plan.to_dict(),
