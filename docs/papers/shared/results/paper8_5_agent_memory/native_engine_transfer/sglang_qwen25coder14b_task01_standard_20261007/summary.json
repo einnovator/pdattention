@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_policy_under_current_sglang_consumer",
+  "date": "2026-10-07",
+  "instance_id": "django__django-15277",
+  "agent": "mini-swe-agent 2.4.6",
+  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+  "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+  "scaffold": "standard swebench_backticks.yaml",
+  "runner_revision": "717389c1",
+  "server_revision": "d4d97732",
+  "plan_builder_revision": "5c6907a8",
+  "outcomes": {
+    "full": {
+      "official_resolved": true,
+      "calls": 6,
+      "materialized_tokens": 14718,
+      "completion_tokens": 448
+    },
+    "pra100": {
+      "official_resolved": true,
+      "calls": 6,
+      "materialized_tokens": 14718,
+      "completion_tokens": 448,
+      "assistant_content_exact_vs_full": 6,
+      "commands_exact_vs_full": 6,
+      "patch_exact_vs_full": true
+    },
+    "matched_token_tail_90": {
+      "official_resolved": true,
+      "calls": 6,
+      "requested_retention_fraction": 0.9,
+      "mean_realized_retention_fraction": 0.9572776307654817,
+      "minimum_realized_retention_fraction": 0.8831729173581149,
+      "full_tokens": 14731,
+      "materialized_tokens": 14075,
+      "completion_tokens": 470,
+      "assistant_content_exact_vs_full": 3,
+      "first_content_divergence_request": 4,
+      "commands_exact_vs_full": 6,
+      "patch_exact_vs_full": true,
+      "own_materialized_saving_fraction": 0.04453193944742384,
+      "paired_materialized_saving_vs_pra100_fraction": 0.043688001087104245,
+      "paired_input_plus_completion_saving_vs_full_fraction": 0.04094685480680471
+    }
+  },
+  "interpretation": {
+    "quality_gate": "pass on one task",
+    "economics_gate": "not informative for 30--50% target; trajectory is too short",
+    "scaffold_control": "workflow-anchor variants changed baseline behavior and are excluded from policy scoring",
+    "engine_independence": "logical token accounting is reported here; native K/V movement and scratch belong to Paper 4.5"
+  },
+  "full_artifact_root": "/Users/admin.jorge.simao/git/rd/paper45-sglang-task01-d4d97732",
+  "paper4_5_bundle": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_qwen25coder14b_task01_standard_20261007"
+}
