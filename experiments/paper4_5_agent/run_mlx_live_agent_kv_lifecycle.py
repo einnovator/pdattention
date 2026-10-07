@@ -396,6 +396,200 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         materialized_history=materialized_history,
         fused_disjoint_attention=args.fused_disjoint_attention,
     )
+    if args.distribution_only:
+        # Large-model cross-consumer qualification must not retain the packed
+        # reference K/V while constructing the ordinary dense-engine oracle.
+        # Keep only the small output-logit coordinates and scalar accounting,
+        # then release the finished requests' selection objects. Full
+        # cancellation/offload/restore lifecycle remains a separate gate.
+        candidate_logits = [np.asarray(value) for value in candidate_result.step_logits]
+        reference_logits = [np.asarray(value) for value in reference_result.step_logits]
+        candidate_tokens = tuple(candidate_result.token_ids)
+        reference_tokens = tuple(reference_result.token_ids)
+        candidate_metrics = {
+            "source_position_base": candidate_result.source_position_base,
+            "selected_text_reencoded_tokens": (
+                candidate_result.selected_text_reencoded_tokens
+            ),
+            "physical_kv_copy": candidate_result.physical_kv_copy,
+            "selected_kv_segments": candidate_result.selected_kv_segments,
+            "selection_pack_bytes": candidate_result.selection_pack_bytes,
+        }
+        reference_reencoded_tokens = reference_result.selected_text_reencoded_tokens
+        reference_pack_bytes = reference.selection.memory.nbytes
+        candidate_outcome = candidate.outcome
+        reference_outcome = reference.outcome
+        candidate.selection = None  # type: ignore[assignment]
+        reference.selection = None  # type: ignore[assignment]
+        selected_arrays.clear()
+        dense_reference_arrays.clear()
+        if use_disjoint:
+            packed_layers.clear()
+        del candidate_result, reference_result
+        clear_cache = getattr(mx, "clear_cache", None)
+        if clear_cache is not None:
+            clear_cache()
+
+        engine_oracle = begin(
+            "engine-oracle",
+            segmented=bool(materialized_history),
+            disjoint_selection=bool(materialized_history),
+        )
+        engine_oracle_result = engine_oracle.generate(
+            model,
+            wire_tail,
+            max_new_tokens=args.continuation_tokens,
+            prefill_step_size=args.prefill_step_size,
+            materialized_history=materialized_history,
+            fused_disjoint_attention=args.fused_disjoint_attention,
+        )
+        engine_oracle_logits = [
+            np.asarray(value) for value in engine_oracle_result.step_logits
+        ]
+        engine_oracle_tokens = tuple(engine_oracle_result.token_ids)
+        engine_oracle_reencoded_tokens = (
+            engine_oracle_result.selected_text_reencoded_tokens
+        )
+        engine_oracle_outcome = engine_oracle.outcome
+        engine_oracle.selection = None  # type: ignore[assignment]
+        del engine_oracle_result
+        if clear_cache is not None:
+            clear_cache()
+
+        same_subset_distribution_delta = _max_distribution_delta(
+            candidate_logits, reference_logits
+        )
+        dense_engine_distribution_delta = _max_distribution_delta(
+            candidate_logits, engine_oracle_logits
+        )
+        expected_materialized_tokens = sum(
+            len(tokens) for tokens, _position in materialized_history
+        )
+        checks = {
+            "two_concurrent_borrowers": two_borrowers == ("candidate", "reference"),
+            "normal_finish_released_exactly_once": (
+                candidate_outcome == "finished"
+                and reference_outcome == "finished"
+                and engine_oracle_outcome == "finished"
+            ),
+            "same_subset_token_exact": candidate_tokens == reference_tokens,
+            "same_subset_logit_within_tolerance": (
+                _max_delta(candidate_logits, reference_logits)
+                <= args.max_abs_logit_delta
+            ),
+            "dense_engine_oracle_token_exact": (
+                candidate_tokens == engine_oracle_tokens
+            ),
+            "dense_engine_oracle_logit_within_tolerance": (
+                _max_delta(candidate_logits, engine_oracle_logits)
+                <= args.max_abs_logit_delta
+            ),
+            "original_positions_preserved": (
+                candidate_metrics["source_position_base"] == len(source_ids)
+            ),
+            "zero_unrequested_history_reencoding": all(
+                value == expected_materialized_tokens
+                for value in (
+                    candidate_metrics["selected_text_reencoded_tokens"],
+                    reference_reencoded_tokens,
+                    engine_oracle_reencoded_tokens,
+                )
+            ),
+            "disjoint_selection_did_not_allocate": (
+                not use_disjoint
+                or (
+                    active_after_selection == active_before_selection
+                    and peak_after_selection == 0
+                )
+            ),
+            "disjoint_attention_has_no_full_selected_kv_sized_allocation": (
+                not use_disjoint
+                or not bool(
+                    disjoint_attention_allocation[
+                        "full_selected_kv_sized_allocation_observed"
+                    ]
+                )
+            ),
+            "selection_pack_bytes_reported": (
+                candidate_metrics["selection_pack_bytes"] == 0
+                if use_disjoint
+                else True
+            ),
+        }
+        runtime.terminate_session(
+            identities["tenant_id"], identities["session_id"]
+        )
+        result = {
+            "schema_version": "paper4.5.mlx-live-kv-distribution.v1",
+            "probe": "mlx_large_model_sparse_kv_distribution",
+            "engine": "mlx-lm",
+            "model": args.model,
+            "mlx_lm_version": getattr(mlx_lm, "__version__", "unknown"),
+            "python_version": platform.python_version(),
+            "hardware": args.hardware_label,
+            "materialization_policy": args.materialization_policy,
+            "fused_disjoint_attention": args.fused_disjoint_attention,
+            "segmented_attention_patched_layers": patched_layers,
+            "request_replay": str(args.request_replay) if args.request_replay else None,
+            "selection_fixture": (
+                str(args.selection_fixture) if args.selection_fixture else None
+            ),
+            "request_index": (
+                frozen_decision.request_index if frozen_decision else None
+            ),
+            "request_input_sha256": (
+                frozen_decision.request_input_sha256 if frozen_decision else None
+            ),
+            "source_policy": frozen_decision.source_policy if frozen_decision else None,
+            "source_tokens": len(source_ids),
+            "wire_suffix_tokens": len(wire_tail),
+            "selected_kv_tokens": plan.selected_tokens,
+            "materialized_history_tokens": expected_materialized_tokens,
+            "realized_retention_fraction": (
+                plan.selected_tokens + expected_materialized_tokens + len(wire_tail)
+            ) / max(len(prompt_ids), 1),
+            "selected_text_reencoded_tokens": candidate_metrics[
+                "selected_text_reencoded_tokens"
+            ],
+            "physical_kv_copy": candidate_metrics["physical_kv_copy"],
+            "selected_kv_segments": candidate_metrics["selected_kv_segments"],
+            "selection_pack_bytes": candidate_metrics["selection_pack_bytes"],
+            "dense_reference_pack_bytes": reference_pack_bytes,
+            "disjoint_attention_allocation": disjoint_attention_allocation,
+            "candidate_token_ids": list(candidate_tokens),
+            "same_subset_token_ids": list(reference_tokens),
+            "dense_engine_oracle_token_ids": list(engine_oracle_tokens),
+            "max_abs_logit_delta_same_subset": _max_delta(
+                candidate_logits, reference_logits
+            ),
+            "same_subset_max_centered_logit_delta": (
+                same_subset_distribution_delta[0]
+            ),
+            "same_subset_max_probability_delta": same_subset_distribution_delta[1],
+            "same_subset_max_total_variation": same_subset_distribution_delta[2],
+            "max_abs_logit_delta_dense_engine_oracle": _max_delta(
+                candidate_logits, engine_oracle_logits
+            ),
+            "dense_engine_oracle_max_centered_logit_delta": (
+                dense_engine_distribution_delta[0]
+            ),
+            "dense_engine_oracle_max_probability_delta": (
+                dense_engine_distribution_delta[1]
+            ),
+            "dense_engine_oracle_max_total_variation": (
+                dense_engine_distribution_delta[2]
+            ),
+            "checks": checks,
+            "distribution_qualified": all(checks.values()),
+            "qualification_blockers": [
+                name for name, passed in checks.items() if not passed
+            ],
+            "wall_seconds": time.perf_counter() - started,
+            "repository_revision": _git_revision(),
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        return result
     # A second oracle consumes the same packed selected K/V through mlx-lm's
     # ordinary dense attention.  The first reference isolates interval
     # addressing by using the same Metal consumer as the zero-copy candidate;
@@ -782,20 +976,34 @@ def main() -> None:
         default=True,
     )
     parser.add_argument("--max-abs-logit-delta", type=float, default=5e-3)
+    parser.add_argument(
+        "--distribution-only",
+        action="store_true",
+        help=(
+            "Run selected-subset and cross-consumer distribution gates while "
+            "releasing packed K/V between consumers; lifecycle is qualified "
+            "separately."
+        ),
+    )
     args = parser.parse_args()
     result = run(args)
+    qualification_key = (
+        "distribution_qualified"
+        if args.distribution_only
+        else "engine_lifecycle_qualified"
+    )
     print(
         json.dumps(
             {
                 "engine": result["engine"],
                 "model": result["model"],
-                "engine_lifecycle_qualified": result["engine_lifecycle_qualified"],
+                qualification_key: result[qualification_key],
                 "qualification_blockers": result["qualification_blockers"],
             },
             indent=2,
         )
     )
-    raise SystemExit(0 if result["engine_lifecycle_qualified"] else 1)
+    raise SystemExit(0 if result[qualification_key] else 1)
 
 
 if __name__ == "__main__":
