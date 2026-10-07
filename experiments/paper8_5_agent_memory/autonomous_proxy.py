@@ -207,6 +207,27 @@ STATIC_WORKFLOW_ANCHORS = {
         "and submit. Emit exactly one tool action per response.\n"
         "</pra_workflow_anchor>"
     ),
+    "coding_symbol_scoped_recovery_v11": (
+        "<pra_workflow_anchor version=\"coding-symbol-scoped-recovery-v11\">\n"
+        "Search file contents for the named class, function, or symbol and "
+        "record its exact definition line. Immediately inspect one bounded "
+        "span beginning at that definition. Do not infer method ownership "
+        "from a file-wide list of generic method names such as __init__; "
+        "inspect the named symbol's own bounded span instead. Edit with "
+        "pra_replace PATH 'EXACT_OLD_TEXT' 'EXACT_NEW_TEXT', choosing the "
+        "shortest unique old text that expresses the intended change. When "
+        "pra_replace reports duplicate candidate lines, inspect those exact "
+        "candidate lines and use the matching candidate line in --line=N. "
+        "The selector is the line containing EXACT_OLD_TEXT, not an enclosing "
+        "definition line. Represent embedded newlines as \\n. After a rejected "
+        "transaction, change the selector or exact text before retrying; never "
+        "repeat an unchanged failed command. Retry at most once before using a "
+        "different bounded inspection or replacement. Never use an interactive "
+        "editor, sed -i, global substitution, or line-number insertion. After "
+        "a successful edit, inspect git diff, run one targeted verification, "
+        "and submit. Emit exactly one tool action per response.\n"
+        "</pra_workflow_anchor>"
+    ),
     "coding_active_request_v8": (
         "<pra_workflow_anchor version=\"coding-active-request-v8\">\n"
         "Only the newest user instruction is active. Earlier user instructions "

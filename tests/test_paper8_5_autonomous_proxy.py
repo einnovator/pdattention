@@ -247,6 +247,11 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "not the enclosing class or function-definition line" in candidate_recovery
     assert "never repeat an unchanged failed command" in candidate_recovery
     assert "Retry at most once" in candidate_recovery
+    symbol_scoped = STATIC_WORKFLOW_ANCHORS["coding_symbol_scoped_recovery_v11"]
+    assert "record its exact definition line" in symbol_scoped
+    assert "Do not infer method ownership" in symbol_scoped
+    assert "named symbol's own bounded span" in symbol_scoped
+    assert "never repeat an unchanged failed command" in symbol_scoped
     active_transaction = STATIC_WORKFLOW_ANCHORS["coding_active_transaction_v9"]
     assert "Only the newest user instruction is active" in active_transaction
     assert "pra_replace PATH" in active_transaction
