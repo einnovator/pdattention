@@ -30,6 +30,29 @@ termination.  Restore is intentionally accounted separately: the two
 lossless offload payloads total 6,516,156,724 bytes.  These are mechanism and
 residency-boundary measurements, not latency results.
 
+## SGLang-MLX current lifecycle repeat
+
+SGLang-MLX revision `ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5`
+repeats the same two frozen final requests under Paper 4.5 revision
+`48254442`.  The environment uses MLX 0.32.1, MLX-LM 0.32.0, and the pinned
+Transformers 5.12.1 contract on the 16-GB M5 host.
+
+| Frozen request | Qualified | Source + suffix | Selected K/V + suffix | Visible omission | Re-encode / selection pack / initial K/V copy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| repeat 1, request 8 | yes | 28,503 + 306 | 12,641 + 306 | 55.059% | 0 / 0 / 0 |
+| repeat 2, request 9 | yes | 28,321 + 305 | 12,459 + 305 | 55.411% | 0 / 0 / 0 |
+| aggregate final requests | 2/2 | 57,435 total | 25,711 total | 55.235% | 0 / 0 / 0 |
+
+Both receipts pass same-subset logits and tokens, the ordinary full-engine
+oracle, original-position execution, two-borrower isolation, cancellation,
+injected-error cleanup, stale-generation rejection, owner guards, eviction,
+offload, exact restore, and termination.  The measured consumer peaks are
+155,659 and 156,715 bytes, only 0.301% and 0.307% of one selected layer's K/V
+extent.  The two offload payloads total 6,517,074,228 bytes and remain a
+separate residency-boundary cost.  Unlike vLLM-Metal, SGLang's interval path
+needs no complete-page rounding, so its 25,711 selected visible tokens are the
+exact engine realization of this final-request logical ledger.
+
 ## Direct MLX 30B numerical boundary
 
 The Qwen3-Coder-30B-A3B-Instruct-4bit request-1 lifecycle receipt is a strict

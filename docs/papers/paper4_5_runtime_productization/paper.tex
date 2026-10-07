@@ -854,6 +854,19 @@ not replace Paper~8.5's 57.03\% own logical omission over every request in the
 task cluster: final-request physical realization and sequence-level logical
 economics are different denominators.
 
+The current SGLang-MLX rerun realizes the same frozen ledger without page
+rounding.  Both final requests pass the complete lifecycle gate at 12,641 of
+28,503 and 12,459 of 28,321 selected source entries, with 306- and 305-token
+suffixes.  Aggregate visible omission is 55.235\%; selected-history
+re-encoding, selection packing, and initial K/V copying are all zero.
+Same-subset logits and tokens, the ordinary full-engine oracle, two-borrower
+isolation, cancellation, error cleanup, stale-generation rejection, owner
+guards, offload, exact restore, and termination all pass.  Consumer peaks are
+155,659 and 156,715 bytes, only 0.301\% and 0.307\% of one selected layer's
+K/V extent.  The 6,517,074,228 offload bytes are reported separately.  Thus
+the logical-to-physical mapping is exact for SGLang's interval path and differs
+from vLLM-Metal only by the latter's 44 page-rounding tokens.
+
 The corresponding direct-MLX Qwen3-Coder-30B request localizes the remaining
 large-model numerical boundary.  Zero-copy interval attention agrees exactly
 with the packed identical-consumer reference and with its restored execution:
