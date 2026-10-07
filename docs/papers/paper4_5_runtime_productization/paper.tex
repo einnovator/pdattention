@@ -837,6 +837,43 @@ initial attachment re-encodes zero tokens, copies zero K/V, and adds zero active
 bytes.  The auditable bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_django15368_v3}.
 
+A post-fix vLLM-Metal rerun removes the detached physical reserve used by the
+preceding receipts.  The bridge now restores explicitly offloaded K/V into
+pages allocated from vLLM's existing scheduler pool, after releasing the
+original source ownership; it no longer reallocates the full Metal cache merely
+to append a private tail.  The two frozen Scikit final requests both pass the
+complete lifecycle gate.  They retain 12,656 of 28,496 source entries plus a
+313-token suffix and 12,480 of 28,320 plus a 306-token suffix.  Complete-page
+rounding adds 22 tokens per request, giving 54.983\% and 55.334\% visible
+omission, or 55.158\% over the two final requests.  Initial attachment
+re-encodes zero history tokens and copies zero K/V; the explicit residency
+transition remains separate and copies one canonical source on restore.  The
+two lossless offload payloads total 6,516,156,724 bytes, so this is correctness
+and lifecycle evidence rather than an offload-performance claim.  It also does
+not replace Paper~8.5's 57.03\% own logical omission over every request in the
+task cluster: final-request physical realization and sequence-level logical
+economics are different denominators.
+
+The corresponding direct-MLX Qwen3-Coder-30B request localizes the remaining
+large-model numerical boundary.  Zero-copy interval attention agrees exactly
+with the packed identical-consumer reference and with its restored execution:
+raw-logit, centered-logit, probability, and total-variation deltas are all
+zero.  Against mlx-lm's ordinary dense consumer, both generated tokens remain
+identical, but the maximum raw and centered-logit deltas are 2.7578125 and
+2.59375; maximum probability delta is 0.003681 and total variation is 0.005116.
+The predeclared raw-logit gate therefore remains failed.  This is a strict
+cross-consumer numerical negative, not evidence of selected-K/V re-encoding or
+packing: both counters are zero.  The post-fix artifacts are under
+\path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_current_engine_transfer_v1}.
+The bounded-memory final-request repeat corroborates the separation: its
+identical-consumer deltas are again zero with no selected-history re-encoding
+or packing, while the dense consumer preserves both token IDs but has raw-logit
+delta 4.515625, maximum probability delta 0.002541, and total variation
+0.002572.  Its consumer peak is 2,187,275 bytes, only 8.45\% of one selected
+layer's K/V extent.  Because this repeat intentionally releases request state
+before the dense oracle, it is distribution evidence rather than an additional
+lifecycle qualification.
+
 The same corrected request-9 gate does not yet qualify the direct MLX 14B
 path.  On MLX 0.32.2 / MLX-LM 0.31.3 with Qwen3-14B 4-bit, both fused and
 eager disjoint consumers differ from the native dense identical-subset
@@ -2347,6 +2384,14 @@ bytes.  These rows may support same-subset semantics, but not zero-copy or
 prefix-cache reuse. & Exact source block/storage identities plus independent
 counters for K/V copy, host--device transfer, re-encoded tokens, transient
 attention bytes, and offload/restore traffic. \\
+\addlinespace
+Detached cache expansion & The first vLLM-Metal lifecycle bridge allocated a
+second cache containing the full scheduler pool plus a private restore tail.
+It could qualify on a high-memory host, but transiently duplicated resident
+K/V and failed at ordinary 16-GB capacity. & Alias initial selections from
+scheduler-owned pages and, only after an explicit offload releases those
+pages, restore into pages allocated from the existing scheduler pool.  Report
+the residency-boundary copy separately and allocate no second full cache. \\
 \addlinespace
 Post-cache compaction mistaken for reuse & Any row that replaces an already-
 cached record with newly written summary, tombstone, or receipt tokens while

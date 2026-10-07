@@ -1,0 +1,398 @@
+{
+  "schema_version": "paper4.5.mlx-live-kv-lifecycle.v4",
+  "probe": "mlx_real_model_request_owned_sparse_kv",
+  "engine": "mlx-lm",
+  "model": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "mlx_lm_version": "0.32.0",
+  "python_version": "3.12.12",
+  "hardware": "bigmac-m4-48gb-atomic-e2-r01-request01",
+  "materialization_policy": "disjoint_segmented",
+  "fused_disjoint_attention": true,
+  "segmented_attention_patched_layers": 48,
+  "trajectory": null,
+  "request_replay": "/Users/admin.jorge.simao/git/rd/paper45-atomic-e2-run/input/r01_request_replay.jsonl",
+  "selection_fixture": "/Users/admin.jorge.simao/git/rd/paper45-atomic-e2-run/input/r01_frozen_plan.jsonl",
+  "request_index": 1,
+  "request_input_sha256": "e9f6ac8af7c9e45130e18b4aa7aae839318ca186a7e85452a6dbd05288837b7b",
+  "source_policy": "persistent_instruction_epoch_retirement",
+  "turn": null,
+  "retention_fraction": 0.39848312476298825,
+  "source_tokens": 24542,
+  "wire_suffix_tokens": 1828,
+  "wire_prefill_step_size": 512,
+  "source_prefill_step_size": 512,
+  "selected_kv_tokens": 8680,
+  "materialized_history_tokens": 0,
+  "realized_retention_fraction": 0.39848312476298825,
+  "historical_kv_retention_fraction": 0.35367940673131776,
+  "source_position_base": 24542,
+  "has_holes": true,
+  "physical_kv_copy": false,
+  "runtime_physical_kv_copy_report": null,
+  "pra_interval_pack_copy": false,
+  "physical_kv_copy_qualification": "qualified_zero_copy_interval_addressed_metal",
+  "consumer_implementation": "fused_interval_addressed_metal",
+  "reference_condition": "packed-value oracle with identical segment boundaries, original positions, and Metal consumer",
+  "selected_kv_segments": 2,
+  "logical_selected_intervals": 41,
+  "physical_kv_segments": 2,
+  "selection_pack_bytes": 0,
+  "selection_materialization_elapsed_ms": 10.594958,
+  "dense_reference_pack_bytes": 853278720,
+  "dense_reference_materialization_elapsed_ms": 271.821458,
+  "selection_active_memory_delta_bytes": 0,
+  "selection_peak_memory_bytes": 0,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 17776640,
+    "active_before_bytes": 19596875790,
+    "active_after_bytes": 19599063065,
+    "active_delta_bytes": 2187275,
+    "absolute_peak_bytes": 19599063065,
+    "peak_delta_bytes": 2187275,
+    "peak_delta_to_selected_layer_kv_ratio": 0.12304209344398041,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "allocation_measurement_method": {
+    "selection": "Reset the MLX peak allocator, construct the selected interval views, force every selected key/value array with mx.eval, and compare active and peak bytes with the pre-selection baseline.",
+    "consumption": "Reset the MLX peak allocator, run one real first-layer attention query over all selected interval key/value views plus one local token, force the output with mx.eval, and compare peak delta against the selected first-layer K/V byte extent.",
+    "full_kv_sized_threshold": "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+  },
+  "required_runtime_fix": null,
+  "selected_text_reencoded_tokens": 0,
+  "offloaded_payload_type": "bytes",
+  "offloaded_payload_bytes": 2412613244,
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_logit_exact": true,
+  "same_subset_max_centered_logit_delta": 0.0,
+  "same_subset_max_probability_delta": 0.0,
+  "same_subset_max_total_variation": 0.0,
+  "max_abs_logit_delta_dense_engine_oracle": 2.7578125,
+  "dense_engine_oracle_max_centered_logit_delta": 2.59375,
+  "dense_engine_oracle_max_probability_delta": 0.0036807535216212273,
+  "dense_engine_oracle_max_total_variation": 0.005116049665957689,
+  "dense_engine_oracle_token_ids": [
+    3617,
+    46
+  ],
+  "candidate_token_ids": [
+    3617,
+    46
+  ],
+  "max_abs_logit_delta_after_restore": 0.0,
+  "restored_max_centered_logit_delta": 0.0,
+  "restored_max_probability_delta": 0.0,
+  "restored_max_total_variation": 0.0,
+  "checks": {
+    "two_concurrent_borrowers": true,
+    "offload_rejected_with_two_borrowers": true,
+    "normal_finish_released_exactly_once": true,
+    "offload_rejected_with_one_borrower": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "dense_engine_oracle_token_exact": true,
+    "dense_engine_oracle_logit_within_tolerance": false,
+    "cooperative_cancel_released_exactly_once": true,
+    "error_released_exactly_once": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restore_reached_hot_tier": true,
+    "restored_source_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "restored_generation_logit_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "selected_history_reencoding_equals_explicit_materialization": true,
+    "physical_kv_copy_reported": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "selection_pack_bytes_reported": true
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 4,
+      "cancelled": 2,
+      "error": 1
+    }
+  },
+  "selection_plan": {
+    "source_tokens": 24542,
+    "source_position_base": 24542,
+    "selected_tokens": 8680,
+    "full_retention": false,
+    "has_holes": true,
+    "physical_intervals": [
+      {
+        "start": 0,
+        "end": 116
+      },
+      {
+        "start": 15978,
+        "end": 24542
+      }
+    ],
+    "intervals": [
+      {
+        "start": 0,
+        "end": 116,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 15978,
+        "end": 17339,
+        "record_id": "message:80:user",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 17339,
+        "end": 17463,
+        "record_id": "message:81:assistant",
+        "causal_group_id": "turn:81"
+      },
+      {
+        "start": 17463,
+        "end": 17512,
+        "record_id": "message:82:user",
+        "causal_group_id": "turn:81"
+      },
+      {
+        "start": 17512,
+        "end": 17586,
+        "record_id": "message:83:assistant",
+        "causal_group_id": "turn:83"
+      },
+      {
+        "start": 17586,
+        "end": 17615,
+        "record_id": "message:84:user",
+        "causal_group_id": "turn:83"
+      },
+      {
+        "start": 17615,
+        "end": 17678,
+        "record_id": "message:85:assistant",
+        "causal_group_id": "turn:85"
+      },
+      {
+        "start": 17678,
+        "end": 17834,
+        "record_id": "message:86:user",
+        "causal_group_id": "turn:85"
+      },
+      {
+        "start": 17834,
+        "end": 17938,
+        "record_id": "message:87:assistant",
+        "causal_group_id": "turn:87"
+      },
+      {
+        "start": 17938,
+        "end": 18126,
+        "record_id": "message:88:user",
+        "causal_group_id": "turn:87"
+      },
+      {
+        "start": 18126,
+        "end": 18237,
+        "record_id": "message:89:assistant",
+        "causal_group_id": "turn:89"
+      },
+      {
+        "start": 18237,
+        "end": 18257,
+        "record_id": "message:90:user",
+        "causal_group_id": "turn:89"
+      },
+      {
+        "start": 18257,
+        "end": 18309,
+        "record_id": "message:91:assistant",
+        "causal_group_id": "turn:91"
+      },
+      {
+        "start": 18309,
+        "end": 18345,
+        "record_id": "message:92:user",
+        "causal_group_id": "turn:91"
+      },
+      {
+        "start": 18345,
+        "end": 18411,
+        "record_id": "message:93:assistant",
+        "causal_group_id": "turn:93"
+      },
+      {
+        "start": 18411,
+        "end": 18565,
+        "record_id": "message:94:user",
+        "causal_group_id": "turn:93"
+      },
+      {
+        "start": 18565,
+        "end": 19966,
+        "record_id": "message:95:user",
+        "causal_group_id": "turn:93"
+      },
+      {
+        "start": 19966,
+        "end": 20074,
+        "record_id": "message:96:assistant",
+        "causal_group_id": "turn:96"
+      },
+      {
+        "start": 20074,
+        "end": 20179,
+        "record_id": "message:97:user",
+        "causal_group_id": "turn:96"
+      },
+      {
+        "start": 20179,
+        "end": 20240,
+        "record_id": "message:98:assistant",
+        "causal_group_id": "turn:98"
+      },
+      {
+        "start": 20240,
+        "end": 20468,
+        "record_id": "message:99:user",
+        "causal_group_id": "turn:98"
+      },
+      {
+        "start": 20468,
+        "end": 20595,
+        "record_id": "message:100:assistant",
+        "causal_group_id": "turn:100"
+      },
+      {
+        "start": 20595,
+        "end": 22125,
+        "record_id": "message:101:user",
+        "causal_group_id": "turn:100"
+      },
+      {
+        "start": 22125,
+        "end": 22287,
+        "record_id": "message:102:assistant",
+        "causal_group_id": "turn:102"
+      },
+      {
+        "start": 22287,
+        "end": 22619,
+        "record_id": "message:103:user",
+        "causal_group_id": "turn:102"
+      },
+      {
+        "start": 22619,
+        "end": 22752,
+        "record_id": "message:104:assistant",
+        "causal_group_id": "turn:104"
+      },
+      {
+        "start": 22752,
+        "end": 22904,
+        "record_id": "message:105:user",
+        "causal_group_id": "turn:104"
+      },
+      {
+        "start": 22904,
+        "end": 23160,
+        "record_id": "message:106:assistant",
+        "causal_group_id": "turn:106"
+      },
+      {
+        "start": 23160,
+        "end": 23180,
+        "record_id": "message:107:user",
+        "causal_group_id": "turn:106"
+      },
+      {
+        "start": 23180,
+        "end": 23240,
+        "record_id": "message:108:assistant",
+        "causal_group_id": "turn:108"
+      },
+      {
+        "start": 23240,
+        "end": 23377,
+        "record_id": "message:109:user",
+        "causal_group_id": "turn:108"
+      },
+      {
+        "start": 23377,
+        "end": 23467,
+        "record_id": "message:110:assistant",
+        "causal_group_id": "turn:110"
+      },
+      {
+        "start": 23467,
+        "end": 23571,
+        "record_id": "message:111:user",
+        "causal_group_id": "turn:110"
+      },
+      {
+        "start": 23571,
+        "end": 23675,
+        "record_id": "message:112:assistant",
+        "causal_group_id": "turn:112"
+      },
+      {
+        "start": 23675,
+        "end": 23915,
+        "record_id": "message:113:user",
+        "causal_group_id": "turn:112"
+      },
+      {
+        "start": 23915,
+        "end": 24047,
+        "record_id": "message:114:assistant",
+        "causal_group_id": "turn:114"
+      },
+      {
+        "start": 24047,
+        "end": 24067,
+        "record_id": "message:115:user",
+        "causal_group_id": "turn:114"
+      },
+      {
+        "start": 24067,
+        "end": 24126,
+        "record_id": "message:116:assistant",
+        "causal_group_id": "turn:116"
+      },
+      {
+        "start": 24126,
+        "end": 24253,
+        "record_id": "message:117:user",
+        "causal_group_id": "turn:116"
+      },
+      {
+        "start": 24253,
+        "end": 24316,
+        "record_id": "message:118:assistant",
+        "causal_group_id": "turn:118"
+      },
+      {
+        "start": 24316,
+        "end": 24542,
+        "record_id": "message:119:user",
+        "causal_group_id": "turn:118"
+      }
+    ]
+  },
+  "engine_request_callback_integration": true,
+  "experiment_revision": "7edf5758ecf994d7674a2ca1ec484d5a9c509818",
+  "implementation_files": {
+    "src/pra_mlx/native.py": "4c9b37e14307c0969359405bf0699dc93d45dbcefad87f4fee9fd826e1760c7b",
+    "src/pra_mlx/mlx_live_kv.py": "5ced3630a98cd8ba9d4cb87fcd12417a38f25ac270f75036c9d7a23f5af32603",
+    "src/pra_mlx/qwen3_segmented.py": "f92deedc6a58b3873ae063f8c7faf17e41621e64143a9669b79c3f2a72584055",
+    "experiments/paper4_5_agent/run_mlx_live_agent_kv_lifecycle.py": "23997c3fa912a3f04b404e25995f588b14a7ee56870795c8441ac6d8eaa41f6c"
+  },
+  "elapsed_seconds": 471.2034225000534,
+  "engine_lifecycle_qualified": false,
+  "qualification_blockers": [
+    "dense_engine_oracle_logit_within_tolerance"
+  ]
+}

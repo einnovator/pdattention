@@ -1,0 +1,78 @@
+{
+  "schema_version": "paper4.5.mlx-live-kv-distribution.v1",
+  "probe": "mlx_large_model_sparse_kv_distribution",
+  "engine": "mlx-lm",
+  "model": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "mlx_lm_version": "0.32.0",
+  "python_version": "3.12.12",
+  "hardware": "bigmac-m4-48gb-atomic-e2-r01-request08",
+  "materialization_policy": "disjoint_segmented",
+  "fused_disjoint_attention": true,
+  "segmented_attention_patched_layers": 48,
+  "request_replay": "/Users/admin.jorge.simao/git/rd/paper45-atomic-e2-run/input/r01_request_replay.jsonl",
+  "selection_fixture": "/Users/admin.jorge.simao/git/rd/paper45-atomic-e2-run/input/r01_frozen_plan.jsonl",
+  "request_index": 8,
+  "request_input_sha256": "9cff662af5cf8994efc7455dda98be5c8034bd5d384e8e3887c9e493361780d2",
+  "source_policy": "persistent_instruction_epoch_retirement",
+  "source_tokens": 28503,
+  "wire_suffix_tokens": 306,
+  "selected_kv_tokens": 12641,
+  "materialized_history_tokens": 0,
+  "realized_retention_fraction": 0.44940817105765557,
+  "selected_text_reencoded_tokens": 0,
+  "physical_kv_copy": null,
+  "selected_kv_segments": 2,
+  "selection_pack_bytes": 0,
+  "dense_reference_pack_bytes": 1242660864,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 25888768,
+    "active_before_bytes": 19999528974,
+    "active_after_bytes": 20001716249,
+    "active_delta_bytes": 2187275,
+    "absolute_peak_bytes": 20001716249,
+    "peak_delta_bytes": 2187275,
+    "peak_delta_to_selected_layer_kv_ratio": 0.08448741168370778,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "candidate_token_ids": [
+    3617,
+    46
+  ],
+  "same_subset_token_ids": [
+    3617,
+    46
+  ],
+  "dense_engine_oracle_token_ids": [
+    3617,
+    46
+  ],
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_max_centered_logit_delta": 0.0,
+  "same_subset_max_probability_delta": 0.0,
+  "same_subset_max_total_variation": 0.0,
+  "max_abs_logit_delta_dense_engine_oracle": 4.515625,
+  "dense_engine_oracle_max_centered_logit_delta": 5.640625,
+  "dense_engine_oracle_max_probability_delta": 0.0025406479835510254,
+  "dense_engine_oracle_max_total_variation": 0.002571915276348591,
+  "checks": {
+    "two_concurrent_borrowers": true,
+    "normal_finish_released_exactly_once": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "dense_engine_oracle_token_exact": true,
+    "dense_engine_oracle_logit_within_tolerance": false,
+    "original_positions_preserved": true,
+    "zero_unrequested_history_reencoding": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "selection_pack_bytes_reported": true
+  },
+  "same_consumer_distribution_qualified": true,
+  "cross_consumer_distribution_qualified": false,
+  "distribution_qualified": false,
+  "qualification_blockers": [
+    "dense_engine_oracle_logit_within_tolerance"
+  ],
+  "wall_seconds": 200.68652412493248,
+  "repository_revision": "dce44d1c454fb8d54460e595ee62af9152cc8a92"
+}

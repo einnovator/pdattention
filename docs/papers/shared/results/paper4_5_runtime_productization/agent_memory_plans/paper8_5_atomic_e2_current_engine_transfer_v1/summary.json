@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "study": "paper4_5_atomic_e2_current_engine_transfer_v1",
+  "source_policy": "Paper 8.5 Atomic E2",
+  "logical_selector_rerun": false,
+  "source_bundle": "../paper8_5_atomic_e2_scikit14496_v2",
+  "paper8_5_task_cluster_own_logical_omission_fraction": 0.5709474497916536,
+  "vllm_metal": {
+    "bridge_revision": "0cb0fc67",
+    "engine_source_revision": "7390805822b2d7a208b09d55bd07b7572f727e20",
+    "engine_version": "0.29.0",
+    "vllm_metal_version": "0.29.0",
+    "model": "mlx-community/Qwen3-0.6B-4bit",
+    "hardware": "16-GB M5",
+    "qualified_requests": "2/2",
+    "full_visible_tokens": 57435,
+    "selected_visible_tokens": 25755,
+    "visible_omission_fraction": 0.551580047009663,
+    "page_rounding_added_tokens": 44,
+    "selected_text_reencoded_tokens": 0,
+    "initial_attachment_physical_kv_copy": false,
+    "scheduler_invisible_tail_pages": 0,
+    "scheduler_pool_restore": true,
+    "restore_materialization_physical_kv_copy": true,
+    "offloaded_payload_bytes": 6516156724,
+    "artifacts": [
+      {
+        "path": "r01_vllm_metal_qwen3_06b_scheduler_pool_restore.json",
+        "sha256": "fce6789635bae673b1dd27d43a5675021a6a4968c6ae47da4861be880e3c0303"
+      },
+      {
+        "path": "r02_vllm_metal_qwen3_06b_scheduler_pool_restore.json",
+        "sha256": "35de6373b1f6d253d908c21d71e511d3407bf81ef1a9ea4b73af8b8e1c31dcb1"
+      }
+    ]
+  },
+  "mlx_qwen3_coder_30b": {
+    "harness_revision": "7edf5758",
+    "model": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+    "hardware": "48-GB M4",
+    "request_index": 1,
+    "source_tokens": 24542,
+    "wire_suffix_tokens": 1828,
+    "selected_kv_tokens": 8680,
+    "realized_retention_fraction": 0.39848312476298825,
+    "selected_text_reencoded_tokens": 0,
+    "selection_pack_bytes": 0,
+    "same_subset_max_abs_logit_delta": 0.0,
+    "dense_engine_oracle_max_abs_logit_delta": 2.7578125,
+    "dense_engine_oracle_max_centered_logit_delta": 2.59375,
+    "dense_engine_oracle_max_probability_delta": 0.0036807535216212273,
+    "dense_engine_oracle_max_total_variation": 0.005116049665957689,
+    "candidate_token_ids": [3617, 46],
+    "dense_engine_oracle_token_ids": [3617, 46],
+    "qualified": false,
+    "qualification_blockers": [
+      "dense_engine_oracle_logit_within_tolerance"
+    ],
+    "artifact": {
+      "path": "r01_request01_mlx_qwen3coder30b_lifecycle_negative.json",
+      "sha256": "eb10137b2f6479c4d87414229f5c674b54d170da42052505fddf74a1a09135c0"
+    },
+    "final_request_distribution": {
+      "harness_revision": "dce44d1c",
+      "request_index": 8,
+      "source_tokens": 28503,
+      "wire_suffix_tokens": 306,
+      "selected_kv_tokens": 12641,
+      "realized_retention_fraction": 0.44940817105765557,
+      "selected_text_reencoded_tokens": 0,
+      "selection_pack_bytes": 0,
+      "selected_layer_kv_bytes": 25888768,
+      "consumer_peak_delta_bytes": 2187275,
+      "consumer_peak_to_selected_layer_kv_ratio": 0.08448741168370778,
+      "same_subset_max_abs_logit_delta": 0.0,
+      "dense_engine_oracle_max_abs_logit_delta": 4.515625,
+      "dense_engine_oracle_max_centered_logit_delta": 5.640625,
+      "dense_engine_oracle_max_probability_delta": 0.0025406479835510254,
+      "dense_engine_oracle_max_total_variation": 0.002571915276348591,
+      "candidate_token_ids": [3617, 46],
+      "dense_engine_oracle_token_ids": [3617, 46],
+      "same_consumer_distribution_qualified": true,
+      "cross_consumer_distribution_qualified": false,
+      "distribution_qualified": false,
+      "lifecycle_claim": false,
+      "artifact": {
+        "path": "r01_request08_mlx_qwen3coder30b_distribution_only.json",
+        "sha256": "d1d1c99dd721eba7efb8080c88cfb902716aedfa9d82c25b6a0319223ffc1d02"
+      }
+    }
+  },
+  "claim_boundary": {
+    "vllm_result": "post-fix native lifecycle and final-request physical realization",
+    "mlx_30b_result": "strict cross-consumer numerical negative",
+    "autonomous_agent_accuracy": false,
+    "latency_claim": false,
+    "full_sequence_native_execution": false
+  }
+}
