@@ -252,6 +252,11 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "Do not infer method ownership" in symbol_scoped
     assert "named symbol's own bounded span" in symbol_scoped
     assert "never repeat an unchanged failed command" in symbol_scoped
+    line_scoped = STATIC_WORKFLOW_ANCHORS["coding_line_scoped_recovery_v12"]
+    assert "line-numbered content search" in line_scoped
+    assert "line number L" in line_scoped
+    assert "file-wide search for a generic method name" in line_scoped
+    assert "loses class ownership" in line_scoped
     active_transaction = STATIC_WORKFLOW_ANCHORS["coding_active_transaction_v9"]
     assert "Only the newest user instruction is active" in active_transaction
     assert "pra_replace PATH" in active_transaction

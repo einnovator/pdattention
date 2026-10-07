@@ -228,6 +228,26 @@ STATIC_WORKFLOW_ANCHORS = {
         "and submit. Emit exactly one tool action per response.\n"
         "</pra_workflow_anchor>"
     ),
+    "coding_line_scoped_recovery_v12": (
+        "<pra_workflow_anchor version=\"coding-line-scoped-recovery-v12\">\n"
+        "Use a line-numbered content search such as grep -n or rg -n for the "
+        "named class, function, or symbol. A definition is not located until "
+        "that search returns its line number L. Immediately inspect a bounded "
+        "span beginning at L, for example sed -n 'L,L+80p'. Never replace this "
+        "step with a file-wide search for a generic method name such as "
+        "__init__, because that loses class ownership. Edit only text visible "
+        "in the named symbol's bounded span. Use pra_replace PATH "
+        "'EXACT_OLD_TEXT' 'EXACT_NEW_TEXT' and the shortest unique old text. "
+        "For duplicate matches, inspect the exact candidate lines reported by "
+        "pra_replace and pass the chosen line containing EXACT_OLD_TEXT as "
+        "--line=N; never pass an enclosing definition line. Represent embedded "
+        "newlines as \\n. After a rejected transaction, change the selector "
+        "or exact text before retrying. Never repeat an unchanged failed "
+        "command, and never use an interactive editor, sed -i, global "
+        "substitution, or line-number insertion. After a successful edit, "
+        "inspect git diff, run one targeted verification, and submit. Emit "
+        "exactly one tool action per response.\n</pra_workflow_anchor>"
+    ),
     "coding_active_request_v8": (
         "<pra_workflow_anchor version=\"coding-active-request-v8\">\n"
         "Only the newest user instruction is active. Earlier user instructions "
