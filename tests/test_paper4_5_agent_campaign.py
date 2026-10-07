@@ -2897,6 +2897,7 @@ def test_wire_agent_memory_plan_without_replacements_is_strict_resident_subset()
         mandatory_message_indices=[0, 4],
         session_id="persistent-session",
         request_index=2,
+        requested_retention_fraction=0.75,
     )
 
     metadata = transformed["pra"]["metadata"]
@@ -2906,6 +2907,8 @@ def test_wire_agent_memory_plan_without_replacements_is_strict_resident_subset()
     )
     assert metadata["native_materialization_class"] == "strict_resident_subset"
     assert metadata["synthetic_history_tokens_expected"] is False
+    assert metadata["budget_fraction"] == 0.75
+    assert metadata["target_retention_fraction"] == 0.75
     assert metadata["agent_history_selection_policy"] == (
         "persistent_instruction_epoch_retirement"
     )

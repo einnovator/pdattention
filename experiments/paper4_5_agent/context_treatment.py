@@ -691,6 +691,7 @@ def transform_wire_agent_memory_plan_payload(
     count_tokens: Callable[[str], int] | None = None,
     tokenizer_identity: str = "whitespace_v1",
     agent_history_selection_policy: str | None = None,
+    requested_retention_fraction: float | None = None,
 ) -> tuple[dict[str, Any], TreatmentTrace]:
     """Map an agent-neutral wire plan onto live-history native PRA.
 
@@ -719,6 +720,10 @@ def transform_wire_agent_memory_plan_payload(
     )
     if not source_policy.strip():
         raise ValueError("wire agent-memory plan has no policy identity")
+    if requested_retention_fraction is not None and not (
+        0 < float(requested_retention_fraction) <= 1
+    ):
+        raise ValueError("requested_retention_fraction must be in (0, 1]")
 
     coordinate_map = {
         str(record_id): int(index)
@@ -841,6 +846,16 @@ def transform_wire_agent_memory_plan_payload(
         "synthetic_history_tokens_expected": bool(frozen_replacements),
         "agent_memory_plan_digest": plan_digest,
         "source_wire_plan_digest": source_wire_plan_digest,
+        "budget_fraction": float(
+            realized_retention
+            if requested_retention_fraction is None
+            else requested_retention_fraction
+        ),
+        "target_retention_fraction": float(
+            realized_retention
+            if requested_retention_fraction is None
+            else requested_retention_fraction
+        ),
         "realized_retention_fraction": realized_retention,
         "history_projection": "live-agent-kv-v1",
         "agent_memory_request_index": int(request_index),
