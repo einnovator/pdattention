@@ -187,6 +187,26 @@ STATIC_WORKFLOW_ANCHORS = {
         "inspect git diff, run one targeted verification, and submit. Emit "
         "exactly one tool action per response.\n</pra_workflow_anchor>"
     ),
+    "coding_candidate_recovery_v10": (
+        "<pra_workflow_anchor version=\"coding-candidate-recovery-v10\">\n"
+        "Search file contents for the named symbol and inspect one bounded "
+        "target span. Edit with pra_replace PATH 'EXACT_OLD_TEXT' "
+        "'EXACT_NEW_TEXT'. Choose the shortest unique old text that expresses "
+        "the intended change, normally one complete source line. When "
+        "pra_replace reports duplicate candidate lines, inspect those exact "
+        "candidate lines with a bounded command such as sed -n 'N-4,N+4p'; "
+        "then use the matching candidate line in --line=N. The selector is "
+        "the line containing EXACT_OLD_TEXT, not the enclosing class or "
+        "function-definition line. Represent embedded newlines as \\n. After "
+        "any rejected transaction, read the rejection and change the selector "
+        "or exact text before retrying; never repeat an unchanged failed "
+        "command. Retry at most once before choosing a different bounded "
+        "inspection or replacement. Never fall back to an interactive editor, "
+        "sed -i, global substitution, or line-number insertion. After a "
+        "successful edit, inspect git diff, run one targeted verification, "
+        "and submit. Emit exactly one tool action per response.\n"
+        "</pra_workflow_anchor>"
+    ),
     "coding_active_request_v8": (
         "<pra_workflow_anchor version=\"coding-active-request-v8\">\n"
         "Only the newest user instruction is active. Earlier user instructions "

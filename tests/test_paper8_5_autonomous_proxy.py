@@ -242,6 +242,11 @@ def test_static_workflow_anchor_rejects_unknown_and_double_application():
     assert "shortest unique old text" in minimal_transaction
     assert "normally one complete source line" in minimal_transaction
     assert "never fall back to sed" in minimal_transaction
+    candidate_recovery = STATIC_WORKFLOW_ANCHORS["coding_candidate_recovery_v10"]
+    assert "inspect those exact candidate lines" in candidate_recovery
+    assert "not the enclosing class or function-definition line" in candidate_recovery
+    assert "never repeat an unchanged failed command" in candidate_recovery
+    assert "Retry at most once" in candidate_recovery
     active_transaction = STATIC_WORKFLOW_ANCHORS["coding_active_transaction_v9"]
     assert "Only the newest user instruction is active" in active_transaction
     assert "pra_replace PATH" in active_transaction
