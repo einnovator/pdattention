@@ -71,8 +71,7 @@ selected detail remains approximately 39.6\,MiB as full native K/V grows from
 1{,}152\,MiB at 8K to 4{,}608\,MiB at 32K. These results establish sparse transport of
 selected native K/V and bounded execution over larger logical memory.
 They do not establish unrestricted question answering,
-arbitrary positional extrapolation, or produ 
-ction serving efficiency.
+arbitrary positional extrapolation, or production serving efficiency.
 \end{abstract}
 
 \section{Introduction}
@@ -231,17 +230,26 @@ small &
 \end{tabularx}
 \end{table}
 
-The headline is not that one operating point solves the long-context problem.
+We evaluate PRA layers in a custom toy model on public datasets and compare the resulting
+model with a vanilla SA model.
+The main claim of this paper is not that PRA fully solves the long-context problem.
 It is that logical memory, routing resolution, active native K/V,
 and device residency are separately controllable and separately measurable.
 
-The remainder of the paper first explains the mechanism and then evaluates controlled
-transport, routing, scaling, and bounded execution before presenting the pretrained
-calibration and systems costs separately.
-Positional extrapolation is treated only as a boundary here;
-RoPE-specific semantics belong to the companion position paper.
-Pretrained architecture retrofit, iterative multi-hop retrieval, multi-gist routing,
-and production serving are separate extensions.
+
+The remainder of this paper is organized as follows.
+Section~\ref{sec:mechanism} explains the PRA mechanisms.
+Section~\ref{sec:eval} summarizes the experimental setting, and subsequent sections
+evaluate controlled transport, routing, scaling, and bounded execution before presenting
+the pretrained calibration and systems costs separately.
+Section~\ref{sec:relwork} compares PRA with related work organized by approach category.
+Section~\ref{sec:concl} concludes the paper. Supplementary material is provided in the
+appendices.
+
+%Positional extrapolation is treated only as a boundary here;
+%RoPE-specific semantics belong to the companion position paper.
+%Pretrained architecture retrofit, iterative multi-hop retrieval, multi-gist routing,
+%and production serving are separate extensions.
 
 
 \section{PRA Mechanism}
@@ -278,29 +286,30 @@ metadata records the chunk's location and span, its routing information, and lin
 corresponding cached K/V entries. The routing information consists of one or more semantic
 gists derived from those entries.
 Figure~\ref{fig:architecture-pipeline} illustrates how overlapping chunks
-are selected to produced deduplicated non overlapping span. 
+are selected and merged into a deduplicated, nonoverlapping span.
 
 We evaluate several ways to compute gists, including the K vector of the chunk's final
 token, the mean K vector across all entries in the chunk, and other constructions. 
-The gists of documents are computed once at ingestion time and cached for reused as index.
-At decoding time, the current query vector (Q) is scored with gist matches, and a budget-aware
+Document gists are computed once at ingestion time and cached in the routing index.
+At decoding time, the current query vector (Q) is scored against the cached gists, and a budget-aware
 ranker selects a subset of chunks and their corresponding K/V spans. A metadata-only chunk
 merger removes duplicate entries created by consecutive overlapping chunks and produces a
 unique set of nonoverlapping spans, each defined by a starting offset and length. The
 original K/V slices for these spans are concatenated and combined with the direct K/V
 entries from the context tail in a single attention operation. 
 
-When multiple gists per chunk are used, different multiple policies can be used to computed 
-spans inside the chunks. The simplest approach is to create sub-chunks and compute the gists
-for each subchunks. When a subchunk is matched the full parent chunk is selected and given to
-and considered for materialization.
+When multiple gists per chunk are used, different policies can determine which internal spans
+the gists represent. The simplest approach partitions each chunk into subchunks and computes
+one gist per subchunk. When a subchunk matches, its full parent chunk is selected and considered
+for materialization.
 
-Formally, we can write the context of a completion as: $\{ D_i\}$ --- a set of documents, $\_\_head$,
-and the direct or tail context $C$. Each $D_i$ is split in chunks of fixed size $\{ d_i^j \}$, 
-which corresponding to a span with start and end offset inside the document as: $(d_i^j[0], d_i^j[l_i])$.
+Formally, we can write the context of a completion as $\{D_i\}$---a set of documents---plus
+$\_\_head$ and the direct or tail context $C$. Each $D_i$ is split into fixed-size chunks
+$\{d_i^j\}$. Each chunk corresponds to a span with start and end offsets within the document,
+written as $(d_i^j[0], d_i^j[l_i])$.
 
 
-Diagram in figure~\ref{fig:architecture-pipeline}, show the complete workflow of a PRA enabled model.
+Figure~\ref{fig:architecture-pipeline} shows the complete workflow of a PRA-enabled model.
 
 \begin{figure}[H]
 \centering
@@ -315,41 +324,39 @@ token K/V enters bounded attention.}
 \label{fig:architecture-pipeline}
 \end{figure}
 
-PRA separates different lengths which traditionally are capture as single length:
+PRA separates several lengths that traditional attention treats as a single quantity:
 
 \begin{description}[leftmargin=3.2cm,style=nextline]
 \item[$L_{\mathrm{logical}}$] The amount of memory the request may logically address: direct
 history plus registered external or displaced source state.
-This can in principle, include an arbitrary number of documents or arbitrary length,
-and a arbitraly long rollover  \texttt{\#\_\_head}.
+In principle, this can include an arbitrary number of documents of arbitrary length
+and an arbitrarily long rollover \texttt{\#\_\_head}.
 \item[$L_{\mathrm{model\mbox{-}op}}$] The number of K/V tokens participating in one native
-transformer operation. PRA has parameter to
-select this quantity independently of
-$L_{\mathrm{logical}}$.
+transformer operation. PRA provides a parameter for selecting this quantity independently
+of $L_{\mathrm{logical}}$.
 \item[$L_{\mathrm{max{-}head}}$] The maximum number of K/V tokens from the rollover \texttt{\#\_\_head}.
 \item[$L_{\mathrm{max{-}context}}$] The actual maximum context size supported
 by the underlying model or selected by the app/user invoking the completion.
 \end{description}
 
 
-PRA separates three levels of granularity and corresponding policies:
+PRA separates four stages and their corresponding policies:
 
 \begin{itemize}
-  \item encoding -- full documents are encoded up to max context size of model
-  \item selection -- chunks in documents and context head are partially selected and considered
-  \item routing -- one or more gists of chunks are used to select parent chunks. Ranking is used to selecte top k matches. 
-  \item materialization -- subset of selected K/V entries of each select chunk.
+  \item encoding---documents are encoded in blocks up to the model's maximum context size;
+  \item routing---one or more gists represent each chunk;
+  \item selection---ranking identifies the top-$k$ matching parent chunks; and
+  \item materialization---the complete K/V spans of admitted chunks are merged, with
+  duplicate overlap removed.
 \end{itemize}
 
-PRA also separate the logical position of a token from the position that is
-used in token embedding. Because, position is used by model when encoding
-tokens K/V, caching is accounts for the fact that the position of a token
-in a document needs to be shifted when reused in a prompt.
+PRA also separates a token's logical position from the position used in its embedding.
+Because positional information affects K/V encoding, cache construction must account for
+any shift between a token's position in a document and its position when reused in a prompt.
 
 
-Overall, given a set of cached memory retrieved K/V $(K_M,V_M)$ and 
-direct entries K/V $(K_D,V_D)$, the final operation attention operation
-is defined as a modification to standard SA:
+Overall, given retrieved cached-memory K/V $(K_M,V_M)$ and direct-context K/V
+$(K_D,V_D)$, the final attention operation modifies standard SA as follows:
 
 \begin{equation}
   \operatorname{PRA}(Q)=
@@ -359,57 +366,58 @@ is defined as a modification to standard SA:
   \label{eq:pra-attention}
 \end{equation}
 
-\noindent, where $M$ preserves causal and padding constraints.
+\noindent where $M$ preserves causal and padding constraints.
 The same attention scores and output projection are used for memory and direct state.
-We have also experimented with cross-attention approach,
-we output from direct K/V is summed with memory K/V (see appendix~\ref{app:adaptation}).
-However, experimental results showed that appending rather 
-than weighted sum of memory and direct values to give better results.
+We also experimented with a cross-attention approach in which the output from attention
+over direct K/V is summed with the output from attention over memory K/V
+(see Appendix~\ref{app:adaptation}). However, the experiments showed that appending memory
+and direct K/V before a single attention operation performed better than combining their
+outputs with a weighted sum.
 
 
 \subsection{Exact Routing and Whole-Chunk Budgeting}
 
-For query vector $q$ and gist vector $g_i$, a router is used to compute a matching score.
-The simplest router uses  cosine-like similarity:
+For query vector $q$ and gist vector $g_i$, a router computes a matching score.
+The simplest router uses cosine-like similarity:
 \begin{equation}
   s_i = \frac{q^\top g_i}{\max(\lVert q\rVert_2\lVert g_i\rVert_2,\epsilon)},
 \end{equation}
 
-Given a set of scores, selects top-ranked chunks owners of the gist using a tensorized \texttt{topk} operation.
+Given a set of scores, the router uses a tensorized \texttt{topk} operation to select the
+top-ranked chunks associated with the highest-scoring gists.
 
 
 The set of selected chunks alone does not determine active K/V directly,
 because chunks may differ in size or overlap. 
-Additionally, the materialization policy decides which K/V today
-include from the selected chunks considering the token budget.
-Specifically, given a model or user defined token limit $L_{\max}$,
-PRA setting maintain the following invariant:
+The materialization policy then decides which whole selected chunks can be admitted under
+the token budget. Specifically, given a model-defined or user-defined token limit $L_{\max}$,
+PRA settings maintain the following invariant:
 \begin{equation}
   L_D + L_M + L_R \leq L_{\max},
   \label{eq:budget}
 \end{equation}
 
-\noindent, where $L_D$ is direct context, $L_M$ materialized memory, and $L_R$ a safety reserve.
+\noindent where $L_D$ is direct context, $L_M$ is materialized memory, and $L_R$ is a safety reserve.
 
 \subsection{What PRA Changes, and What It Does Not}
 
-PRA changes the set of historical K/V vector active for a query. 
+PRA changes the set of historical K/V vectors active for a query.
 It includes not only the tail of the context, but also external documents and the head
-of the context. This allow token decoding to operate on a virtual K/V space.
-This does imply that external storage is free, does guarantees that the router selects causal
-evidence for the completion, or that it enlarges the physical positional range a pretrained model has learned.
+of the context. This allows token decoding to operate on a virtual K/V space.
+This does not imply that external storage is free, guarantee that the router selects causal
+evidence for the completion, or enlarge the physical positional range learned by a pretrained model.
 It can reduce active attention and GPU residency while retaining a larger logical cache
 elsewhere. 
 
 Sparse-attention methods such as Longformer, BigBird, Reformer,
-and Routing Transformer changes the set of K/V vector that are reachable.
+and Routing Transformer change the set of K/V vectors that are reachable
 \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}.
 KV-cache methods such as H$_2$O, SnapKV, and ClusterKV reduce retained decode state
 \cite{zhang2023h2o,li2024snapkv,liu2024clusterkv}. PRA instead retains the source K/V detail outside
 the active completion and uses a compact routing index to decide which full token K/V to expose.
 
 \section{Evaluation Design}
-\label{sec:evaluation}
+\label{sec:eval}
 
 The standalone experiments use decoder-only transformers in two controlled capacity
 tiers: a tiny tier with 2.2--2.4M parameters and a small tier with 6.6--6.9M parameters.
@@ -968,7 +976,8 @@ Output-sequence agreement tests the consumer behavior of those two paths but doe
 prove equality of every internal tensor. The MiB figures are serialized all-layer K/V
 payload sizes, not measured peak unified-memory allocation or whole-process savings.
 
-\section{Related Work by Changed Resource}
+\section{Related Work}
+\label{sec:relwork}
 
 The useful comparison is not whether a method ``uses memory,'' but which resource it
 changes: the external representation, attention graph, retained state,
@@ -1207,6 +1216,7 @@ Implicit prompt-head memory is request-local even when every request uses the sa
 internal name.
 
 \section{Conclusion}
+\label{sec:concl}
 
 PRA separates addressable logical memory from the native K/V active in one transformer
 operation. Contextual encoding can remain coarse enough to preserve historical state
