@@ -139,8 +139,10 @@ def main():
             f"PRA_REPLACE_REJECTED occurrences={occurrences} "
             f"candidates={candidate_hints(data, old)}; file unchanged. "
             "For duplicate single-line matches inspect the intended candidate "
-            "and append --line=N, or include bounded adjacent context in "
-            "EXACT_OLD_TEXT.",
+            "and append --line=N where N is the candidate line containing "
+            "EXACT_OLD_TEXT, not an enclosing class or function-definition "
+            "line. Otherwise include bounded adjacent context in EXACT_OLD_TEXT. "
+            "Do not repeat an unchanged rejected command.",
             file=sys.stderr,
         )
         return 2

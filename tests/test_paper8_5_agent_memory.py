@@ -1853,6 +1853,9 @@ def test_transactional_replace_tool_is_atomic_and_fails_closed(tmp_path):
     assert "occurrences=2" in ambiguous.stderr
     assert "line=1:leading_bytes=4" in ambiguous.stderr
     assert "line=2:leading_bytes=8" in ambiguous.stderr
+    assert "candidate line containing EXACT_OLD_TEXT" in ambiguous.stderr
+    assert "not an enclosing class or function-definition line" in ambiguous.stderr
+    assert "Do not repeat an unchanged rejected command" in ambiguous.stderr
 
     selected = subprocess.run(
         [
