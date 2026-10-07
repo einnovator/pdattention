@@ -700,7 +700,44 @@ def summarize_trace(path: Path) -> dict[str, Any]:
     seen: set[tuple[str, tuple[str, ...]]] = set()
     repeated = {"search": 0, "read": 0, "test": 0}
     action_counts = {"search": 0, "read": 0, "test": 0}
+    causal_pair_coverage = 0
+    causal_pair_unique: set[str] = set()
+    repeated_causal_pair_transitions = 0
+    maximum_identical_causal_pair_run = 0
+    current_identical_causal_pair_run = 0
+    terminal_identical_causal_pair_run = 0
+    previous_causal_pair: str | None = None
+    first_fixed_point_request_index: int | None = None
+    fixed_point_threshold = 3
     for row in rows:
+        causal_pair = row.get("previous_causal_pair_sha256")
+        if isinstance(causal_pair, str) and causal_pair:
+            causal_pair_coverage += 1
+            causal_pair_unique.add(causal_pair)
+            if causal_pair == previous_causal_pair:
+                current_identical_causal_pair_run += 1
+                repeated_causal_pair_transitions += 1
+            else:
+                current_identical_causal_pair_run = 1
+            maximum_identical_causal_pair_run = max(
+                maximum_identical_causal_pair_run,
+                current_identical_causal_pair_run,
+            )
+            terminal_identical_causal_pair_run = current_identical_causal_pair_run
+            if (
+                current_identical_causal_pair_run >= fixed_point_threshold
+                and first_fixed_point_request_index is None
+            ):
+                request_index = row.get("request_index")
+                if request_index is not None:
+                    first_fixed_point_request_index = int(request_index)
+            previous_causal_pair = causal_pair
+        else:
+            # A missing completed pair breaks contiguity; never bridge an HTTP
+            # error or an incomplete causal turn when diagnosing a fixed point.
+            current_identical_causal_pair_run = 0
+            terminal_identical_causal_pair_run = 0
+            previous_causal_pair = None
         category = (
             "search" if row.get("assistant_is_search") else
             "read" if row.get("assistant_is_read") else
@@ -767,6 +804,18 @@ def summarize_trace(path: Path) -> dict[str, Any]:
         "actions": sum(row.get("assistant_command_sha256") is not None for row in rows),
         "action_counts": action_counts,
         "repeated_same_operation_resource_counts": repeated,
+        "causal_pair_hash_coverage_calls": causal_pair_coverage,
+        "unique_causal_pair_hashes": len(causal_pair_unique),
+        "repeated_identical_causal_pair_transitions": (
+            repeated_causal_pair_transitions
+        ),
+        "maximum_identical_causal_pair_run": maximum_identical_causal_pair_run,
+        "terminal_identical_causal_pair_run": terminal_identical_causal_pair_run,
+        "fixed_point_threshold_identical_pairs": fixed_point_threshold,
+        "fixed_point_detected": (
+            maximum_identical_causal_pair_run >= fixed_point_threshold
+        ),
+        "first_fixed_point_request_index": first_fixed_point_request_index,
         "cumulative_full_tokens": total_full,
         "cumulative_selected_tokens": total_selected,
         "cumulative_materialized_tokens": total_materialized,

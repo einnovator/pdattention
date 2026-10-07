@@ -2325,6 +2325,26 @@ class AutonomousSelectionProxy:
                 pending_reacquisition_count = self._pending_reacquisition_count
                 pending_reacquisition_resources = self._pending_reacquisition_resources
             previous_observation_tokens = 0
+            previous_assistant_content_sha256 = None
+            previous_observation_sha256 = None
+            previous_causal_pair_sha256 = None
+            if (
+                len(raw_messages) >= 2
+                and isinstance(raw_messages[-2], Mapping)
+                and isinstance(raw_messages[-1], Mapping)
+                and raw_messages[-2].get("role") == "assistant"
+                and raw_messages[-1].get("role") in {"user", "tool"}
+            ):
+                previous_assistant_content_sha256 = _message_content_digest(
+                    raw_messages[-2].get("content", "")
+                )
+                previous_observation_sha256 = _message_content_digest(
+                    raw_messages[-1].get("content", "")
+                )
+                previous_causal_pair_sha256 = _digest([
+                    previous_assistant_content_sha256,
+                    previous_observation_sha256,
+                ])
             if (
                 pending_reacquisition_count
                 and raw_messages
@@ -2380,6 +2400,11 @@ class AutonomousSelectionProxy:
                 "assistant_is_search": operation is BashOperation.SEARCH_DISCOVERY,
                 "assistant_is_read": operation in {BashOperation.READ, BashOperation.DIFF},
                 "assistant_is_test": operation is BashOperation.VERIFY,
+                "previous_assistant_content_sha256": (
+                    previous_assistant_content_sha256
+                ),
+                "previous_observation_sha256": previous_observation_sha256,
+                "previous_causal_pair_sha256": previous_causal_pair_sha256,
                 "reacquired_excluded_resources": list(reacquired),
                 "reacquisition_count": len(reacquired),
                 "reacquisition_proxy_for_false_exclusion": bool(reacquired),

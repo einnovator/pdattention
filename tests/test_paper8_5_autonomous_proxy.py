@@ -2592,6 +2592,25 @@ def test_proxy_forwards_ordinary_selected_text_and_logs_reacquisition(tmp_path):
         assert row["response_sha256_scope"] == (
             "raw_http_body_includes_volatile_response_metadata"
         )
+        expected_messages = _payload()["messages"]
+        previous_assistant_sha256 = hashlib.sha256(
+            expected_messages[-2]["content"].encode("utf-8")
+        ).hexdigest()
+        previous_observation_sha256 = hashlib.sha256(
+            expected_messages[-1]["content"].encode("utf-8")
+        ).hexdigest()
+        assert row["previous_assistant_content_sha256"] == (
+            previous_assistant_sha256
+        )
+        assert row["previous_observation_sha256"] == (
+            previous_observation_sha256
+        )
+        assert row["previous_causal_pair_sha256"] == hashlib.sha256(
+            json.dumps(
+                [previous_assistant_sha256, previous_observation_sha256],
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
         assert len(row["request_message_content_sha256"]) == len(_payload()["messages"])
         assert row["reacquired_excluded_resources"] == ["a.py"]
         assert row["reacquisition_proxy_for_false_exclusion"] is True
@@ -2978,6 +2997,32 @@ def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):
     assert summary["completion_limit_violation_calls"] == 0
     assert summary["completion_limit_respected"] is True
     assert summary["cumulative_materialized_plus_reported_completion_tokens"] == 435
+
+
+def test_summary_detects_only_contiguous_exact_causal_pair_fixed_points(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    rows = [
+        {"request_index": 1, "previous_causal_pair_sha256": "pair-a"},
+        {"request_index": 2, "previous_causal_pair_sha256": "pair-b"},
+        {"request_index": 3, "previous_causal_pair_sha256": "pair-b"},
+        {"request_index": 4, "previous_causal_pair_sha256": "pair-b"},
+        {},
+        {"request_index": 6, "previous_causal_pair_sha256": "pair-b"},
+    ]
+    trace.write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+    )
+
+    summary = summarize_trace(trace)
+
+    assert summary["causal_pair_hash_coverage_calls"] == 5
+    assert summary["unique_causal_pair_hashes"] == 2
+    assert summary["repeated_identical_causal_pair_transitions"] == 2
+    assert summary["maximum_identical_causal_pair_run"] == 3
+    assert summary["terminal_identical_causal_pair_run"] == 1
+    assert summary["fixed_point_threshold_identical_pairs"] == 3
+    assert summary["fixed_point_detected"] is True
+    assert summary["first_fixed_point_request_index"] == 4
 
 
 def test_summary_rejects_reported_completion_limit_overshoot(tmp_path):
