@@ -1904,6 +1904,17 @@ overlapping source rereads, repeated searches for the same fact, repeated tests
 without relevant intervening mutation, and repeated failed edits. We call this
 \emph{reacquisition overhead}.
 
+We separately diagnose a control-flow fixed point when the exact completed
+assistant action--observation pair recurs in at least three consecutive model
+requests.  The harness records only cryptographic digests of the two raw
+message contents, never inferred operation labels, so an HTTP success or a
+same-resource action cannot create a false exact match.  Missing or failed
+requests break contiguity.  We report the maximum and terminal run lengths and
+the first request at which the threshold is reached.  This diagnostic does not
+terminate or repair the agent: an identical fixed point in \textsc{Full}
+history is baseline control-flow failure, whereas a fixed point appearing only
+after the first selective divergence is candidate policy cost.
+
 For every negative arm we also report exclusions and tokens by rule, the
 resource and witness provenance stored in inactive tombstones, and the fraction
 of exclusions whose information is later reacquired. Frozen replay includes a
