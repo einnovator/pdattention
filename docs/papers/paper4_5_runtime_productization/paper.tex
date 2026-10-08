@@ -72,14 +72,14 @@ are not byte-identical.  Compact-text policy success therefore does not by
 itself qualify original-position sparse-K/V utility.
 
 The newest receipt-free Atomic-E2 handoff closes that specific mechanism gap
-on four request-level engine paths, with an HF/CUDA replication for the
-original two-request pair.  Across three Paper~8.5 task identities
+on five request-level engine paths.  Across three Paper~8.5 task identities
 and two matched repeats each, the logical policy preserves 6/6 resolutions,
 reduces calls from 59 to 45, and omits 50.42\% of its candidate-own history.
 Two task identities now contribute four frozen final requests to native-engine
 qualification.  The original pair realizes 55.06\% and 55.41\% visible-history
 saving on HF/CUDA, llama.cpp, direct MLX, SGLang-MLX, and vLLM-Metal; the
-held-out pair realizes 56.78\% and 57.62\% on the four non-HF paths.  The
+held-out pair realizes 56.78\% and 57.62\% on the nonpaged paths, including
+HF/CUDA, and 56.70\% and 57.54\% after vLLM-Metal page rounding.  The
 engines consume disjoint original-position resident K/V with zero selected-
 history re-encoding, zero request-attachment K/V copy, exact same-subset
 continuations or logits, and clean release; vLLM-Metal separately reports
@@ -709,7 +709,7 @@ Engine & PRA-100 & Reduced & Calls F/R & Logical/KV omission & Hist. re-enc. & K
 llama.cpp & pass & solve & 8/8 & 40.23/40.23\% & 0 orig.; receipts n/a & 0 selected & calls preserved & hybrid; timing open \\
 MLX & pass & solve & 9/12 & 39.45/40.04\% & 1,056 synth. & 0 selected & $+15.23\%$ saving & hybrid \\
 SGLang-MLX & pass & solve & 7/15 & 39.45/37.21\% & 1,344 synth. & 0 selected & $-33.10\%$ saving & hybrid \\
-HF CUDA & mech. & open & --- & 55.65--56.01\% strict & 0 & 0 selected & open & Atomic-E2 2/2; autonomous open \\
+HF CUDA & mech. & open & --- & 55.65--57.91\% strict & 0 & 0 selected & open & Atomic-E2 4/4; autonomous open \\
 vLLM CUDA & mech. & open & --- & --- & --- & --- & open & autonomous no-copy gate open \\
 \bottomrule
 \end{tabular}}
@@ -838,7 +838,10 @@ match same-subset logits exactly; their measured consumer peaks are only
 both repeats through non-owning complete-page aliases.  Page rounding adds 22
 selected tokens per repeat and yields 56.70\% and 57.54\% total visible saving;
 initial attachment re-encodes zero tokens, copies zero K/V, and adds zero active
-bytes.  The auditable bundle is
+bytes.  HF/CUDA reproduces both nonpaged geometries with exact same-subset and
+restore logits, no selected-history re-encoding, no selected-K/V copy or
+interval pack, and 143.47--144.51~MB of separately reported attention
+temporary state.  The auditable bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_django15368_v3}.
 
 A post-fix vLLM-Metal rerun removes the detached physical reserve used by the
@@ -1004,13 +1007,12 @@ and record a matched-tail workload failure, but the later live-extent audit
 quarantines their native K/V counters.  Neither row is CUDA engine-
 qualification evidence until rerun with complete decode-filled source pages.
 HF still lacks an admissible post-contract autonomous row, although its frozen
-request-level Atomic-E2 mechanism and lifecycle now pass 2/2.
+request-level Atomic-E2 mechanism and lifecycle now pass 4/4.
 
 The strict Atomic-E2 transfer is the strongest receipt-free agent fixture in
 this revision.  Four final requests across two task identities now clear the
-declared mechanism and lifecycle gates on llama.cpp, direct MLX, SGLang-MLX,
-and vLLM-Metal without selector retuning; the original two requests also clear
-HF/CUDA.  vLLM-Metal is evaluated under its declared complete-page rounding
+declared mechanism and lifecycle gates on HF/CUDA, llama.cpp, direct MLX,
+SGLang-MLX, and vLLM-Metal without selector retuning.  vLLM-Metal is evaluated under its declared complete-page rounding
 contract.  These results remain request-level.
 The next workload gate is to
 consume the identical frozen ledger autonomously on those paths without
@@ -4799,7 +4801,7 @@ K/V bytes.  vLLM-Metal's initial page attachment is also a zero-copy alias with
 zero active-memory delta; its complete-page contract adds 22 selected tokens
 per repeat.  The engine's 3.25--3.27~GB offload/restore materialization is
 reported separately rather than hidden by the zero-copy attachment claim.
-All four paths pass their declared lifecycle gates.  This is a 2/2-per-engine
+All five paths pass their declared lifecycle gates.  This is a 2/2-per-engine
 native mechanism replication bound to an independently qualified logical-policy
 result; it is not yet autonomous execution through each engine.  The evidence bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_scikit14496_v2}.
@@ -4808,19 +4810,23 @@ The held-out django-15368 cluster repeats that transfer with a different
 five-episode immutable prefix and two new successful trajectories.  Table~\ref{tab:agent-atomic-e2-django-engines}
 reports the final-request geometry.  The nonpaged engines agree exactly on the
 source, selected, and suffix tokens.  llama.cpp repeats the same continuation;
-MLX and SGLang-MLX additionally match the same-subset reference logits exactly.
+HF/CUDA, MLX, and SGLang-MLX additionally match the same-subset reference
+logits exactly.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Held-out Atomic-E2 final-request realization.  All rows use the same
-Qwen3-0.6B tokenizer geometry and frozen logical ledgers.}
+\caption{Held-out Atomic-E2 final-request realization.  HF uses
+Qwen2.5-0.5B FP16; the remaining rows use Qwen3-family models.  The nonpaged
+engines realize the same frozen ledger geometry.}
 \begin{tabular}{llrrrrr}
 \toprule
 Engine & Repeat & Source K/V & Selected K/V & Suffix & Visible save & Re-encoded \\
 \midrule
 llama.cpp & r01 & 27,796 & 11,934 & 139 & 56.78\% & 0 \\
 llama.cpp & r02 & 27,393 & 11,531 & 138 & 57.62\% & 0 \\
+HF/CUDA & r01 & 27,796 & 11,934 & 139 & 56.78\% & 0 \\
+HF/CUDA & r02 & 27,393 & 11,531 & 138 & 57.62\% & 0 \\
 MLX & r01 & 27,796 & 11,934 & 139 & 56.78\% & 0 \\
 MLX & r02 & 27,393 & 11,531 & 138 & 57.62\% & 0 \\
 SGLang-MLX & r01 & 27,796 & 11,934 & 139 & 56.78\% & 0 \\
@@ -4834,9 +4840,11 @@ vLLM-Metal & r02 & 27,392 & 11,552 & 139 & 57.54\% & 0 \\
 
 The two MLX rows peak 156,299 and 172,049 bytes above baseline during fused
 disjoint attention, only 0.320\% and 0.364\% of one selected layer's K/V
-extent.  SGLang-MLX reproduces those bounds within six bytes.  All six rows
+extent.  SGLang-MLX reproduces those bounds within six bytes.  HF/CUDA uses
+143.47 and 144.51~MB of separately reported streaming-attention temporary
+state without a K/V-copy tile or interval pack.  All eight nonpaged rows
 use direct original-position selection; both vLLM-Metal rows additionally alias
-source pages without initial K/V copy or active-memory growth.  All eight rows
+source pages without initial K/V copy or active-memory growth.  All ten rows
 copy zero selected K/V at attachment, evaluate zero selected-history tokens,
 and pass their engine-specific ownership, cancellation, offload/restore, and
 termination gates.  Paper~8.5's cumulative 58.77\% candidate-own saving for
@@ -6499,7 +6507,7 @@ obtains 50.42\% aggregate candidate-own logical saving.  Its Scikit-learn
 $N=6$ cluster preserves 2/2 successes and 17 calls at 57.09\% own saving; its
 held-out Django cluster preserves 2/2, reduces calls from 18 to 16, and reaches
 58.77\% own saving.  Four strict frozen final requests across those two task
-identities now pass llama.cpp, direct MLX, and SGLang-MLX at 54.98--57.62\%
+identities now pass HF/CUDA, llama.cpp, direct MLX, and SGLang-MLX at 54.98--57.62\%
 visible saving after engine-specific rounding, with zero history re-encoding
 and zero initial-attachment K/V copy.  vLLM-Metal now qualifies all four under
 declared complete-page rounding and reproduces the continuation tokens.

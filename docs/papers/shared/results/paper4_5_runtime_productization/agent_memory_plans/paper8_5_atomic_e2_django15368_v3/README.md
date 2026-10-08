@@ -25,16 +25,21 @@ vLLM-Metal alone rounds the ledger to complete 16-token pages.
 | SGLang-MLX | r02 | 27,393 | 11,531 | 138 | 57.62% | 0 | no | pass |
 | vLLM-Metal | r01 | 27,792 | 11,952 | 143 | 56.70% | 0 | no | pass |
 | vLLM-Metal | r02 | 27,392 | 11,552 | 139 | 57.54% | 0 | no | pass |
+| HF/CUDA | r01 | 27,796 | 11,934 | 139 | 56.78% | 0 | no | pass |
+| HF/CUDA | r02 | 27,393 | 11,531 | 138 | 57.62% | 0 | no | pass |
 
-All eight cells reproduce the frozen continuation token IDs
-`[151667, 198]`, preserve original positions, and clear their declared
+All eight Qwen3 cells reproduce the frozen continuation token IDs
+`[151667, 198]`; both HF/CUDA cells exactly match their independently
+materialized same-subset references. All ten preserve original positions and clear their declared
 ownership, concurrent-borrow, cancellation/error, stale-fork, offload/restore,
 termination, and cleanup gates.  MLX and SGLang-MLX also match same-subset
 reference logits exactly.  Their fused disjoint consumers peak only
 156,299--172,049 bytes above baseline, or 0.320--0.364% of one selected
 layer's K/V extent.  vLLM-Metal's initial page attachment has zero active-memory
 growth; its 3.14--3.19 GB offload/restore materialization is reported
-separately and is not described as zero-copy.
+separately and is not described as zero-copy. HF/CUDA uses segmented streaming
+attention with no selected-K/V copy or interval pack; its 143.47--144.51 MB
+attention temporary is reported separately.
 
 The first vLLM-Metal launch used `gpu-memory-utilization=0.10` and was rejected
 before inference because its 24,032-token page capacity was below the declared
@@ -43,5 +48,5 @@ predeclared admitted configuration (`gpu-memory-utilization=0.20`, 1,800
 reserved blocks) and the exact pinned vLLM/vLLM-Metal 0.29.0 package revision.
 
 Claim boundary: this bundle qualifies request-level sparse resident-K/V
-mechanics on four engine paths.  HF/CUDA and autonomous selected-policy
-execution across engines remain open.
+mechanics on five engine paths. Autonomous selected-policy execution across
+engines remains open.
