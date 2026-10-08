@@ -41,8 +41,8 @@ reported separately.
 
 No cross-engine autonomous-agent or production-default claim follows from this
 handoff.  The first runtime gate is exact realization of the frozen selected
-subset.  That request-level gate now passes on llama.cpp, direct MLX,
-SGLang-MLX, and vLLM-Metal.  HF/CUDA and autonomous execution remain open.
+subset.  That request-level gate now passes on llama.cpp, HF/CUDA, direct MLX,
+SGLang-MLX, and vLLM-Metal.  Autonomous HF execution remains open.
 
 ## llama.cpp strict-subset result
 
@@ -66,15 +66,17 @@ correctness, token accounting, re-encoding, copy, and lifecycle state.
 
 ## Cross-engine strict-subset replication
 
-The same two hash-bound frozen ledgers were consumed without retuning by three
-additional engines.  Direct MLX and SGLang-MLX preserve the exact llama.cpp
-token geometry.  vLLM-Metal uses complete 16-token scheduler pages, so its
-source tokenizer geometry differs by at most seven tokens and selection adds
-22 tokens in each repeat.  These are explicit page-rounding effects, not
+The same two hash-bound frozen ledgers were consumed without retuning by four
+additional engines.  HF/CUDA, direct MLX and SGLang-MLX preserve the exact
+llama.cpp token geometry.  vLLM-Metal uses complete 16-token scheduler pages,
+so its source tokenizer geometry differs by at most seven tokens and selection
+adds 22 tokens in each repeat.  These are explicit page-rounding effects, not
 selector changes.
 
 | Engine / model | Repeat | Source K/V | Selected K/V | Suffix | Visible saving | History re-encoded | Initial selected-K/V copy | Same-subset result | Lifecycle |
 |---|---|---:|---:|---:|---:|---:|---:|---|---|
+| HF CUDA / Qwen2.5-0.5B-Instruct FP16 | r01 | 28,503 | 12,641 | 306 | 55.06% | 0 | 0 B | exact logits | pass |
+| HF CUDA / Qwen2.5-0.5B-Instruct FP16 | r02 | 28,321 | 12,459 | 305 | 55.41% | 0 | 0 B | exact logits | pass |
 | MLX-LM 0.31.3 / Qwen3-0.6B-4bit | r01 | 28,503 | 12,641 | 306 | 55.06% | 0 | 0 B | exact logits, `[151667,198]` | pass |
 | MLX-LM 0.31.3 / Qwen3-0.6B-4bit | r02 | 28,321 | 12,459 | 305 | 55.41% | 0 | 0 B | exact logits, `[151667,198]` | pass |
 | SGLang-MLX / Qwen3-0.6B-4bit | r01 | 28,503 | 12,641 | 306 | 55.06% | 0 | 0 B | exact logits, `[151667,198]` | pass |
@@ -82,8 +84,10 @@ selector changes.
 | vLLM-Metal 0.29.0 / Qwen3-0.6B-4bit | r01 | 28,496 | 12,656 | 313 | 54.98% | 0 | 0 B | exact tokens, `[151667,198]` | pass |
 | vLLM-Metal 0.29.0 / Qwen3-0.6B-4bit | r02 | 28,320 | 12,480 | 306 | 55.33% | 0 | 0 B | exact tokens, `[151667,198]` | pass |
 
-MLX and SGLang-MLX additionally match the dense same-subset logits exactly.
-Their measured fused-consumer peak deltas are 290,827--291,883 bytes, only
+HF, MLX and SGLang-MLX additionally match the dense same-subset logits exactly.
+HF's streaming segmented CUDA attention reports 315,850,752--316,882,944
+temporary bytes without interval packing or transient K/V copying.  The MLX
+and SGLang measured fused-consumer peak deltas are 290,827--291,883 bytes, only
 0.562--0.572% of one selected layer's K/V bytes; no full-selected-K/V-sized
 temporary is observed.  vLLM-Metal attaches selected pages by non-owning alias
 with zero active-memory delta.  Its offload/restore lifecycle necessarily

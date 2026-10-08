@@ -72,16 +72,18 @@ are not byte-identical.  Compact-text policy success therefore does not by
 itself qualify original-position sparse-K/V utility.
 
 The newest receipt-free Atomic-E2 handoff closes that specific mechanism gap
-on four request-level engine paths.  Across three Paper~8.5 task identities
+on four request-level engine paths, with an HF/CUDA replication for the
+original two-request pair.  Across three Paper~8.5 task identities
 and two matched repeats each, the logical policy preserves 6/6 resolutions,
 reduces calls from 59 to 45, and omits 50.42\% of its candidate-own history.
 Two task identities now contribute four frozen final requests to native-engine
 qualification.  The original pair realizes 55.06\% and 55.41\% visible-history
-saving; the held-out pair realizes 56.78\% and 57.62\%.  llama.cpp, direct MLX,
-and SGLang-MLX consume disjoint original-position resident K/V with zero
-selected-history re-encoding, zero request-attachment K/V copy, exact
-continuations, and clean release.  vLLM-Metal reproduces the result with
-complete-page aliases and separately reported rounding.  This is a repeated
+saving on HF/CUDA, llama.cpp, direct MLX, SGLang-MLX, and vLLM-Metal; the
+held-out pair realizes 56.78\% and 57.62\% on the four non-HF paths.  The
+engines consume disjoint original-position resident K/V with zero selected-
+history re-encoding, zero request-attachment K/V copy, exact same-subset
+continuations or logits, and clean release; vLLM-Metal separately reports
+complete-page rounding.  This is a repeated
 request-level mechanism qualification bound to a small successful
 logical-policy cohort, not autonomous cross-engine execution or a population
 accuracy estimate.
@@ -707,7 +709,7 @@ Engine & PRA-100 & Reduced & Calls F/R & Logical/KV omission & Hist. re-enc. & K
 llama.cpp & pass & solve & 8/8 & 40.23/40.23\% & 0 orig.; receipts n/a & 0 selected & calls preserved & hybrid; timing open \\
 MLX & pass & solve & 9/12 & 39.45/40.04\% & 1,056 synth. & 0 selected & $+15.23\%$ saving & hybrid \\
 SGLang-MLX & pass & solve & 7/15 & 39.45/37.21\% & 1,344 synth. & 0 selected & $-33.10\%$ saving & hybrid \\
-HF CUDA & mech. & open & --- & --- & --- & --- & open & autonomous gate open \\
+HF CUDA & mech. & open & --- & 55.65--56.01\% strict & 0 & 0 selected & open & Atomic-E2 2/2; autonomous open \\
 vLLM CUDA & mech. & open & --- & --- & --- & --- & open & autonomous no-copy gate open \\
 \bottomrule
 \end{tabular}}
@@ -812,9 +814,11 @@ suffix (55.06\% total visible saving).  On repeat-two request~9 it attaches
 12,459 of 28,321 entries plus a 305-token suffix (55.41\%).  Both requests
 re-encode zero selected-history tokens, copy zero selected K/V bytes, preserve
 source positions, repeat the same two generated token IDs, and leave both
-slots empty on llama.cpp.  Direct MLX and SGLang-MLX reproduce both exact
-geometries with zero re-encoding, zero selection-pack bytes, exact same-subset
-logits, and only 0.562--0.572\% of one selected layer's K/V size in measured
+slots empty on llama.cpp.  HF/CUDA, direct MLX and SGLang-MLX reproduce both
+exact geometries with zero re-encoding, zero selection-pack bytes, and exact
+same-subset logits.  HF's streaming segmented consumer uses
+315.85--316.88~MB of attention temporary memory without a K/V-copy tile; the
+MLX paths use only 0.562--0.572\% of one selected layer's K/V size in measured
 consumer peak delta.  vLLM-Metal reproduces exact continuation tokens through
 non-owning page aliases: complete-page rounding adds 22 selected tokens per
 request, while initial attachment re-encodes zero tokens, copies zero K/V, and
@@ -999,17 +1003,18 @@ The pre-repair vLLM CUDA Task-5 rows preserve all 15 plain actions at PRA-100
 and record a matched-tail workload failure, but the later live-extent audit
 quarantines their native K/V counters.  Neither row is CUDA engine-
 qualification evidence until rerun with complete decode-filled source pages.
-HF alone still lacks an admissible post-contract
-autonomous row.
+HF still lacks an admissible post-contract autonomous row, although its frozen
+request-level Atomic-E2 mechanism and lifecycle now pass 2/2.
 
 The strict Atomic-E2 transfer is the strongest receipt-free agent fixture in
 this revision.  Four final requests across two task identities now clear the
 declared mechanism and lifecycle gates on llama.cpp, direct MLX, SGLang-MLX,
-and vLLM-Metal without selector retuning; vLLM-Metal is evaluated under its
-declared complete-page rounding contract.  These results remain request-level.
+and vLLM-Metal without selector retuning; the original two requests also clear
+HF/CUDA.  vLLM-Metal is evaluated under its declared complete-page rounding
+contract.  These results remain request-level.
 The next workload gate is to
-consume the identical frozen ledger autonomously on those paths and qualify
-HF/CUDA without engine-specific policy retuning.
+consume the identical frozen ledger autonomously on those paths without
+engine-specific policy retuning.
 
 \section{Conclusion}
 
@@ -4763,14 +4768,17 @@ table measures the final engine request and includes its mandatory suffix.
 \centering
 \small
 \caption{Frozen Atomic-E2 final-request realization across engines.  llama.cpp
-uses Qwen3-Coder-30B Q4; the other rows use Qwen3-0.6B-4bit.  These are
-correctness and accounting measurements; wall-time fields are quarantined.}
+uses Qwen3-Coder-30B Q4, HF uses Qwen2.5-0.5B FP16, and the Metal tensor-engine
+rows use Qwen3-0.6B-4bit.  These are correctness and accounting measurements;
+wall-time fields are quarantined.}
 \begin{tabular}{llrrrrr}
 \toprule
 Engine & Repeat & Source K/V & Selected K/V & Suffix & Visible save & Re-encoded \\
 \midrule
 llama.cpp & r01 & 28,503 & 12,641 & 306 & 55.06\% & 0 \\
 llama.cpp & r02 & 28,321 & 12,459 & 305 & 55.41\% & 0 \\
+HF/CUDA & r01 & 28,503 & 12,641 & 306 & 55.06\% & 0 \\
+HF/CUDA & r02 & 28,321 & 12,459 & 305 & 55.41\% & 0 \\
 MLX & r01 & 28,503 & 12,641 & 306 & 55.06\% & 0 \\
 MLX & r02 & 28,321 & 12,459 & 305 & 55.41\% & 0 \\
 SGLang-MLX & r01 & 28,503 & 12,641 & 306 & 55.06\% & 0 \\
@@ -4782,8 +4790,10 @@ vLLM-Metal & r02 & 28,320 & 12,480 & 306 & 55.33\% & 0 \\
 \label{tab:agent-atomic-e2-engines}
 \end{table}
 
-Direct MLX and SGLang-MLX copy zero selected K/V and match their dense
-same-subset logits exactly.  Their fused consumers peak only
+HF/CUDA, direct MLX and SGLang-MLX copy zero selected K/V and match their dense
+same-subset logits exactly.  HF's streaming segmented attention creates
+315.85--316.88~MB of non-K/V-copy temporary state and no interval pack.  The
+Metal fused consumers peak only
 290,827--291,883 bytes above baseline, 0.562--0.572\% of one selected layer's
 K/V bytes.  vLLM-Metal's initial page attachment is also a zero-copy alias with
 zero active-memory delta; its complete-page contract adds 22 selected tokens

@@ -222,10 +222,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     device = torch.device(args.device)
     dtype = getattr(torch, args.dtype)
     tokenizer = AutoTokenizer.from_pretrained(
-        args.model, local_files_only=args.local_files_only
+        args.model,
+        revision=args.revision,
+        local_files_only=args.local_files_only,
     )
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
+        revision=args.revision,
         torch_dtype=dtype,
         local_files_only=args.local_files_only,
     ).to(device).eval()
@@ -472,11 +475,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
     }
     result = {
-        "schema_version": "paper4.5.hf-live-kv-lifecycle.v5",
+        "schema_version": "paper4.5.hf-live-kv-lifecycle.v6",
         "probe": "hf_real_model_request_owned_sparse_kv",
         "engine": "transformers-pytorch",
         "hf_live_kv_module": hf_live_kv_module,
         "model": args.model,
+        "model_revision_requested": args.revision,
+        "model_revision_observed": getattr(model.config, "_commit_hash", None),
         "torch_version": torch.__version__,
         "transformers_version": __import__("transformers").__version__,
         "python_version": platform.python_version(),
@@ -614,6 +619,7 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
+    parser.add_argument("--revision")
     parser.add_argument("--turn", type=int, default=4)
     parser.add_argument("--retention-fraction", type=float, default=0.9)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
