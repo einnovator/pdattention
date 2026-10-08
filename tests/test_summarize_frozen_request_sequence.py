@@ -22,6 +22,8 @@ def _artifact(tmp_path, index, retention=1.0, digest=None, *, hf_pack=False):
                 "selected_text_reencoded_tokens": 0,
                 **({"interval_pack_bytes": 0} if hf_pack else {"selection_pack_bytes": 0}),
                 "physical_kv_copy": False,
+                "transient_attention_bytes": 200 + index,
+                "offloaded_payload_bytes": 1000 + index,
                 "engine_lifecycle_qualified": True,
                 "qualification_blockers": [],
                 "checks": {
@@ -48,6 +50,14 @@ def test_reduced_sequence_preserves_weighted_accounting(tmp_path):
     result = summarize(paths, (1, 2), expect_full_retention=False)
     assert result["sequence_qualified"] is True
     assert result["weighted_realized_retention_fraction"] == pytest.approx(160 / 220)
+    assert result["visible_context_omission_fraction"] == pytest.approx(60 / 220)
+    assert result["cumulative_source_kv_tokens"] == 200
+    assert result["cumulative_selected_kv_tokens"] == 140
+    assert result["cumulative_wire_suffix_tokens"] == 20
+    assert result["weighted_historical_kv_retention_fraction"] == pytest.approx(0.7)
+    assert result["historical_kv_omission_fraction"] == pytest.approx(0.3)
+    assert result["consumer_peak_temporary_bytes_max"] == 202
+    assert result["offloaded_payload_bytes_cumulative"] == 2003
 
 
 def test_duplicate_request_digest_is_rejected(tmp_path):

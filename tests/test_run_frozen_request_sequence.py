@@ -57,12 +57,13 @@ def test_sglang_command_binds_provenance_and_revision(tmp_path):
     assert "--fused-disjoint-attention" not in command
 
 
-def test_hf_command_binds_cuda_dtype_without_mlx_only_arguments(tmp_path):
+def test_hf_command_binds_cuda_dtype_revision_without_mlx_only_arguments(tmp_path):
     args = _args(tmp_path, engine="hf")
     command = build_command(args, 1, tmp_path / "request.json")
     assert "experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle" in command
     assert command[command.index("--device") + 1] == "cuda"
     assert command[command.index("--dtype") + 1] == "bfloat16"
+    assert command[command.index("--revision") + 1] == "test-revision"
     assert "--local-files-only" in command
     assert "--source-prefill-step-size" not in command
     assert "--materialization-policy" not in command

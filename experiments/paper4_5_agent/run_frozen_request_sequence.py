@@ -67,7 +67,16 @@ def build_command(args: argparse.Namespace, request_index: int, output: Path) ->
     if args.full_retention:
         command.append("--frozen-full-retention")
     if args.engine == "hf":
-        command.extend(["--device", args.device, "--dtype", args.dtype])
+        command.extend(
+            [
+                "--device",
+                args.device,
+                "--dtype",
+                args.dtype,
+                "--revision",
+                args.revision,
+            ]
+        )
         if args.local_files_only:
             command.append("--local-files-only")
     else:

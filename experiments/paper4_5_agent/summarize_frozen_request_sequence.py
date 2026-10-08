@@ -44,6 +44,15 @@ def _oracle_exact(payload: dict[str, Any]) -> bool | None:
     return all(values) if values else None
 
 
+def _consumer_temporary_bytes(payload: dict[str, Any]) -> int | None:
+    if payload.get("transient_attention_bytes") is not None:
+        return int(payload["transient_attention_bytes"])
+    allocation = payload.get("disjoint_attention_allocation")
+    if isinstance(allocation, dict) and allocation.get("peak_delta_bytes") is not None:
+        return int(allocation["peak_delta_bytes"])
+    return None
+
+
 def summarize(
     paths: Iterable[Path],
     expected_requests: tuple[int, ...],
@@ -86,6 +95,12 @@ def summarize(
                 )
             ),
             "attachment_physical_kv_copy": _attachment_copy(payload),
+            "consumer_peak_temporary_bytes": _consumer_temporary_bytes(payload),
+            "offloaded_payload_bytes": (
+                int(payload["offloaded_payload_bytes"])
+                if payload.get("offloaded_payload_bytes") is not None
+                else None
+            ),
             "engine_lifecycle_qualified": bool(
                 payload["engine_lifecycle_qualified"]
             ),
@@ -133,6 +148,19 @@ def summarize(
     selected_visible = sum(
         row["selected_kv_tokens"] + row["wire_suffix_tokens"] for row in rows
     )
+    source_kv_tokens = sum(row["source_tokens"] for row in rows)
+    selected_kv_tokens = sum(row["selected_kv_tokens"] for row in rows)
+    wire_suffix_tokens = sum(row["wire_suffix_tokens"] for row in rows)
+    consumer_temporaries = [
+        row["consumer_peak_temporary_bytes"]
+        for row in rows
+        if row["consumer_peak_temporary_bytes"] is not None
+    ]
+    offload_bytes = [
+        row["offloaded_payload_bytes"]
+        for row in rows
+        if row["offloaded_payload_bytes"] is not None
+    ]
     return {
         "schema_version": "paper4.5.frozen-request-sequence.v1",
         "claim_boundary": "request_sequence_not_autonomous_task",
@@ -146,6 +174,15 @@ def summarize(
         "sequence_qualified": all(request_qualified),
         "weighted_realized_retention_fraction": selected_visible
         / max(total_visible, 1),
+        "visible_context_omission_fraction": 1.0
+        - selected_visible / max(total_visible, 1),
+        "cumulative_source_kv_tokens": source_kv_tokens,
+        "cumulative_selected_kv_tokens": selected_kv_tokens,
+        "cumulative_wire_suffix_tokens": wire_suffix_tokens,
+        "weighted_historical_kv_retention_fraction": selected_kv_tokens
+        / max(source_kv_tokens, 1),
+        "historical_kv_omission_fraction": 1.0
+        - selected_kv_tokens / max(source_kv_tokens, 1),
         "realized_retention_fraction": {
             "minimum": min(row["realized_retention_fraction"] for row in rows),
             "maximum": max(row["realized_retention_fraction"] for row in rows),
@@ -159,6 +196,12 @@ def summarize(
         ),
         "page_rounding_added_tokens": sum(
             row["page_rounding_added_tokens"] for row in rows
+        ),
+        "consumer_peak_temporary_bytes_max": (
+            max(consumer_temporaries) if consumer_temporaries else None
+        ),
+        "offloaded_payload_bytes_cumulative": (
+            sum(offload_bytes) if len(offload_bytes) == len(rows) else None
         ),
         "rows": rows,
     }
