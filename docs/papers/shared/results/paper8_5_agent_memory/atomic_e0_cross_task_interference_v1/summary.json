@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_atomic_e0_cross_task_interference_v1",
+  "execution_revisions": [
+    "9bb5f61c03ab7c8b3aad91c959ae7c734aa5b559",
+    "daa79a7e"
+  ],
+  "model": "qwen3-coder:30b-ctx131k",
+  "model_revision": "4abd6222c3c1a34f94cc04542bfe08523213f915b59b4a6443059ef741e8d90f",
+  "prefix_sha256": "c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283",
+  "task": "django__django-14089",
+  "raw_observation_runs": {
+    "full": {
+      "official_outcome": "patch_apply_failed",
+      "calls": 18,
+      "full_tokens": 488340,
+      "selected_tokens": 488340
+    },
+    "atomic_e2": {
+      "official_resolved": false,
+      "calls": 30,
+      "full_tokens": 850681,
+      "selected_tokens": 386671,
+      "own_omission_fraction": 0.5454571102446158
+    },
+    "atomic_e0_repeats": [
+      {
+        "official_resolved": true,
+        "calls": 9,
+        "full_tokens": 253118,
+        "selected_tokens": 38639,
+        "own_omission_fraction": 0.8473478772746308
+      },
+      {
+        "official_resolved": false,
+        "calls": 30,
+        "full_tokens": 925870,
+        "selected_tokens": 210940,
+        "own_omission_fraction": 0.7721710391307635
+      }
+    ],
+    "first_repeat_divergence": {
+      "request_index": 2,
+      "request_1_identical": true,
+      "request_2_selected_sha256": [
+        "eabbe7a313f44bb07b4728dbff63811fbae9634555814aabd112546a4562a77a",
+        "f33a83a8dea175d74ae2ad7ba4fc7c9cc690c64153e9be0943efe89ac6f75a86"
+      ],
+      "observed_difference": "volatile parent and .git mtimes in ls -la output"
+    }
+  },
+  "normalized_matched_pair": {
+    "strict_schema2_pairing_valid": true,
+    "pair_id": "p85-django14089-atomice0-ls-normalized-topk20-r01",
+    "full": {
+      "official_resolved": true,
+      "calls": 22,
+      "tokens": 603290
+    },
+    "atomic_e0": {
+      "official_resolved": false,
+      "calls": 30,
+      "own_counterfactual_tokens": 916825,
+      "selected_tokens": 201895,
+      "excluded_tokens": 714930,
+      "reacquisition_events": 0,
+      "own_omission_fraction": 0.7797889455457694,
+      "paired_saving_fraction": 0.6653433672031692,
+      "failure_aware_paired_saving_fraction": 0.0,
+      "call_delta": 8
+    }
+  },
+  "top_k_1_diagnostic": {
+    "task": "django__django-12741",
+    "policy": "full",
+    "official_resolved": false,
+    "calls": 19,
+    "tokens": 514226,
+    "failure": "signature changed without replacing using=using in the method body; no verification"
+  },
+  "claim_boundary": {
+    "production_default": false,
+    "near_100_percent_accuracy": false,
+    "engine_or_kv_metrics": false,
+    "latency_claim": false
+  }
+}
