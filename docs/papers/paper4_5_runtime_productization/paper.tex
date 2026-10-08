@@ -995,9 +995,11 @@ one paired autonomous plain/PRA-100/tail-90 result.  It establishes exact
 PRA-100 behavior and one preserved tail-90 solve, but not task-clustered
 accuracy or production economics.  A separate fresh SGLang-MLX row preserves
 the plain solve and call count at PRA-100 and at its task-aware 90\% treatment.
-The bounded vLLM CUDA Task-5 row preserves all 15 plain actions at PRA-100; its
-matched-tail treatment is an admissible policy-quality negative, not an
-engine-correctness failure.  HF alone still lacks an admissible post-contract
+The pre-repair vLLM CUDA Task-5 rows preserve all 15 plain actions at PRA-100
+and record a matched-tail workload failure, but the later live-extent audit
+quarantines their native K/V counters.  Neither row is CUDA engine-
+qualification evidence until rerun with complete decode-filled source pages.
+HF alone still lacks an admissible post-contract
 autonomous row.
 
 The strict Atomic-E2 transfer is the strongest receipt-free agent fixture in
@@ -5160,15 +5162,29 @@ required to match because two user observations contain nondeterministic
 package/test progress and timing text; the formal gate compares the complete
 ordered assistant action trajectory and final patch.
 
-The PRA-100 lifecycle contains one initial store and 14 dense semantic no-ops.
-All 14 updates observe alias prepare, commit, hit, and release; realized total
-and engine-reported history retention are 1.0 on every request.  Selected-
-history re-encoding, selected-history and total physical K/V copy, interval
-copy, and host-to-device transfer are all zero.  New-history partial pages
-account for 165 separately reported re-evaluated tokens (77 maximum on one
-request), which are not selected-history re-encoding.  The sum of reported
-request-temporary allocations is 517,376,512 bytes and the largest request is
-148,832,768 bytes.
+The pre-fix PRA-100 instrumentation reports one initial store and 14 dense
+semantic no-ops.  All 14 updates observe alias prepare, commit, hit, and
+release; realized total and engine-reported history retention are 1.0 on every
+request.  It reports zero selected-history re-encoding, selected-history and
+total physical K/V copy, interval copy, and host-to-device transfer.  New-
+history partial pages account for 165 separately reported re-evaluated tokens
+(77 maximum on one request).  The sum of reported request-temporary
+allocations is 517,376,512 bytes and the largest request is 148,832,768 bytes.
+
+A stricter native-APC comparison subsequently invalidates the live-state
+interpretation of those counters.  The initial PRA store pinned only 3,104
+complete prompt tokens, whereas native APC retained 3,232 live tokens after
+decode.  A later turn therefore re-prefilled generated agent history that the
+old counter did not classify as selected-history re-encoding; the two paths
+first diverge on turn~3.  The official solve and matched action trajectory
+remain workload observations, but this pre-fix row is no longer an engine-
+correctness qualification.  The repaired connector publishes every complete
+page filled during decode, returns the committed source extent explicitly,
+and preserves the hidden-bootstrap exception.  Its focused bridge, alias,
+protocol, and campaign suite passes 191 tests.  End-to-end PRA-100 versus
+native-APC qualification on CUDA remains pending after the RTX host vanished
+during the repaired run; no PRA-90 or runtime-saving claim is admitted from
+that interruption.
 
 The PRA-100 run also converts two previously hidden integration assumptions into
 regressions.  The native readiness probe now supplies the live-agent history
@@ -5186,21 +5202,19 @@ most recent omitted complete-page causal groups, and fails closed if the
 authoritative engine-token floor is still unmet.  It may therefore realize more
 than the requested 90\%; it may never silently realize less.
 
-The corrected frozen PRA-90 run is a valid negative.  It grades 0/1 after 15
-calls, first diverges from plain at action 6, and submits an empty patch after
-later diffing a generated test path rather than the modified source file.  It
-materializes 21,940 of 23,281 estimated model-visible tokens (94.24\% aggregate;
-90.27--100\% per request), while the engine reports 90.28--100\% retained
-history K/V.  Selected-history re-encoding, physical and total K/V copy, and
-H2D are all zero.  Consumer temporaries total 524,545,536 bytes with a
-148,922,880-byte peak.  Thus the failure is attributable to the frozen
-retention policy after an exact PRA-100 control, not to rematerialization or
-page-copy behavior.  Easy-14 remains locked, and the same in-process V1,
-homogeneous-group, complete-page boundary still applies.
-The plain/PRA-100 controls record PRA revision \texttt{1feca189}; the corrected
-PRA-90 arm records \texttt{3a37ed22}.  The receipt therefore supports the
-post-fix policy-quality result and byte counters, but not a cross-arm timing
-claim.
+The frozen PRA-90 run remains a workload-level negative.  It grades 0/1 after
+15 calls, first diverges from plain at action 6, and submits an empty patch
+after later diffing a generated test path rather than the modified source
+file.  Its logical ledger materializes 21,940 of 23,281 estimated model-visible
+tokens (94.24\% aggregate; 90.27--100\% per request).  However, the later live-
+extent audit also supersedes this run's engine counters: reported 90.28--100\%
+retained history and zero selected-history re-encoding cannot rule out
+generated-history re-prefill.  The official failure remains useful policy-
+quality evidence conditional on this trajectory, but physical K/V copy,
+transfer, temporary-memory, and native-retention claims require the repaired
+rerun.  Easy-14 remains locked.  The plain/PRA-100 controls record PRA revision
+\texttt{1feca189}; this PRA-90 arm records \texttt{3a37ed22}; both precede the
+complete-live-extent repair.
 
 We then transferred Paper~8.5's matched causal-tail control without importing
 its text-only observation-boundary trimming: native K/V selection admits only
@@ -5214,10 +5228,11 @@ K/V copies and 10.40~GB of consumer temporaries (2.29~GB peak), then submits a
 also diverges at action~3, repeatedly recreates the same symlink experiment,
 and reaches the fixed 8,192-token context bound after 28 calls; the rejected
 request contains 8,234 input tokens.  Official grading records 0/1 with an
-empty patch.  Aggregate logical retention is 88.05\% (11.95\% estimated
-saving), while selected-history re-encoding, physical K/V copy, total K/V copy,
-and H2D remain zero; consumer temporaries total 903.8~MB with a 148.9~MB peak.
-The reducer now treats this post-trajectory context exhaustion like the frozen
+empty patch, and the logical ledger records 88.05\% aggregate retention
+(11.95\% estimated saving).  Its pre-repair zero re-encoding/copy counters and
+903.8~MB temporary total are quarantined by the live-extent finding rather than
+treated as native-engine evidence.  The reducer now treats this post-
+trajectory context exhaustion like the frozen
 step/time limits---an explicitly labelled bounded task failure---rather than an
 infrastructure-invalid row.
 
@@ -5227,8 +5242,9 @@ retention, whereas its causal-tail transfer fails at a materially lower
 retention; vLLM's two 90\% policies both fail, but the causal tail doubles the
 call count before exhaustion.  Because those realized budgets are unmatched,
 the receipts do not prove structural superiority of either selector.  They do
-show that simple recency can discard the agent's progress spine even when the
-native engine consumes the selected K/V exactly.  Paper~4.5 therefore retains
+show that simple recency can discard the agent's progress spine.  The repaired
+CUDA rerun must independently establish exact native consumption for the vLLM
+row.  Paper~4.5 therefore retains
 the task-aware progress-spine policy for subsequent engine work; matched-budget
 oracle and exclusion-policy development remains in Paper~8.5.
 
@@ -6939,7 +6955,7 @@ tables remain in the technical-report edition.
 
 \begin{table}[H]
 \centering
-\small
+\footnotesize
 \begin{tabularx}{\linewidth}{p{.27\linewidth}p{.30\linewidth}Y}
 \toprule
 Earlier treatment & Why it is invalid & Current requirement \\
@@ -6949,6 +6965,7 @@ Compact position base & Disjoint records changed rotary/causal coordinates. & Pr
 Hidden cast or pack & Selected K/V was copied while reported as reuse. & Report selected-K/V copy, dtype conversion, and H2D separately. \\
 K/V-sized temporary & Selection was view-based but attention concatenated resident K/V. & Report consumer peak and cumulative temporaries independently. \\
 Retention ceiling & Whole records rounded below a nominal percentage. & Use the authoritative tokenizer and fail closed below the declared floor. \\
+Incomplete live extent & Decode-filled complete pages were omitted, so later generated history was silently re-prefilled. & Publish and receipt every complete live page before the next agent turn. \\
 Mixed revisions & Mechanism and workload rows combined different packages or patches. & Bind model, tokenizer, engine, PRA revision, source, and plan digests. \\
 Post-cache receipt & New summary text was described as resident-subset reuse. & Classify and charge transformed context separately from strict native reuse. \\
 \bottomrule
