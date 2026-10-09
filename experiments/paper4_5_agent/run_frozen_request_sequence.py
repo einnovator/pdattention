@@ -149,7 +149,13 @@ def run_sequence(args: argparse.Namespace) -> dict[str, Any]:
             )
         artifacts.append(output)
 
-    result = summarize(artifacts, indices, expect_full_retention=args.full_retention)
+    result = summarize(
+        artifacts,
+        indices,
+        expect_full_retention=args.full_retention,
+        selection_fixture=args.selection_fixture,
+        request_replay=args.request_replay,
+    )
     summary = args.output_dir / "summary.json"
     summary.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     if not result["sequence_qualified"]:

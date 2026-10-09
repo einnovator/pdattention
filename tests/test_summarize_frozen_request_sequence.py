@@ -74,3 +74,108 @@ def test_hf_interval_pack_bytes_maps_to_common_selection_pack_gate(tmp_path):
     result = summarize(paths, (1,), expect_full_retention=False)
     assert result["sequence_qualified"] is True
     assert result["selection_pack_bytes"] == 0
+
+
+def _ledger(tmp_path, request_digest="digest-1"):
+    fixture = tmp_path / "fixture.jsonl"
+    fixture.write_text(
+        json.dumps(
+            {
+                "request_index": 1,
+                "request_input_sha256": request_digest,
+                "source_plan_digest": "plan-digest",
+                "selected_resource_digest": "resource-digest",
+                "source_wire_plan_digest": "wire-digest",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    replay = tmp_path / "replay.jsonl"
+    replay.write_text(
+        json.dumps(
+            {"request_index": 1, "request_input_sha256": request_digest}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return fixture, replay
+
+
+def test_summary_binds_frozen_selector_identity(tmp_path):
+    artifact = _artifact(tmp_path, 1)
+    fixture, replay = _ledger(tmp_path)
+    result = summarize(
+        [artifact],
+        (1,),
+        expect_full_retention=False,
+        selection_fixture=fixture,
+        request_replay=replay,
+    )
+    assert result["frozen_ledger_bound"] is True
+    assert result["rows"][0]["source_plan_digest"] == "plan-digest"
+    assert result["frozen_ledger_files"]["selection_fixture_sha256"]
+
+
+def test_summary_rejects_artifact_outside_frozen_ledger(tmp_path):
+    artifact = _artifact(tmp_path, 1)
+    fixture, replay = _ledger(tmp_path, request_digest="other-request")
+    with pytest.raises(ValueError, match="does not match frozen ledger"):
+        summarize(
+            [artifact],
+            (1,),
+            expect_full_retention=False,
+            selection_fixture=fixture,
+            request_replay=replay,
+        )
+
+
+def test_summary_requires_fixture_and_replay_together(tmp_path):
+    artifact = _artifact(tmp_path, 1)
+    fixture, _replay = _ledger(tmp_path)
+    with pytest.raises(ValueError, match="supplied together"):
+        summarize(
+            [artifact],
+            (1,),
+            expect_full_retention=False,
+            selection_fixture=fixture,
+        )
+
+
+def test_partial_summary_can_bind_prefix_of_complete_frozen_ledger(tmp_path):
+    artifact = _artifact(tmp_path, 1)
+    fixture_rows = []
+    replay_rows = []
+    for index in (1, 2):
+        digest = f"digest-{index}"
+        fixture_rows.append(
+            {
+                "request_index": index,
+                "request_input_sha256": digest,
+                "source_plan_digest": f"plan-{index}",
+                "selected_resource_digest": f"resource-{index}",
+                "source_wire_plan_digest": f"wire-{index}",
+            }
+        )
+        replay_rows.append(
+            {"request_index": index, "request_input_sha256": digest}
+        )
+    fixture = tmp_path / "fixture.jsonl"
+    fixture.write_text(
+        "\n".join(json.dumps(row) for row in fixture_rows) + "\n",
+        encoding="utf-8",
+    )
+    replay = tmp_path / "replay.jsonl"
+    replay.write_text(
+        "\n".join(json.dumps(row) for row in replay_rows) + "\n",
+        encoding="utf-8",
+    )
+    result = summarize(
+        [artifact],
+        (1,),
+        expect_full_retention=False,
+        selection_fixture=fixture,
+        request_replay=replay,
+    )
+    assert result["sequence_qualified"] is True
+    assert result["rows"][0]["source_plan_digest"] == "plan-1"
