@@ -154,11 +154,13 @@ def run_sequence(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     available_indices = _request_indices(args.request_replay)
-    indices = _selected_request_indices(available_indices, args.request_indices)
+    indices = _selected_request_indices(
+        available_indices, getattr(args, "request_indices", None)
+    )
     args.output_dir.mkdir(parents=True)
     artifacts: list[Path] = []
     shared_hf = None
-    if args.engine == "hf" and args.reuse_hf_model:
+    if args.engine == "hf" and getattr(args, "reuse_hf_model", False):
         from experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle import (
             load_hf_components,
         )
