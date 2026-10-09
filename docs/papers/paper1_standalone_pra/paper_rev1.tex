@@ -96,8 +96,11 @@ that state into logical chunks, regions, or records, and applies a selection cri
 to identify the relevant chunks. The criterion first explored and reported in this paper
 uses compact routing gists derived from the token keys (K) of candidate regions.
 
-Selected regions are materialized in full: if a region is selected, all token K/V pairs
-in that region are selected. This property is important because self-attention weights
+
+Selected context chunks are subject to a materialization policy. 
+However, in the experiments of this paper we use full materialized of chunks,
+i.e. all token K/V pairs in that chunk are selected. 
+This property is important because self-attention weights
 tend to be highly localized, with occasional long-distance dependencies. When chunking
 creates overlapping regions, duplicate token K/V pairs are removed.
 
@@ -298,15 +301,42 @@ unique set of nonoverlapping spans, each defined by a starting offset and length
 original K/V slices for these spans are concatenated and combined with the direct K/V
 entries from the context tail in a single attention operation. 
 
-When multiple gists per chunk are used, different policies can determine which internal spans
-the gists represent. The simplest approach partitions each chunk into subchunks and computes
-one gist per subchunk. When a subchunk matches, its full parent chunk is selected and considered
-for materialization.
 
-Formally, we can write the context of a completion as $\{D_i\}$---a set of documents---plus
-$\_\_head$ and the direct or tail context $C$. Each $D_i$ is split into fixed-size chunks
-$\{d_i^j\}$. Each chunk corresponds to a span with start and end offsets within the document,
-written as $(d_i^j[0], d_i^j[l_i])$.
+A routing chunk may be represented by one or more gists. 
+With a single gist, the entire chunk shares one routing representation. 
+With multiple gists, different internal regions of the chunk may contribute separate
+routing signals.
+The simplest policy partitions a chunk uniformly into subchunks and assigns one gist to each. 
+But for a general policy, the regions need not be equally sized or uniformly spaced
+(e.g. the gist policy may allocate more routing resolution to heterogeneous or
+information-dense parts of a chunk.) 
+
+%Under uniform partitioning, this is closely related to using smaller routing chunks and 
+%expanding materialization into neighboring chunks. 
+%The two formulations become equivalent when gist regions coincide with those smaller routing chunks and the materialization policy reconstructs the same larger span.  
+%Multiple gists remain more general because their number, support, and placement can vary within a  routing chunk.
+
+%A query vector to gist match identifies its parent routing chunk, 
+%while the materialization policy independently determines how much detailed K/V around that match
+%becomes active. With the simplest materialization policy, the full chunk is materialized.
+%But more ellaborate policies are possible.
+
+
+Formally, we can write the context of a completion as $\{D_i\}$ --- a set of documents ---
+plus arbitraty long logical $\_\_head$, and the direct or tail context $C$. 
+Each $D_i$ is split into logical fixed-size chunks
+$\{d_{ij}\}$. Each chunk corresponds to a span with start and end offsets within the document,
+written as $(d_{ij}[0], d_ij[l_i])$. Neighbooring chunks can overlap, such that 
+$d_{i+1,j}[0] - d_{ij}[l_i] \le 1$.
+Likewise, the $\_\_head$ is split into logical chunks $\_\_head_{j}$.
+To each chunk $i$ in document $D_i$ we compute one or more gists $G(d_{ij}) = \{ g_{ijk} \}$. 
+Likewise, each $\_\_head$ chunk $i$ is split into one or more gists $G(\_\_head_{j}) = \{ g_{jk} \}$.
+
+
+During decoding, for each query vector $q_i$ all gists in in the context are scored and ranked for a match.
+%routing policy $\pi_r$ select set of chunks from documents and
+%$\_\_head$:  $\pi_r(q_i, ())$
+
 
 
 Figure~\ref{fig:architecture-pipeline} shows the complete workflow of a PRA-enabled model.
@@ -377,13 +407,48 @@ outputs with a weighted sum.
 
 \subsection{Exact Routing and Whole-Chunk Budgeting}
 
-For query vector $q$ and gist vector $g_i$, a router computes a matching score.
-The simplest router uses cosine-like similarity:
+For query vector $q^{(l)}$ at layer l and gist vector from a chunk at same layer $g_i^{(l)}$ 
+(from a document of rolling $\_\_head$), the routing policy $\pi_r$ computes a matching score
+$s_i$. The simplest routing policy uses cosine-like similarity between the query and the gist:
+
 \begin{equation}
-  s_i = \frac{q^\top g_i}{\max(\lVert q\rVert_2\lVert g_i\rVert_2,\epsilon)},
+  s_i = \cos(q^\top, g_i) = \frac{q^\top g_i}{\max(\lVert q\rVert_2\lVert g_i\rVert_2,\epsilon)},
 \end{equation}
 
-Given a set of scores, the router uses a tensorized \texttt{topk} operation to select the
+\noindent, where is $q = q^{(l)} = W_Q^{(l)} h^{(l)}$ is the query vector, 
+$W_Q^{(l)}$ the query project matrix at layer $l$, 
+and $h^{(l)}$ the hidden (residual) vector entering layer layer $l$.
+
+In follow up work, we also experimented with head-aware matching, 
+since native attention uses head specific attention scores $A_{/h}=\operatorname{softmax}(Q_{/h} K_{/h}^\top)$.
+Namelly:
+
+\[ 
+s_i=\max_h q_{/h}^\top g_{i/h}
+\]
+
+and
+
+\[
+s_i= \operatorname{logsumexp}_h \left(q_{/h}^\top q_{/h}\right)
+\]
+
+\noindent, with $/h$ indicating head specific dimensions.
+
+
+The simplest gist creation policy uses the arithmetic mean of all K vectors for the chunk:
+
+\begin{equation}
+g_i^{(l)} = \frac{1}{|C|} \sum_{t\in C} k_t^{(l)}
+\end{equation}
+
+\noindent, where is $k^{(l)} = W_K^{(l)} h^{(l)}$ is the key vector, $W_K^{(l)}$ the key projection vector
+at layer $l$, and $|C|$ the size of chunk. More rigourouslly, the size last chunk of a document or rolling $\_\_head$
+should we should write $|C_i|$.
+
+
+
+Given a set of scores, the routing policy uses a tensorized  (vector+batch) \texttt{topk} operation to select the
 top-ranked chunks associated with the highest-scoring gists.
 
 
@@ -415,6 +480,98 @@ and Routing Transformer change the set of K/V vectors that are reachable
 KV-cache methods such as H$_2$O, SnapKV, and ClusterKV reduce retained decode state
 \cite{zhang2023h2o,li2024snapkv,liu2024clusterkv}. PRA instead retains the source K/V detail outside
 the active completion and uses a compact routing index to decide which full token K/V to expose.
+
+\section{Model Architectures}
+\label{sec:models}
+
+\subsection{Small Decoder Backbones}
+
+To make initial tests and evaluate the PRA mechanisms and compare with SA, we
+created with several tiny/small decoder-only transformer models trained from scrath implemented in PyTorch.
+Each model uses learned token embeddings with absolute-positioning ($x_t = E(tk_t)+P_t $).
+The architecture is a stack of pre-normalized residual
+decoder blocks with PRA attention and/or SA attention sub-layers, followed by
+feed-forward sub-layers (FF), and a final layer normalization,
+and a language-model head (without bias term). 
+Both PRA and SA sub-layers use causal multi-head attention. 
+The two-layer FF sub-layers use GELU activation.
+As most common in attention layers, for hidden width $d$, $h$ heads, and feed-forward width $d_{\mathrm{ff}}$,
+the per-head dimension is $d/h$.
+
+Table~\ref{tab:model-architectures} enumerates the tiny/small decoder transformer models we
+used summarizing their size and blocks.
+For all models sizes we train the all-SA backbone first with dataset items fitting In
+the maxium context window size, and then converts it to an all-PRA model for inference.
+Parameter ranges include dataset-specific input embeddings and untied output heads.
+Parameter counts vary slightly betweens datasets because different count of realized tokens.
+(HotpotQA-derived tokenizer realizes an 8,000-token
+vocabulary; whereas the QASPER-derived tokenizer realizes 7,339 tokens.)
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Tinny/Small model size and architecture (SA == causal self-attention; PRA uses cache retrieved K/V attention).
+Scale use native-KV entries; historical uses adapted cross-attention.}
+\label{tab:model-architectures}
+\begin{tabularx}{\textwidth}{@{}llYrrrrl@{}}
+\toprule
+Study & Model & Layer stack & $d$ & Heads & $d_{\mathrm{ff}}$ & Max. length & Parameters \\
+\midrule
+Scale & Tiny SA & SA $\times 2$ & 128 & 4 & 256 & 768 & 2.2--2.4M \\
+Scale & Tiny PRA & PRA $\times 2$ & 128 & 4 & 256 & 768 & 2.2--2.4M \\
+Scale & Small SA & SA $\times 4$ & 256 & 4 & 768 & 768 & 6.6--6.9M \\
+Scale & Small PRA & PRA $\times 4$ & 256 & 4 & 768 & 768 & 6.6--6.9M \\
+Historical & SA & SA $\times 4$ & 256 & 4 & 1,024 & 128 & 4.216M \\
+Historical & Full PRA & PRA $\times 4$ & 256 & 4 & 1,024 & 128 & 4.479M \\
+Historical & Hybrid PRA & SA $\times 2\rightarrow$ PRA $\times 2$ & 256 & 4 & 1,024 & 128 & 4.348M \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+For the scale study, the dense SelfAttention backbone is trained on the complete
+255-unit source. The tiny tier uses batch size 8 for 200 AdamW steps; the small tier uses
+batch size 4 for 300 steps. Both use learning rate $7\!\times\!10^{-4}$, zero weight
+decay, zero dropout, gradient-norm clipping at 1.0, and the fixed terminal checkpoint.
+These deliberately small models are controlled instruments for testing transport,
+routing, and bounded execution; they are not intended as competitive language models.
+
+\subsection{Weight-Preserving Native-K/V Conversion}
+
+The canonical PRA model is obtained from a trained SelfAttention checkpoint without
+additional PRA training. Conversion preserves the token and position embeddings, final
+normalization, language-model head, block normalizations, and feed-forward weights. For
+each attention layer, the combined PyTorch projection is split into its Q, K, and V
+components and copied, together with their biases and the output projection, into the
+corresponding PRA layer. Canonical native-K/V transport introduces no new learned
+parameters, so the converted model has the same parameter count as its source backbone.
+With memory disabled and dropout inactive, it is required to reproduce the source model's
+logits.
+
+In the converted \texttt{td\_pra} variant, every decoder block uses PRA attention. The
+ordinary local query, key, value, and output projections are also used to encode and
+consume reference memory. Selected historical K/V and direct-context K/V are concatenated
+inside the attention operation and share one softmax and one output projection. The cache
+stores distinct K/V tensors and routing gists for every layer; it does not reuse one
+layer's state at another depth. In the principal experiment, one mean-pooled key gist of
+width $d$ represents each source unit, and the newest direct token's projected query ranks
+those gists by normalized dot product before whole-unit materialization.
+
+\subsection{Other Evaluated Model Families}
+
+The pretrained calibration in Section~\ref{sec:pretrained-dilution} uses pinned 4-bit
+Qwen3-8B, Qwen3-14B, and Qwen3-32B checkpoints through MLX. Those models are not trained
+or retrofitted with the standalone PyTorch router: frozen annotated selections are used to
+compare selected text with selected native K/V and to measure payload size. Consequently,
+that experiment supports transport compatibility and memory accounting at pretrained
+scale, but not learned PRA routing.
+
+The historical experiment retained in Appendix~\ref{app:adaptation} uses four-layer,
+four-head, width-256 models with context length 128. It compares a SelfAttention model,
+a full cross-attention PRA model, and a hybrid with two lower SelfAttention layers followed
+by two PRA layers. That separately normalized, adapted memory branch is reported only for
+provenance; the main results use the no-new-parameter native-K/V conversion described above.
+
+
 
 \section{Evaluation Design}
 \label{sec:eval}
