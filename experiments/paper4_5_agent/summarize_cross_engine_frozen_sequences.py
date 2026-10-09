@@ -90,8 +90,6 @@ def summarize(
     paper8_logical_omission_fraction: float | None = None,
 ) -> dict[str, Any]:
     missing = sorted(set(required_engines) - set(summaries))
-    if missing:
-        raise ValueError(f"Missing required engine summaries: {', '.join(missing)}")
     if not summaries:
         raise ValueError("At least one engine summary is required.")
 
@@ -115,7 +113,12 @@ def summarize(
     )
 
     engines: dict[str, Any] = {}
-    blockers: list[str] = []
+    blockers: list[str] = [f"{engine}:summary_missing" for engine in missing]
+    for engine in missing:
+        engines[engine] = {
+            "artifact": None,
+            "status": "missing_required_engine_summary",
+        }
     for engine, payload in payloads.items():
         files = dict(payload.get("frozen_ledger_files") or {})
         observed_identity = {

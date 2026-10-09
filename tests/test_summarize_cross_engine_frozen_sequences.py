@@ -72,8 +72,10 @@ def test_cross_engine_gate_rejects_attachment_copy(tmp_path):
 
 
 def test_cross_engine_gate_requires_declared_engines(tmp_path):
-    with pytest.raises(ValueError, match="Missing required engine"):
-        summarize(
-            {"hf": _summary(tmp_path, "hf")},
-            required_engines=("hf", "mlx"),
-        )
+    result = summarize(
+        {"hf": _summary(tmp_path, "hf")},
+        required_engines=("hf", "mlx"),
+    )
+    assert result["cross_engine_sequence_qualified"] is False
+    assert result["engines"]["mlx"]["status"] == "missing_required_engine_summary"
+    assert "mlx:summary_missing" in result["qualification_blockers"]

@@ -61,6 +61,19 @@ Receipts and bound reducers are under
 `engine_sequences/hf_cuda_qwen25_05b_gtx950m_r01_v1` and
 `engine_sequences/hf_cuda_qwen25_05b_gtx950m_r02_v1`.
 
+The fail-closed whole-sequence matrix is materialized in
+`cross_engine_sequence_gate_r01.json` and
+`cross_engine_sequence_gate_r02.json`.  Both currently admit HF/CUDA and name
+the five still-missing required sequence summaries explicitly: llama.cpp
+Metal, direct MLX, SGLang-MLX, vLLM-Metal, and vLLM-CUDA.  The reducer rejects
+different fixture/replay hashes or per-request plan identities even if every
+engine passes in isolation.  It also rejects selected-history re-encoding,
+selection packing, or selected-K/V request-attachment copies, and reports
+logical-token, resident-K/V, and visible-context omission separately.  The
+gate artifacts remain negative until every declared engine consumes the same
+complete request sequence; the 2/2 final-request table below does not satisfy
+that stronger requirement.
+
 ## llama.cpp strict-subset result
 
 The patched Metal llama.cpp engine at revision

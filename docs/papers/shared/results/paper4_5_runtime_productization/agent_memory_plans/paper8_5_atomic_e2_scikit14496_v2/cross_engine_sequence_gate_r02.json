@@ -1,0 +1,89 @@
+{
+  "schema_version": "paper4.5.cross-engine-frozen-sequence-gate.v1",
+  "claim_boundary": "identical_frozen_logical_ledger_and_native_kv_realization_not_autonomous_quality_or_latency",
+  "required_engines": [
+    "hf-cuda",
+    "mlx",
+    "sglang-mlx",
+    "llama.cpp-metal",
+    "vllm-metal",
+    "vllm-cuda"
+  ],
+  "ledger_identity": {
+    "selection_fixture_sha256": "4f931dfd289bd6950e7671e403af6040fc1476170a123cd34dc5ffefeaabf73f",
+    "request_replay_sha256": "c0e1efa494a3a140e46d7525fdd3d674a2c5706400f96de70c25c0004409eb6f"
+  },
+  "expected_requests": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "engines": {
+    "llama.cpp-metal": {
+      "artifact": null,
+      "status": "missing_required_engine_summary"
+    },
+    "mlx": {
+      "artifact": null,
+      "status": "missing_required_engine_summary"
+    },
+    "sglang-mlx": {
+      "artifact": null,
+      "status": "missing_required_engine_summary"
+    },
+    "vllm-cuda": {
+      "artifact": null,
+      "status": "missing_required_engine_summary"
+    },
+    "vllm-metal": {
+      "artifact": null,
+      "status": "missing_required_engine_summary"
+    },
+    "hf-cuda": {
+      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_scikit14496_v2/engine_sequences/hf_cuda_qwen25_05b_gtx950m_r02_v1/summary.json",
+      "checks": {
+        "sequence_qualified": true,
+        "frozen_ledger_bound": true,
+        "ledger_hashes_identical": true,
+        "request_indices_identical": true,
+        "request_and_plan_identities_identical": true,
+        "selected_history_not_reencoded": true,
+        "selection_not_packed": true,
+        "selected_kv_attachment_not_copied": true
+      },
+      "engine_reported": "transformers-pytorch",
+      "model": "Qwen/Qwen2.5-0.5B-Instruct",
+      "claim_boundary": "request_sequence_not_autonomous_task",
+      "requests": 9,
+      "logical_source_tokens": 245292,
+      "logical_selected_tokens": 102534,
+      "logical_history_omission_fraction": 0.5819920747517244,
+      "resident_source_tokens": 245292,
+      "resident_selected_tokens": 102534,
+      "resident_kv_omission_fraction": 0.5819920747517244,
+      "visible_context_omission_fraction": 0.5724057738572574,
+      "selected_history_reencoded_tokens": 0,
+      "selection_pack_bytes": 0,
+      "attachment_copy_indicator": 0,
+      "sequence_qualified": true,
+      "frozen_ledger_bound": true,
+      "paper8_logical_omission_fraction": 0.5715159626880378,
+      "resident_minus_paper8_percentage_points": 1.0476112063686593,
+      "visible_minus_paper8_percentage_points": 0.08898111692196009
+    }
+  },
+  "qualification_blockers": [
+    "llama.cpp-metal:summary_missing",
+    "mlx:summary_missing",
+    "sglang-mlx:summary_missing",
+    "vllm-cuda:summary_missing",
+    "vllm-metal:summary_missing"
+  ],
+  "cross_engine_sequence_qualified": false
+}
