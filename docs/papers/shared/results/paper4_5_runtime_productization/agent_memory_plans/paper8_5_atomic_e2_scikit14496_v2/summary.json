@@ -22,7 +22,25 @@
       "qualified": "2/2",
       "initial_attachment_copy": false,
       "same_subset_gate": "logit exact",
-      "attention_backend": "streaming_segmented"
+      "attention_backend": "streaming_segmented",
+      "full_sequence": {
+        "repeat": 1,
+        "qualified_requests": "8/8",
+        "historical_source_kv_tokens": 217819,
+        "selected_historical_kv_tokens": 90923,
+        "wire_suffix_tokens": 4288,
+        "historical_kv_omission_fraction": 0.5825754410772246,
+        "visible_context_omission_fraction": 0.5713282336891679,
+        "paper8_5_own_logical_omission_fraction": 0.5703092232316109,
+        "visible_minus_logical_percentage_points": 0.10190104575569,
+        "selected_history_reencoded_tokens": 0,
+        "selection_pack_bytes": 0,
+        "attachment_physical_kv_copy_requests": 0,
+        "consumer_peak_temporary_bytes": 1887879168,
+        "offloaded_payload_bytes": 2676675224,
+        "artifact": "engine_sequences/hf_cuda_qwen25_05b_gtx950m_r01_v1/summary.json",
+        "claim_boundary": "frozen_request_sequence_not_autonomous_task_or_runtime_economics"
+      }
     },
     {
       "engine": "mlx-lm",
@@ -99,6 +117,7 @@
   "timing_quarantine_reason": "Concurrent high-CPU virtual machine on the M4 Pro host.",
   "claims": {
     "engine_mechanism_qualified": true,
+    "full_sequence_native_execution": "HF/CUDA repeat 1, 8/8 frozen requests",
     "autonomous_agent_quality": false,
     "cross_engine_replication": true,
     "runtime_economics": false,

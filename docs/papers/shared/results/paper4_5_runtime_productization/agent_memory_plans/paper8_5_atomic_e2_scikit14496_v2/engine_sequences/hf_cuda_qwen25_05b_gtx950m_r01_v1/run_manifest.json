@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "study": "paper4_5_hf_cuda_atomic_e2_full_sequence_r01_v1",
+  "claim_boundary": "frozen_request_sequence_not_autonomous_task_or_runtime_economics",
+  "paper4_5_revision": "82bafb9a4007b3ba311966b051b3c432369d92d9",
+  "source_policy": "persistent_instruction_epoch_retirement",
+  "source_fixture": "../../r01_frozen_plan.jsonl",
+  "source_replay": "../../r01_request_replay.jsonl",
+  "expected_requests": [1, 2, 3, 4, 5, 6, 7, 8],
+  "engine": "transformers-pytorch-cuda",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_revision_requested": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "model_revision_observed": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "torch_version": "2.12.1+cu126",
+  "transformers_version": "4.55.4",
+  "python_version": "3.10.11",
+  "device": "cuda",
+  "dtype": "float16",
+  "attention_backend": "streaming_segmented",
+  "hardware": "DESKTOP-9IOCN3C / NVIDIA GeForce GTX 950M 4 GB",
+  "continuation_tokens": 2,
+  "prefill_step_size": 128,
+  "maximum_absolute_logit_delta": 0.001,
+  "execution_segments": [
+    {
+      "requests": [1, 2, 3],
+      "model_process_policy": "isolated_per_request"
+    },
+    {
+      "requests": [4, 5, 6, 7, 8],
+      "model_process_policy": "one_model_load_fresh_pra_runtime_per_request"
+    }
+  ],
+  "timing_admissible": false,
+  "autonomous_agent_accuracy_claim": false,
+  "total_hbm_saving_claim": false
+}

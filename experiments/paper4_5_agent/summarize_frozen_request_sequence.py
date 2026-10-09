@@ -17,6 +17,12 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _portable_path(path: Path) -> str:
+    """Serialize evidence paths independently of the reducer host OS."""
+
+    return path.as_posix()
+
+
 def _jsonl(path: Path) -> list[dict[str, Any]]:
     return [
         json.loads(line)
@@ -69,9 +75,9 @@ def _frozen_ledger(
         raise ValueError("Frozen ledger lacks an expected request identity.")
     ledger = {index: complete_ledger[index] for index in expected_requests}
     return ledger, {
-        "selection_fixture": str(selection_fixture),
+        "selection_fixture": _portable_path(selection_fixture),
         "selection_fixture_sha256": _sha256(selection_fixture),
-        "request_replay": str(request_replay),
+        "request_replay": _portable_path(request_replay),
         "request_replay_sha256": _sha256(request_replay),
     }
 
@@ -172,7 +178,7 @@ def summarize(
             "qualification_blockers": list(
                 payload.get("qualification_blockers") or ()
             ),
-            "artifact": str(path),
+            "artifact": _portable_path(path),
             "artifact_sha256": _sha256(path),
         }
         frozen_identity = ledger.get(row["request_index"])

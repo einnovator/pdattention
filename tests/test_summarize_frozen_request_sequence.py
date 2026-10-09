@@ -116,6 +116,9 @@ def test_summary_binds_frozen_selector_identity(tmp_path):
     assert result["frozen_ledger_bound"] is True
     assert result["rows"][0]["source_plan_digest"] == "plan-digest"
     assert result["frozen_ledger_files"]["selection_fixture_sha256"]
+    assert "\\" not in result["frozen_ledger_files"]["selection_fixture"]
+    assert "\\" not in result["frozen_ledger_files"]["request_replay"]
+    assert "\\" not in result["rows"][0]["artifact"]
 
 
 def test_summary_rejects_artifact_outside_frozen_ledger(tmp_path):
