@@ -43,6 +43,7 @@ def test_full_sequence_requires_complete_identity_and_ordinary_parity(tmp_path):
     assert result["sequence_qualified"] is True
     assert result["qualified_requests"] == 3
     assert result["weighted_realized_retention_fraction"] == 1.0
+    assert all(row["request_qualified"] for row in result["rows"])
 
 
 def test_reduced_sequence_preserves_weighted_accounting(tmp_path):

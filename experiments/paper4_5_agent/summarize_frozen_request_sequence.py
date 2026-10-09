@@ -214,6 +214,8 @@ def summarize(
         )
         for row in rows
     ]
+    for row, qualified in zip(rows, request_qualified):
+        row["request_qualified"] = qualified
     total_visible = sum(
         row["source_tokens"] + row["wire_suffix_tokens"] for row in rows
     )
