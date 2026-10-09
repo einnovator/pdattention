@@ -198,6 +198,12 @@ def main() -> None:
                 "weighted_realized_retention_fraction": result[
                     "weighted_realized_retention_fraction"
                 ],
+                "historical_kv_omission_fraction": result[
+                    "historical_kv_omission_fraction"
+                ],
+                "visible_context_omission_fraction": result[
+                    "visible_context_omission_fraction"
+                ],
                 "sequence_qualified": result["sequence_qualified"],
             },
             indent=2,
