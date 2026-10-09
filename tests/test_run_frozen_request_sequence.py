@@ -6,6 +6,7 @@ import pytest
 
 from experiments.paper4_5_agent.run_frozen_request_sequence import (
     _request_indices,
+    _selected_request_indices,
     build_command,
     run_sequence,
 )
@@ -26,6 +27,7 @@ def _args(tmp_path: Path, engine: str = "mlx") -> argparse.Namespace:
         request_replay=replay,
         selection_fixture=fixture,
         output_dir=tmp_path / "out",
+        request_indices=None,
         full_retention=False,
         model="test-model",
         revision="test-revision",
@@ -42,6 +44,7 @@ def _args(tmp_path: Path, engine: str = "mlx") -> argparse.Namespace:
         device="cuda",
         dtype="bfloat16",
         local_files_only=True,
+        reuse_hf_model=False,
     )
 
 
@@ -50,6 +53,15 @@ def test_request_replay_requires_contiguous_identity(tmp_path):
     replay.write_text('{"request_index": 2}\n', encoding="utf-8")
     with pytest.raises(ValueError, match="contiguous identities"):
         _request_indices(replay)
+
+
+def test_request_index_segment_is_ordered_and_bounded():
+    available = (1, 2, 3, 4, 5, 6, 7, 8)
+    assert _selected_request_indices(available, "4-6,8") == (4, 5, 6, 8)
+    with pytest.raises(ValueError, match="outside"):
+        _selected_request_indices(available, "3,9")
+    with pytest.raises(ValueError, match="reversed"):
+        _selected_request_indices(available, "6-4")
 
 
 def test_sglang_command_binds_provenance_and_revision(tmp_path):
@@ -94,3 +106,76 @@ def test_existing_output_directory_is_never_overwritten(tmp_path):
     args.output_dir.mkdir()
     with pytest.raises(FileExistsError, match="Immutable output directory"):
         run_sequence(args)
+
+
+def test_shared_hf_mode_loads_once_and_runs_only_requested_segment(
+    tmp_path, monkeypatch
+):
+    args = _args(tmp_path, engine="hf")
+    args.request_indices = "2"
+    args.reuse_hf_model = True
+    replay_rows = []
+    fixture_rows = []
+    for index in (1, 2):
+        digest = f"digest-{index}"
+        replay_rows.append(
+            {"request_index": index, "request_input_sha256": digest}
+        )
+        fixture_rows.append(
+            {
+                "request_index": index,
+                "request_input_sha256": digest,
+                "source_plan_digest": f"plan-{index}",
+                "selected_resource_digest": f"resource-{index}",
+                "source_wire_plan_digest": f"wire-{index}",
+            }
+        )
+    args.request_replay.write_text(
+        "\n".join(json.dumps(row) for row in replay_rows) + "\n",
+        encoding="utf-8",
+    )
+    args.selection_fixture.write_text(
+        "\n".join(json.dumps(row) for row in fixture_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    import experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle as hf
+
+    loads = []
+    runs = []
+    monkeypatch.setattr(
+        hf,
+        "load_hf_components",
+        lambda namespace: loads.append(namespace.model) or ("tokenizer", "model"),
+    )
+
+    def fake_run(namespace, *, tokenizer, model):
+        runs.append((namespace.request_index, tokenizer, model))
+        payload = {
+            "engine": "transformers-pytorch",
+            "model": namespace.model,
+            "request_index": namespace.request_index,
+            "request_input_sha256": f"digest-{namespace.request_index}",
+            "source_policy": "frozen-policy",
+            "source_tokens": 100,
+            "wire_suffix_tokens": 10,
+            "selected_kv_tokens": 50,
+            "realized_retention_fraction": 60 / 110,
+            "selected_text_reencoded_tokens": 0,
+            "interval_pack_bytes": 0,
+            "physical_kv_copy": False,
+            "engine_lifecycle_qualified": True,
+            "qualification_blockers": [],
+            "checks": {"same_subset_token_exact": True},
+        }
+        namespace.output.write_text(json.dumps(payload), encoding="utf-8")
+        return payload
+
+    monkeypatch.setattr(hf, "run", fake_run)
+    result = run_sequence(args)
+    assert loads == ["test-model"]
+    assert runs == [(2, "tokenizer", "model")]
+    assert result["requested_requests"] == [2]
+    assert result["available_requests"] == [1, 2]
+    assert result["shared_model_process"] is True
+    assert result["frozen_ledger_bound"] is True

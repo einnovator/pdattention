@@ -216,9 +216,9 @@ def _fingerprint_cache(cache) -> str:
     return digest.hexdigest()
 
 
-@torch.inference_mode()
-def run(args: argparse.Namespace) -> dict[str, object]:
-    hf_live_kv_module = _require_live_kv_api()
+def load_hf_components(args: argparse.Namespace):
+    """Load one pinned tokenizer/model pair for one or more isolated probes."""
+
     device = torch.device(args.device)
     dtype = getattr(torch, args.dtype)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -232,6 +232,22 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         torch_dtype=dtype,
         local_files_only=args.local_files_only,
     ).to(device).eval()
+    return tokenizer, model
+
+
+@torch.inference_mode()
+def run(
+    args: argparse.Namespace,
+    *,
+    tokenizer=None,
+    model=None,
+) -> dict[str, object]:
+    hf_live_kv_module = _require_live_kv_api()
+    if (tokenizer is None) != (model is None):
+        raise ValueError("tokenizer and model must be supplied together")
+    if tokenizer is None:
+        tokenizer, model = load_hf_components(args)
+    device = torch.device(args.device)
     frozen_decision = None
     if args.request_replay or args.selection_fixture:
         if not args.request_replay or not args.selection_fixture:

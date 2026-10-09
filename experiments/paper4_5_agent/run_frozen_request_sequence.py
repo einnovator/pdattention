@@ -9,6 +9,7 @@ are reduced only after all requests pass their per-request gate.
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import subprocess
 import sys
@@ -41,6 +42,30 @@ def _request_indices(request_replay: Path) -> tuple[int, ...]:
             f"Request replay must contain contiguous identities {expected}; observed {indices}."
         )
     return indices
+
+
+def _selected_request_indices(
+    available: tuple[int, ...], value: str | None
+) -> tuple[int, ...]:
+    if value is None:
+        return available
+    selected: set[int] = set()
+    for part in value.split(","):
+        part = part.strip()
+        if not part:
+            raise ValueError("Request-index selection contains an empty item.")
+        if "-" in part:
+            start_text, end_text = part.split("-", 1)
+            start, end = int(start_text), int(end_text)
+            if start > end:
+                raise ValueError("Request-index range is reversed.")
+            selected.update(range(start, end + 1))
+        else:
+            selected.add(int(part))
+    result = tuple(index for index in available if index in selected)
+    if not result or set(result) != selected:
+        raise ValueError("Requested index is outside the frozen replay.")
+    return result
 
 
 def build_command(args: argparse.Namespace, request_index: int, output: Path) -> list[str]:
@@ -128,19 +153,52 @@ def run_sequence(args: argparse.Namespace) -> dict[str, Any]:
             f"Immutable output directory already exists: {args.output_dir}"
         )
 
-    indices = _request_indices(args.request_replay)
+    available_indices = _request_indices(args.request_replay)
+    indices = _selected_request_indices(available_indices, args.request_indices)
     args.output_dir.mkdir(parents=True)
     artifacts: list[Path] = []
+    shared_hf = None
+    if args.engine == "hf" and args.reuse_hf_model:
+        from experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle import (
+            load_hf_components,
+        )
+
+        shared_hf = load_hf_components(args)
     for request_index in indices:
         output = args.output_dir / f"request_{request_index:02d}.json"
-        command = build_command(args, request_index, output)
-        completed = subprocess.run(command, check=False)
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"{args.engine} request {request_index} failed with exit code "
-                f"{completed.returncode}; partial evidence remains immutable in "
-                f"{args.output_dir}."
+        if shared_hf is None:
+            command = build_command(args, request_index, output)
+            completed = subprocess.run(command, check=False)
+            if completed.returncode != 0:
+                raise RuntimeError(
+                    f"{args.engine} request {request_index} failed with exit code "
+                    f"{completed.returncode}; partial evidence remains immutable in "
+                    f"{args.output_dir}."
+                )
+        else:
+            from experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle import (
+                run as run_hf_lifecycle,
             )
+
+            lifecycle_args = argparse.Namespace(**vars(args))
+            lifecycle_args.trajectory = None
+            lifecycle_args.request_index = request_index
+            lifecycle_args.output = output
+            lifecycle_args.frozen_full_retention = args.full_retention
+            lifecycle_args.turn = 4
+            lifecycle_args.retention_fraction = 0.9
+            lifecycle_args.wire_tail_tokens = 32
+            payload = run_hf_lifecycle(
+                lifecycle_args,
+                tokenizer=shared_hf[0],
+                model=shared_hf[1],
+            )
+            if not payload.get("engine_lifecycle_qualified", False):
+                raise RuntimeError(
+                    f"HF request {request_index} did not qualify; partial evidence "
+                    f"remains immutable in {args.output_dir}."
+                )
+            gc.collect()
         payload = json.loads(output.read_text(encoding="utf-8"))
         if not payload.get("engine_lifecycle_qualified", False):
             raise RuntimeError(
@@ -156,6 +214,9 @@ def run_sequence(args: argparse.Namespace) -> dict[str, Any]:
         selection_fixture=args.selection_fixture,
         request_replay=args.request_replay,
     )
+    result["available_requests"] = list(available_indices)
+    result["requested_requests"] = list(indices)
+    result["shared_model_process"] = bool(shared_hf)
     summary = args.output_dir / "summary.json"
     summary.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     if not result["sequence_qualified"]:
@@ -169,6 +230,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--request-replay", type=Path, required=True)
     parser.add_argument("--selection-fixture", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--request-indices",
+        help="Optional immutable subset such as 4-8 or 1,3,5-7.",
+    )
     parser.add_argument("--full-retention", action="store_true")
     parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
     parser.add_argument(
@@ -191,6 +256,14 @@ def parse_args() -> argparse.Namespace:
         default="bfloat16",
     )
     parser.add_argument("--local-files-only", action="store_true")
+    parser.add_argument(
+        "--reuse-hf-model",
+        action="store_true",
+        help=(
+            "Load the pinned HF model once while creating a fresh PRA runtime "
+            "and lifecycle state for every requested index."
+        ),
+    )
     return parser.parse_args()
 
 
