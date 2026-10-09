@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from experiments.paper4_5_agent.run_frozen_request_sequence import _request_indices
+from experiments.paper4_5_agent.summarize_frozen_request_sequence import (
+    _frozen_ledger,
+)
 
 
 MODULE = "experiments.paper4_5_agent.run_vllm_cuda_frozen_receipt_lifecycle"
@@ -60,7 +63,14 @@ def build_command(args: argparse.Namespace, request_index: int, output: Path) ->
     return command
 
 
-def summarize(paths: list[Path], expected: tuple[int, ...], full: bool) -> dict[str, Any]:
+def summarize(
+    paths: list[Path],
+    expected: tuple[int, ...],
+    full: bool,
+    *,
+    selection_fixture: Path | None = None,
+    request_replay: Path | None = None,
+) -> dict[str, Any]:
     payloads = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
     observed = tuple(int(payload["request_index"]) for payload in payloads)
     if observed != expected:
@@ -74,6 +84,9 @@ def summarize(paths: list[Path], expected: tuple[int, ...], full: bool) -> dict[
     if len(engines) != 1 or len(models) != 1 or len(policies) != 1:
         raise ValueError("Artifacts mix engine, model, or source-policy identities.")
 
+    ledger, ledger_files = _frozen_ledger(
+        selection_fixture, request_replay, expected
+    )
     copy_fields = (
         "selected_history_kv_copy_bytes",
         "receipt_capture_d2h_bytes",
@@ -114,8 +127,7 @@ def summarize(paths: list[Path], expected: tuple[int, ...], full: bool) -> dict[
                 )
             )
         )
-        rows.append(
-            {
+        row = {
                 "request_index": int(payload["request_index"]),
                 "request_input_sha256": str(payload["request_input_sha256"]),
                 "logical_source_tokens": logical_source,
@@ -139,7 +151,14 @@ def summarize(paths: list[Path], expected: tuple[int, ...], full: bool) -> dict[
                 "artifact": str(path),
                 "artifact_sha256": _sha256(path),
             }
-        )
+        frozen_identity = ledger.get(row["request_index"])
+        if frozen_identity is not None:
+            if row["request_input_sha256"] != frozen_identity["request_input_sha256"]:
+                raise ValueError(
+                    f"Artifact request {row['request_index']} does not match frozen ledger."
+                )
+            row.update(frozen_identity)
+        rows.append(row)
 
     logical_source = sum(row["logical_source_tokens"] for row in rows)
     resident_source = sum(row["resident_source_tokens"] for row in rows)
@@ -156,6 +175,8 @@ def summarize(paths: list[Path], expected: tuple[int, ...], full: bool) -> dict[
         "engine": next(iter(engines)),
         "model": next(iter(models)),
         "source_policy": next(iter(policies)),
+        "frozen_ledger_bound": bool(ledger),
+        "frozen_ledger_files": ledger_files,
         "expect_full_retention": full,
         "expected_requests": list(expected),
         "completed_requests": len(rows),
@@ -209,7 +230,13 @@ def run_sequence(args: argparse.Namespace) -> dict[str, Any]:
             )
         paths.append(output)
 
-    result = summarize(paths, expected, args.full_retention)
+    result = summarize(
+        paths,
+        expected,
+        args.full_retention,
+        selection_fixture=args.selection_fixture,
+        request_replay=args.request_replay,
+    )
     summary = args.output_dir / "summary.json"
     summary.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     if not result["sequence_qualified"]:
