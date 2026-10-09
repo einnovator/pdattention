@@ -159,9 +159,24 @@ def summarize(
         "completed_requests": len(rows),
         "qualified_requests": sum(int(row["request_qualified"]) for row in rows),
         "sequence_qualified": all(row["request_qualified"] for row in rows),
+        "cumulative_source_kv_tokens": sum(
+            row["source_tokens"] for row in rows
+        ),
+        "cumulative_selected_kv_tokens": sum(
+            row["selected_kv_tokens"] for row in rows
+        ),
+        "cumulative_wire_suffix_tokens": sum(
+            row["wire_suffix_tokens"] for row in rows
+        ),
+        "historical_kv_omission_fraction": 1.0
+        - sum(row["selected_kv_tokens"] for row in rows)
+        / max(sum(row["source_tokens"] for row in rows), 1),
         "weighted_realized_retention_fraction": sum(
             row["total_visible_tokens"] for row in rows
         )
+        / max(sum(row["full_visible_tokens"] for row in rows), 1),
+        "visible_context_omission_fraction": 1.0
+        - sum(row["total_visible_tokens"] for row in rows)
         / max(sum(row["full_visible_tokens"] for row in rows), 1),
         "selected_history_reencoded_tokens": sum(
             row["selected_history_reencoded_tokens"] for row in rows

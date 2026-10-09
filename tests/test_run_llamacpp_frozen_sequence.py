@@ -83,4 +83,9 @@ def test_summary_names_repeat_exact_claim_boundary(tmp_path):
     result = summarize([path], (1,), full=False)
     assert result["sequence_qualified"] is True
     assert result["weighted_realized_retention_fraction"] == 0.6
+    assert result["cumulative_source_kv_tokens"] == 90
+    assert result["cumulative_selected_kv_tokens"] == 50
+    assert result["cumulative_wire_suffix_tokens"] == 10
+    assert result["historical_kv_omission_fraction"] == pytest.approx(40 / 90)
+    assert result["visible_context_omission_fraction"] == pytest.approx(0.4)
     assert "not_independent_dense_logit_reference" in result["claim_boundary"]
