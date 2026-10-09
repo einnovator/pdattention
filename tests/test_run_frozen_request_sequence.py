@@ -148,6 +148,7 @@ def test_shared_hf_mode_loads_once_and_runs_only_requested_segment(
         "load_hf_components",
         lambda namespace: loads.append(namespace.model) or ("tokenizer", "model"),
     )
+    monkeypatch.setattr(hf, "_require_live_kv_api", lambda: "test-module")
 
     def fake_run(namespace, *, tokenizer, model):
         runs.append((namespace.request_index, tokenizer, model))

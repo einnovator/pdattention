@@ -157,15 +157,20 @@ def run_sequence(args: argparse.Namespace) -> dict[str, Any]:
     indices = _selected_request_indices(
         available_indices, getattr(args, "request_indices", None)
     )
-    args.output_dir.mkdir(parents=True)
-    artifacts: list[Path] = []
-    shared_hf = None
+    shared_hf_loader = None
     if args.engine == "hf" and getattr(args, "reuse_hf_model", False):
         from experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle import (
+            _require_live_kv_api,
             load_hf_components,
         )
 
-        shared_hf = load_hf_components(args)
+        _require_live_kv_api()
+        shared_hf_loader = load_hf_components
+    args.output_dir.mkdir(parents=True)
+    artifacts: list[Path] = []
+    shared_hf = None
+    if shared_hf_loader is not None:
+        shared_hf = shared_hf_loader(args)
     for request_index in indices:
         output = args.output_dir / f"request_{request_index:02d}.json"
         if shared_hf is None:
