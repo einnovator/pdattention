@@ -5803,6 +5803,17 @@ copies, re-encoding, newly encoded suffix, temporary bytes, TTFT, and latency
 separately.  It may count neither rewritten receipts nor compacted text as
 resident-subset reuse.
 
+That first physical mapping is now complete on HF/CUDA for both frozen Scikit
+repeats.  All 17/17 requests qualify; the combined engine realization selects
+193,457 of 463,111 historical K/V entries, encodes 8,396 new suffix tokens, and
+omits 57.19\% of total visible context.  This differs by only 0.095 percentage
+point from Paper~8.5's 57.09\% own logical omission.  Selected-history
+re-encoding, selection packing, and request-attachment K/V copy are all zero.
+This result, archived by Paper~4.5 at revision \texttt{3d6531b6}, validates the
+logical-to-resident-K/V mapping only: canonical source residence, consumer
+temporary bytes, offload traffic, autonomous quality, and latency remain
+separate coordinates.
+
 \section{Pending Confirmatory Outcomes}
 
 Our main hypothesis is
@@ -5922,10 +5933,13 @@ outcome: E2 resolves 2/2 and \textsc{Full} 0/2 at equal mean calls, with E2
 sending 21.92\% fewer tokens.  Because byte-identical no-removal requests also
 diverge at temperature zero, this is evidence of a noisy outcome surface, not
 an accuracy gain.  No instruction-epoch profile transferred to Paper~4.5 at
-that stage.  The later post-sampler Atomic-E2 cohort preserves 6/6 paired
-solves across three task identities, omits 50.42\% of candidate-own history,
-and reduces aggregate calls from 59 to 45.  It is eligible for a frozen runtime
-mapping and held-out task expansion, but not a production-default claim.
+that stage.  The later post-sampler Atomic-E2 cohort preserves 7/7 paired
+solves across four task identities, omits 52.37\% of candidate-own history,
+and reduces aggregate calls from 71 to 57.  The three-identity core is
+repeat-qualified; the fourth identity contributes one admitted pair because
+its second \textsc{Full} control fails.  Atomic E2 is eligible for frozen
+runtime mapping and held-out task expansion, but not a production-default or
+population-accuracy claim.
 The frozen profile screen identifies E0+M1/V1/P1 at 39.81\% opportunity and
 R1/M1/V1/P1 at 37.43\%, but their first autonomous pilots both fail with the
 same incorrect patch.  Coarse semantic role floors therefore do not substitute
@@ -6058,6 +6072,8 @@ Each request/run should persist:
 
 \section{Initial Failure Taxonomy}
 
+\begingroup
+\small
 \begin{verbatim}
 MEMORY_TASK_LOSS
 MEMORY_SOURCE_LOSS
@@ -6075,6 +6091,7 @@ MEMORY_RECOVERY_SUCCESS
 MEMORY_RECOVERY_FAILURE
 UNQUALIFIED_SESSION_INTERFERENCE
 \end{verbatim}
+\endgroup
 \fi
 
 \bibliographystyle{plain}
