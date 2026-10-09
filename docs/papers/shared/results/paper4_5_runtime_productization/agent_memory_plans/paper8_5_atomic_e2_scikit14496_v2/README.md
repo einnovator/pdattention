@@ -44,18 +44,22 @@ handoff.  The first runtime gate is exact realization of the frozen selected
 subset.  That request-level gate now passes on llama.cpp, HF/CUDA, direct MLX,
 SGLang-MLX, and vLLM-Metal.  Autonomous HF execution remains open.
 
-HF/CUDA now additionally qualifies the complete repeat-1 request sequence,
-not only its final request.  All 8/8 frozen requests pass.  Across the
-sequence, the engine selects 90,923 of 217,819 historical K/V entries and
-encodes 4,288 new wire-suffix tokens.  Historical-K/V omission is 58.2575%
-and total visible-context omission is 57.1328%, only 0.1019 percentage point
-above Paper 8.5's 57.0309% own logical omission for the same repeat.  Selected
-history re-encoding, interval packing, and selected-K/V attachment copies are
-all zero.  The maximum consumer temporary is 1,887,879,168 bytes and the
-2,676,675,224-byte lifecycle offload payload remains separate.  This is a
-frozen request-sequence mechanism result, not an autonomous solve, HBM-saving,
-or timing result.  Receipts and the bound reducer are under
-`engine_sequences/hf_cuda_qwen25_05b_gtx950m_r01_v1`.
+HF/CUDA now additionally qualifies both complete request sequences, not only
+their final requests.  All 17/17 frozen requests pass.  Repeat 1 selects
+90,923 of 217,819 historical K/V entries and encodes 4,288 new wire-suffix
+tokens; repeat 2 selects 102,534 of 245,292 and encodes 4,108 suffix tokens.
+Their visible-context omissions are 57.1328% and 57.2406%, respectively, only
+0.1019 and 0.0890 percentage point above Paper 8.5's 57.0309% and 57.1516%
+own logical omissions.  Combined, the engine selects 193,457 of 463,111
+historical K/V entries, encodes 8,396 suffix tokens, and realizes 57.1898%
+visible omission versus 57.0947% logical omission, a +0.0951-point difference.
+Selected-history re-encoding, interval packing, and selected-K/V attachment
+copies are all zero.  The maximum consumer temporary is 1,887,879,168 bytes;
+lifecycle offload payloads remain separate.  These are frozen request-sequence
+mechanism results, not autonomous solves, HBM-saving, or timing results.
+Receipts and bound reducers are under
+`engine_sequences/hf_cuda_qwen25_05b_gtx950m_r01_v1` and
+`engine_sequences/hf_cuda_qwen25_05b_gtx950m_r02_v1`.
 
 ## llama.cpp strict-subset result
 

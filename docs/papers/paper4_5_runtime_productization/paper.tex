@@ -83,12 +83,13 @@ HF/CUDA, and 56.70\% and 57.54\% after vLLM-Metal page rounding.  The
 engines consume disjoint original-position resident K/V with zero selected-
 history re-encoding, zero request-attachment K/V copy, exact same-subset
 continuations or logits, and clean release; vLLM-Metal separately reports
-complete-page rounding.  HF/CUDA also completes all eight frozen requests in
-one repeat: Paper~8.5's 57.03\% own logical omission becomes 57.13\% visible-
-context omission, with 8/8 exact qualifications and no selected-history
-re-encoding, packing, or attachment copy.  Its consumer temporary nevertheless
-peaks at 1.89~GB.  This is repeated request-level and one-sequence mechanism
-qualification bound to a small successful logical-policy cohort, not
+complete-page rounding.  HF/CUDA also completes both frozen request sequences:
+Paper~8.5's combined 57.09\% own logical omission becomes 57.19\% visible-
+context omission, a 0.095-point difference, with 17/17 exact qualifications
+and no selected-history re-encoding, packing, or attachment copy.  Its consumer
+temporary nevertheless peaks at 1.89~GB.  This is repeated request-level and
+two-sequence mechanism qualification bound to a small successful logical-policy
+cohort, not
 autonomous cross-engine execution, total-HBM saving, or a population accuracy
 estimate.
 
@@ -829,21 +830,26 @@ request, while initial attachment re-encodes zero tokens, copies zero K/V, and
 adds zero active bytes.  Its offload/restore copy is reported separately.  The auditable bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_atomic_e2_scikit14496_v2}.
 
-HF/CUDA now also realizes the complete hash-bound repeat-one sequence rather
-than only its final request.  All 8/8 requests qualify.  Cumulatively, the
-engine selects 90,923 of 217,819 historical K/V entries and encodes 4,288 new
-wire-suffix tokens.  Historical-K/V omission is 58.26\%; total visible-context
-omission is 57.13\%, only 0.10 percentage point above Paper~8.5's 57.03\% own
-logical omission for the same repeat.  Every request preserves same-subset
-logits and tokens, the ordinary full-engine continuation tokens, original
-positions, and the declared lifecycle checks.  Selected-history re-encoding,
-selection packing, and request-attachment K/V copies are all zero.  The
-canonical source K/V is still accounted separately, however; consumer
-temporary memory peaks at 1,887,879,168 bytes and explicit lifecycle offload
-payload totals 2,676,675,224 bytes.  The result therefore validates cumulative
-logical-to-hot-K/V realization, not total HBM saving, autonomous task behavior,
-or latency.  The bound receipts are under
-\path{paper8_5_atomic_e2_scikit14496_v2/engine_sequences/hf_cuda_qwen25_05b_gtx950m_r01_v1}.
+HF/CUDA now also realizes both complete hash-bound request sequences rather
+than only their final requests.  All 17/17 requests qualify.  Repeat one
+selects 90,923 of 217,819 historical K/V entries and encodes 4,288 new
+wire-suffix tokens; repeat two selects 102,534 of 245,292 and encodes 4,108.
+Their historical-K/V omissions are 58.26\% and 58.20\%, while total visible-
+context omissions are 57.13\% and 57.24\%.  Those visible values lie only
+0.102 and 0.089 percentage point above Paper~8.5's 57.03\% and 57.15\% own
+logical omissions.  Combined, the engine selects 193,457 of 463,111 historical
+entries, encodes 8,396 suffix tokens, and realizes 57.19\% visible omission
+versus 57.09\% logical omission, a +0.095-point difference.  Every request
+preserves same-subset logits and tokens, the ordinary full-engine continuation
+tokens, original positions, and the declared lifecycle checks.  Selected-
+history re-encoding, selection packing, and request-attachment K/V copies are
+all zero.  Canonical source K/V is still accounted separately, however;
+consumer temporary memory peaks at 1,887,879,168 bytes and explicit lifecycle
+offload payloads total 2,676,675,224 and 3,014,277,867 bytes.  The result
+therefore validates cumulative logical-to-hot-K/V realization, not total HBM
+saving, autonomous task behavior, or latency.  The bound receipts are under
+\path{paper8_5_atomic_e2_scikit14496_v2/engine_sequences/hf_cuda_qwen25_05b_gtx950m_r01_v1}
+and \path{paper8_5_atomic_e2_scikit14496_v2/engine_sequences/hf_cuda_qwen25_05b_gtx950m_r02_v1}.
 
 A held-out Atomic-E2 cluster adds a second task identity to the native-engine
 handoff.  Its two Paper~8.5 pairs both resolve, reduce aggregate calls from 18
@@ -1027,7 +1033,8 @@ and record a matched-tail workload failure, but the later live-extent audit
 quarantines their native K/V counters.  Neither row is CUDA engine-
 qualification evidence until rerun with complete decode-filled source pages.
 HF still lacks an admissible post-contract autonomous row, although its frozen
-request-level Atomic-E2 mechanism and lifecycle now pass 4/4.
+final-request Atomic-E2 mechanism passes 4/4 across two identities and its two
+complete Scikit request sequences pass 17/17.
 
 The strict Atomic-E2 transfer is the strongest receipt-free agent fixture in
 this revision.  Four final requests across two task identities now clear the
