@@ -1,4 +1,4 @@
-"""Run one immutable frozen request sequence through MLX or SGLang.
+"""Run one immutable frozen request sequence through a tensor engine.
 
 This is deliberately a request-sequence qualification driver, not an
 autonomous-agent evaluator.  Every request is executed independently through
@@ -22,6 +22,7 @@ ENGINE_MODULES = {
     "hf": "experiments.paper4_5_agent.run_hf_live_agent_kv_lifecycle",
     "mlx": "experiments.paper4_5_agent.run_mlx_live_agent_kv_lifecycle",
     "sglang": "experiments.paper4_5_agent.run_sglang_live_agent_kv_lifecycle",
+    "vllm-metal": "experiments.paper4_5_agent.run_vllm_metal_live_kv_lifecycle",
 }
 
 
@@ -59,10 +60,6 @@ def build_command(args: argparse.Namespace, request_index: int, output: Path) ->
         args.model,
         "--continuation-tokens",
         str(args.continuation_tokens),
-        "--prefill-step-size",
-        str(args.prefill_step_size),
-        "--max-abs-logit-delta",
-        str(args.max_abs_logit_delta),
     ]
     if args.full_retention:
         command.append("--frozen-full-retention")
@@ -73,15 +70,23 @@ def build_command(args: argparse.Namespace, request_index: int, output: Path) ->
                 args.device,
                 "--dtype",
                 args.dtype,
+                "--prefill-step-size",
+                str(args.prefill_step_size),
+                "--max-abs-logit-delta",
+                str(args.max_abs_logit_delta),
                 "--revision",
                 args.revision,
             ]
         )
         if args.local_files_only:
             command.append("--local-files-only")
-    else:
+    elif args.engine in ("mlx", "sglang"):
         command.extend(
             [
+                "--prefill-step-size",
+                str(args.prefill_step_size),
+                "--max-abs-logit-delta",
+                str(args.max_abs_logit_delta),
                 "--source-prefill-step-size",
                 str(args.source_prefill_step_size),
                 "--materialization-policy",
@@ -94,6 +99,21 @@ def build_command(args: argparse.Namespace, request_index: int, output: Path) ->
         command.append("--fused-disjoint-attention")
     elif args.engine == "sglang":
         command.extend(["--provenance", str(args.provenance), "--revision", args.revision])
+    elif args.engine == "vllm-metal":
+        command.extend(
+            [
+                "--max-model-len",
+                str(args.max_model_len),
+                "--gpu-memory-utilization",
+                str(args.gpu_memory_utilization),
+                "--engine-source-revision",
+                args.engine_source_revision,
+                "--hardware-label",
+                args.hardware_label,
+            ]
+        )
+        if args.artifact_overlay:
+            command.append("--artifact-overlay")
     return command
 
 
@@ -154,6 +174,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-prefill-step-size", type=int, default=512)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.01)
     parser.add_argument("--hardware-label", required=True)
+    parser.add_argument("--max-model-len", type=int, default=32768)
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.10)
+    parser.add_argument("--engine-source-revision", default="unknown")
+    parser.add_argument("--artifact-overlay", action="store_true")
     parser.add_argument("--device", default="cuda")
     parser.add_argument(
         "--dtype",
