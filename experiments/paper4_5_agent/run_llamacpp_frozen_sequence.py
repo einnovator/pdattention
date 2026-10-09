@@ -145,7 +145,7 @@ def summarize(
             row.update(frozen_identity)
         rows.append(row)
     return {
-        "schema_version": "paper4.5.llamacpp-frozen-request-sequence.v1",
+        "schema_version": "paper4.5.llamacpp-frozen-request-sequence.v2",
         "claim_boundary": (
             "repeat_exact_selected_page_attachment_request_sequence_"
             "not_independent_dense_logit_reference_or_autonomous_task"

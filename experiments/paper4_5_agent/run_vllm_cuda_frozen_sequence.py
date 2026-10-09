@@ -167,7 +167,7 @@ def summarize(
     visible = sum(row["total_visible_tokens"] for row in rows)
     full_visible = sum(row["full_visible_tokens"] for row in rows)
     return {
-        "schema_version": "paper4.5.vllm-cuda-frozen-request-sequence.v1",
+        "schema_version": "paper4.5.vllm-cuda-frozen-request-sequence.v2",
         "claim_boundary": (
             "repeat_exact_selected_page_alias_request_sequence_"
             "not_independent_dense_logit_reference_or_autonomous_task"

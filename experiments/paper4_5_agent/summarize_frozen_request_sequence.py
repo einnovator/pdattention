@@ -234,7 +234,7 @@ def summarize(
         if row["offloaded_payload_bytes"] is not None
     ]
     return {
-        "schema_version": "paper4.5.frozen-request-sequence.v1",
+        "schema_version": "paper4.5.frozen-request-sequence.v2",
         "claim_boundary": "request_sequence_not_autonomous_task",
         "engine": next(iter(engines)),
         "model": next(iter(models)),
