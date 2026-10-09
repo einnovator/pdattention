@@ -199,6 +199,10 @@ def run_sequence(args: argparse.Namespace) -> dict[str, Any]:
                     f"remains immutable in {args.output_dir}."
                 )
             gc.collect()
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         payload = json.loads(output.read_text(encoding="utf-8"))
         if not payload.get("engine_lifecycle_qualified", False):
             raise RuntimeError(
