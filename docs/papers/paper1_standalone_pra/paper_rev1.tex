@@ -510,22 +510,22 @@ vocabulary; whereas the QASPER-derived tokenizer realizes 7,339 tokens.)
 \begin{table}[H]
 \centering
 \footnotesize
-\caption{Tinny/Small model size and architecture (SA == causal self-attention; PRA uses cache retrieved K/V attention).
-Scale use native-KV entries; historical uses adapted cross-attention.}
-\label{tab:model-architectures}
-\begin{tabularx}{\textwidth}{@{}llYrrrrl@{}}
+\begin{tabularx}{\textwidth}{@{}lYlrrrrl@{}}
 \toprule
-Study & Model & Layer stack & $d$ & Heads & $d_{\mathrm{ff}}$ & Max. length & Parameters \\
+Model & Layer stack & Attention Type & $d$ & Heads & $d_{\mathrm{ff}}$ & Max. length & Parameters \\
 \midrule
-Scale & Tiny SA & SA $\times 2$ & 128 & 4 & 256 & 768 & 2.2--2.4M \\
-Scale & Tiny PRA & PRA $\times 2$ & 128 & 4 & 256 & 768 & 2.2--2.4M \\
-Scale & Small SA & SA $\times 4$ & 256 & 4 & 768 & 768 & 6.6--6.9M \\
-Scale & Small PRA & PRA $\times 4$ & 256 & 4 & 768 & 768 & 6.6--6.9M \\
-Historical & SA & SA $\times 4$ & 256 & 4 & 1,024 & 128 & 4.216M \\
-Historical & Full PRA & PRA $\times 4$ & 256 & 4 & 1,024 & 128 & 4.479M \\
-Historical & Hybrid PRA & SA $\times 2\rightarrow$ PRA $\times 2$ & 256 & 4 & 1,024 & 128 & 4.348M \\
+Tiny SA & SA $\times 2$ & & 128 & 4 & 256 & 768 & 2.2--2.4M \\
+Tiny PRA & PRA $\times 2$ & self-attention & 128 & 4 & 256 & 768 & 2.2--2.4M \\
+Small SA & SA $\times 4$ & & 256 & 4 & 768 & 768 & 6.6--6.9M \\
+Small PRA & PRA $\times 4$ & self-attention & 256 & 4 & 768 & 768 & 6.6--6.9M \\
+SA & SA $\times 4$ & & 256 & 4 & 1,024 & 128 & 4.216M \\
+Full PRA & PRA $\times 4$ & cross-attention & 256 & 4 & 1,024 & 128 & 4.479M \\
+Hybrid PRA & SA $\times 2\rightarrow$ PRA $\times 2$ & cross-attention & 256 & 4 & 1,024 & 128 & 4.348M \\
 \bottomrule
 \end{tabularx}
+\caption{Model size and architecture variants (SA == causal self-attention; PRA uses cache retrieved K/V attention)}
+\label{tab:model-architectures}
+
 \end{table}
 
 For the scale study, the dense SelfAttention backbone is trained on the complete
@@ -535,28 +535,30 @@ decay, zero dropout, gradient-norm clipping at 1.0, and the fixed terminal check
 These deliberately small models are controlled instruments for testing transport,
 routing, and bounded execution; they are not intended as competitive language models.
 
-\subsection{Weight-Preserving Native-K/V Conversion}
+\subsection{Converting Models from SA to PRA}
 
-The canonical PRA model is obtained from a trained SelfAttention checkpoint without
-additional PRA training. Conversion preserves the token and position embeddings, final
-normalization, language-model head, block normalizations, and feed-forward weights. For
-each attention layer, the combined PyTorch projection is split into its Q, K, and V
-components and copied, together with their biases and the output projection, into the
-corresponding PRA layer. Canonical native-K/V transport introduces no new learned
-parameters, so the converted model has the same parameter count as its source backbone.
-With memory disabled and dropout inactive, it is required to reproduce the source model's
-logits.
+The PRA enabled model are obtained from a trained SA model checkpoint without
+additional PRA training. All architectural elements are preserved in the model conversion
+including the token and position embeddings, final
+and block normalization sub-layers, language-model head, and feed-forward weights.
+Each PRA attention layer reuses the Q, K, and V projection tensors of the corresponding SA layer,
+together with their biases and the output projection.
+In the conversion from a SA to PRA layer introduces no new learned
+parameters, and the native-K/V values are the same.
+That is, the converted model has the same parameter count as its source backbone.
+Additionally, we required that when PRA K/V memory is disabled and dropout inactive,
+the PRA model reproduces the source SA model's logits. In follow up work,
+we explore alternative design where additional adaptor are used to increase
+recovery of relevant K/V entries for a given K/V budget. 
 
-In the converted \texttt{td\_pra} variant, every decoder block uses PRA attention. The
-ordinary local query, key, value, and output projections are also used to encode and
-consume reference memory. Selected historical K/V and direct-context K/V are concatenated
-inside the attention operation and share one softmax and one output projection. The cache
-stores distinct K/V tensors and routing gists for every layer; it does not reuse one
-layer's state at another depth. In the principal experiment, one mean-pooled key gist of
-width $d$ represents each source unit, and the newest direct token's projected query ranks
-those gists by normalized dot product before whole-unit materialization.
+In some of the model variant we experimented with every decoder block uses PRA attention,
+while in some variants we use only PRA is deeper layer.
+Selected historical K/V and direct-context K/V are concatenated
+inside the attention operation and share one softmax and one output projection. 
+The cache stores distinct K/V tensors and routing gists for every layer; 
+it does not reuse one layer's state at another depth.
 
-\subsection{Other Evaluated Model Families}
+\subsection{Converting Pre-Trained Model to PRA}
 
 The pretrained calibration in Section~\ref{sec:pretrained-dilution} uses pinned 4-bit
 Qwen3-8B, Qwen3-14B, and Qwen3-32B checkpoints through MLX. Those models are not trained
@@ -724,15 +726,23 @@ The receipt records SHA-256 hashes for
 each input artifact and 49 pass/fail checks. It verifies frozen outputs only;
 it is not an independent training or inference replication.
 
-We report loss and exact target accuracy where defined. For memory contribution,
-the recovered-context-benefit ratio is
+\subsection{Metrics}
+\label{sec:eval-metrics}
+
+In comparing models, we report loss and exact target accuracy. 
+Additionally, to measure effectiveness of PRA K/V memory contribution, 
+we use a recovered-context-benefit (RCB) ratio metric defined as:
+
 \begin{equation}
- \mathrm{RCB}=\frac{\mathcal{L}_{\mathrm{tail}}-\mathcal{L}_{\mathrm{condition}}}
+ \mathrm{RCB}=\frac{\mathcal{L}_{\mathrm{tail}}-\mathcal{L}_{\mathrm{PRA}}}
  {\mathcal{L}_{\mathrm{tail}}-\mathcal{L}_{\mathrm{full}}}.
  \label{eq:rcb}
 \end{equation}
-An RCB near one means that the condition recovers the measured loss benefit of dense
-context relative to the tail-only baseline. For every seed,
+
+RCA measures how much of the loss of is recovered when using PRA memory K/V vectors
+compared to using full context. 
+An RCB near one means that PRA recovers in full the measured loss benefit of dense
+context relative relative to context tail-only baseline. For every seed,
 the numerator and denominator use condition-level mean answer-token losses over the same
 frozen questions; displayed RCB is then the mean of the five paired seed ratios,
 not a ratio reconstructed from the rounded cross-seed losses.
